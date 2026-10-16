@@ -5,12 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ai-video-editor"
 version = "0.1.0"
-description = "AI Video Editor - Core editing engine proof of concept"
+description = "AI Video Editor - Motor de edição e análise técnica multimodal de vídeos"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "AI Video Editor Team" }]
 dependencies = [
     "pydantic>=2.0.0",
+    "pillow>=10.0.0",
+    "google-genai>=1.0.0",
 ]
 
 [project.optional-dependencies]
