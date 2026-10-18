@@ -8,6 +8,7 @@ from ai_video_editor.pipeline import EditPipeline, EditPipelineParams, ProjectMa
 from ai_video_editor.pipeline import runner as runner_module
 from ai_video_editor.planning import NoSpeechDetectedError, SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
+from ai_video_editor.transcription.providers.faster_whisper import FasterWhisperProvider
 from ai_video_editor.transcription.providers.mock import MockTranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
 from tests.conftest import create_tone_silence_video
@@ -215,3 +216,19 @@ def test_cli_edit_missing_video(tmp_path, capsys):
     args = build_parser().parse_args(["edit", str(tmp_path / "nao_existe.mp4")])
     assert handle_edit(args) == 1
     assert "não encontrado" in capsys.readouterr().err
+
+
+def test_stage_error_details_reach_cli_and_manifest(tmp_path, short_video, capsys, monkeypatch):
+    class BrokenModel:
+        def transcribe(self, audio, **kwargs):
+            raise RuntimeError("motivo-real-xyz")
+
+    monkeypatch.setattr(FasterWhisperProvider, "_load_model", lambda self, config: BrokenModel())
+    projects = tmp_path / "projects"
+    args = build_parser().parse_args(
+        ["edit", str(short_video), "--projects-dir", str(projects), "--transcribe"]
+    )
+    assert handle_edit(args) == 1
+    assert "motivo-real-xyz" in capsys.readouterr().err
+    manifest = ProjectManifest.load(next(projects.glob("*/project.json")))
+    assert "motivo-real-xyz" in manifest.stages["transcription"].error

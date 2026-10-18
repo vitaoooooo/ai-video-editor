@@ -5,6 +5,7 @@ import types
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from ai_video_editor.transcription.exceptions import (
@@ -14,6 +15,7 @@ from ai_video_editor.transcription.exceptions import (
 )
 from ai_video_editor.transcription.providers.faster_whisper import FasterWhisperProvider
 from ai_video_editor.transcription.schema import TranscriptionConfig
+from tests.conftest import create_synthetic_video, create_synthetic_video_no_audio
 
 
 def _w(word, start, end, prob=0.9):
@@ -38,9 +40,7 @@ class FakeModel:
 
 @pytest.fixture
 def media(tmp_path: Path) -> Path:
-    path = tmp_path / "video.mp4"
-    path.write_bytes(b"fake")
-    return path
+    return create_synthetic_video(tmp_path / "video.mp4", duration_sec=2.0)
 
 
 def _patch_model(monkeypatch, model):
@@ -58,16 +58,16 @@ def test_converts_faster_whisper_output_to_schema(monkeypatch, media):
 
     assert result.source_path == media
     assert result.language == "pt"
-    assert result.duration_sec == 7.5
+    assert result.duration_sec == pytest.approx(2.0, abs=0.1)
     assert result.model_used == "faster-whisper:small"
     assert [s.id for s in result.segments] == [0, 1]
     assert result.segments[0].text == "Olá mundo"
     assert [w.text for w in result.segments[0].words] == ["Olá", "mundo"]
     assert result.segments[0].words[1].start_sec == 0.6
     assert result.segments[1].words[0].probability == 0.5
-    path, kwargs = model.calls[0]
-    assert path == str(media)
-    assert kwargs == {"language": "pt", "word_timestamps": True}
+    audio, kwargs = model.calls[0]
+    assert isinstance(audio, np.ndarray)
+    assert kwargs == {"language": "pt", "word_timestamps": True, "vad_filter": True}
 
 
 def test_auto_language_passes_none(monkeypatch, media):
@@ -118,3 +118,28 @@ def test_load_model_uses_config(monkeypatch):
 
     FasterWhisperProvider()._load_model(TranscriptionConfig(model_size="tiny", device="cuda", compute_type="float16"))
     assert created == {"size": "tiny", "device": "cuda", "compute_type": "float16"}
+
+
+def test_audio_is_decoded_to_float32_mono_16k(monkeypatch, media):
+    model = FakeModel([])
+    _patch_model(monkeypatch, model)
+    result = FasterWhisperProvider().transcribe(media, TranscriptionConfig(vad_filter=False))
+    audio, kwargs = model.calls[0]
+    assert audio.dtype == np.float32
+    assert audio.ndim == 1
+    assert abs(len(audio) - 2 * 16000) < 0.1 * 16000
+    assert result.duration_sec == pytest.approx(len(audio) / 16000)
+    assert kwargs["vad_filter"] is False
+
+
+def test_video_without_audio_raises_media_error(monkeypatch, tmp_path):
+    video = create_synthetic_video_no_audio(tmp_path / "mudo.mp4", duration_sec=1.0)
+    _patch_model(monkeypatch, FakeModel([]))
+    with pytest.raises(TranscriptionMediaError):
+        FasterWhisperProvider().transcribe(video, TranscriptionConfig())
+
+
+def test_failure_message_includes_details(monkeypatch, media):
+    _patch_model(monkeypatch, FakeModel([], fail=True))
+    with pytest.raises(TranscriptionFailedError, match="boom"):
+        FasterWhisperProvider().transcribe(media, TranscriptionConfig())

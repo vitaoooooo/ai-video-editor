@@ -9,6 +9,10 @@ class TranscriptionError(Exception):
         self.provider = provider
         self.details = details
 
+    def __str__(self) -> str:
+        base = super().__str__()
+        return f"{base} Detalhes: {self.details}" if self.details else base
+
 
 class TranscriptionDependencyError(TranscriptionError):
     """Lançada quando a dependência opcional do provedor não está instalada."""

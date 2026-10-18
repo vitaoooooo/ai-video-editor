@@ -13,6 +13,7 @@ class TranscriptionConfig(BaseModel):
     language: Optional[str] = Field(default=None, description="Código do idioma (ex: 'pt'); None = detecção automática")
     device: str = Field(default="cpu", description="Dispositivo de inferência ('cpu', 'cuda')")
     compute_type: str = Field(default="int8", description="Tipo de computação do modelo (ex: 'int8', 'float16')")
+    vad_filter: bool = Field(default=True, description="Filtra trechos sem fala (VAD) para reduzir texto inventado em silêncio")
 
 
 class Word(BaseModel):
