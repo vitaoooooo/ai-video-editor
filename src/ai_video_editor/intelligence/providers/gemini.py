@@ -50,6 +50,11 @@ def resolve_gemini_api_key() -> str:
     )
 
 
+def _as_int(value) -> Optional[int]:
+    """Converte contagem de tokens do SDK para int, ignorando valores ausentes ou inesperados."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 class GeminiMultimodalProvider(MultimodalAIProvider):
     """Adaptador de IA multimodal conectando ao Google Gemini via SDK oficial."""
 
@@ -78,6 +83,8 @@ class GeminiMultimodalProvider(MultimodalAIProvider):
         from google import genai
         from google.genai import types
 
+        self.last_input_tokens = None
+        self.last_output_tokens = None
         client = self._get_client()
 
         # Constrói instruções anti-alucinação estritas
@@ -131,6 +138,10 @@ class GeminiMultimodalProvider(MultimodalAIProvider):
                 raise AIUnavailableError("gemini", details="Serviço do Google Gemini temporariamente indisponível.")
             else:
                 raise AIProviderError(f"Erro na chamada do Gemini: {e}", provider="gemini")
+
+        usage = getattr(response, "usage_metadata", None)
+        self.last_input_tokens = _as_int(getattr(usage, "prompt_token_count", None))
+        self.last_output_tokens = _as_int(getattr(usage, "candidates_token_count", None))
 
         # Converte a resposta estruturada para o modelo Pydantic
         try:

@@ -88,12 +88,26 @@ class AIAnalysisConfig(BaseModel):
     )
 
 
+class AIRunMetrics(BaseModel):
+    """Métricas de execução de uma chamada de análise de IA."""
+
+    provider: str = Field(..., description="Provedor de IA utilizado")
+    model_id: str = Field(..., description="Identificador do modelo solicitado")
+    frames_sent: int = Field(..., ge=0, description="Quantidade de frames enviados ao provedor")
+    latency_sec: float = Field(..., ge=0.0, description="Latência da chamada analyze_frames em segundos")
+    input_tokens: Optional[int] = Field(default=None, description="Tokens de entrada, se informados pelo provedor")
+    output_tokens: Optional[int] = Field(default=None, description="Tokens de saída, se informados pelo provedor")
+    success: bool = Field(..., description="Indica se a chamada foi concluída com sucesso")
+    error_type: Optional[str] = Field(default=None, description="Nome da classe da exceção em caso de falha")
+
+
 class CompleteAIReport(BaseModel):
     """Registro unificado contendo o resultado da análise de IA e o caminho do relatório Markdown."""
 
     analysis_response: VisualAnalysisResponse = Field(..., description="Dados estruturados da IA")
     markdown_path: Path = Field(..., description="Caminho do arquivo de relatório Markdown gerado")
     json_path: Path = Field(..., description="Caminho do arquivo de dados JSON da IA")
+    metrics: AIRunMetrics = Field(..., description="Métricas de execução da chamada de IA")
     generated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp UTC de geração do relatório",

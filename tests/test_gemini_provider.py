@@ -142,3 +142,50 @@ def test_gemini_provider_error_mapping(tmp_path: Path):
         with patch("PIL.Image.open", return_value=MagicMock()):
             with pytest.raises(AIUnavailableError):
                 provider.analyze_frames(metadata, [frame], cfg)
+
+
+def _gemini_fixture(tmp_path: Path):
+    metadata = VideoMetadata(
+        source_path=tmp_path / "vid.mp4",
+        duration_sec=2.0,
+        size_bytes=500,
+        video_stream=VideoStreamInfo(codec_name="h264", width=640, height=360, fps=30.0),
+    )
+    frame = ExtractedFrame(
+        frame_index=0, target_timestamp_sec=0.0, image_path=tmp_path / "f.jpg",
+        width=640, height=360, size_bytes=10,
+    )
+    payload = json.dumps({
+        "provider_used": "gemini", "model_used": "x", "summary": "ok",
+        "chronological_timeline": [], "scene_transitions": [], "limitations_and_blindspots": [],
+    })
+    return metadata, frame, payload
+
+
+def test_gemini_reads_usage_metadata(tmp_path: Path):
+    """Tokens são lidos de response.usage_metadata quando disponíveis."""
+    metadata, frame, payload = _gemini_fixture(tmp_path)
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(
+        text=payload,
+        usage_metadata=MagicMock(prompt_token_count=1234, candidates_token_count=56),
+    )
+    provider = GeminiMultimodalProvider(api_key="chave_fake")
+    with patch.object(provider, "_get_client", return_value=mock_client):
+        with patch("PIL.Image.open", return_value=MagicMock()):
+            provider.analyze_frames(metadata, [frame], AIAnalysisConfig())
+    assert provider.last_input_tokens == 1234
+    assert provider.last_output_tokens == 56
+
+
+def test_gemini_missing_usage_metadata_gives_none(tmp_path: Path):
+    """Sem usage_metadata, tokens ficam None sem quebrar."""
+    metadata, frame, payload = _gemini_fixture(tmp_path)
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(text=payload, usage_metadata=None)
+    provider = GeminiMultimodalProvider(api_key="chave_fake")
+    with patch.object(provider, "_get_client", return_value=mock_client):
+        with patch("PIL.Image.open", return_value=MagicMock()):
+            provider.analyze_frames(metadata, [frame], AIAnalysisConfig())
+    assert provider.last_input_tokens is None
+    assert provider.last_output_tokens is None

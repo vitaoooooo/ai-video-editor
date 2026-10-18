@@ -1,6 +1,7 @@
 """Interface abstrata comum para provedores de inteligência artificial multimodal."""
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from ai_video_editor.analyzer.schema import ExtractedFrame, VideoMetadata
 from ai_video_editor.intelligence.schema import AIAnalysisConfig, VisualAnalysisResponse
@@ -8,6 +9,10 @@ from ai_video_editor.intelligence.schema import AIAnalysisConfig, VisualAnalysis
 
 class MultimodalAIProvider(ABC):
     """Contrato base abstrato para qualquer provedor de IA multimodal (Gemini, OpenAI, Mock, etc.)."""
+
+    # Uso de tokens da última chamada; provedores que não informam mantêm None.
+    last_input_tokens: Optional[int] = None
+    last_output_tokens: Optional[int] = None
 
     @property
     @abstractmethod

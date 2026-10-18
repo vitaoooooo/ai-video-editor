@@ -58,7 +58,7 @@ Inspeciona metadados com `ffprobe` e extrai frames representativos com timestamp
 ```
 
 ### Opção B: Análise Multimodal com IA e Relatório Markdown (`report-ai`)
-Interpreta os frames extraídos com IA multimodal e gera um relatório Markdown (`ai_report.md`) com linha do tempo visual e dados estruturados (`ai_analysis.json`):
+Interpreta os frames extraídos com IA multimodal e gera um relatório Markdown (`ai_report.md`) com linha do tempo visual e dados estruturados (`ai_analysis.json`). Cada execução também grava `ai_run_metrics.json` (provedor, modelo, frames enviados, latência, tokens quando o provedor informa, `success` e `error_type`), inclusive em caso de falha, e o relatório inclui a seção "Métricas da execução":
 
 #### 1. Configuração Segura da API Key (Google Gemini)
 Defina a chave via variável de ambiente (nunca passada em argumentos de linha de comando ou versionada no Git):

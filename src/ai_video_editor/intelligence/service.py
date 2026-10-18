@@ -1,6 +1,7 @@
 """Serviço orquestrador para análise multimodal com IA e geração de relatórios."""
 
 import json
+import time
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -10,12 +11,14 @@ from ai_video_editor.analyzer.schema import (
     VideoAnalysisResult,
 )
 from ai_video_editor.intelligence.image_proxy import create_image_proxies
+from ai_video_editor.intelligence.exceptions import AIProviderError
 from ai_video_editor.intelligence.provider import MultimodalAIProvider
 from ai_video_editor.intelligence.providers.gemini import GeminiMultimodalProvider
 from ai_video_editor.intelligence.providers.mock import MockMultimodalProvider
 from ai_video_editor.intelligence.reporter import MarkdownReportGenerator
 from ai_video_editor.intelligence.schema import (
     AIAnalysisConfig,
+    AIRunMetrics,
     CompleteAIReport,
     VisualAnalysisResponse,
 )
@@ -105,11 +108,38 @@ class MultimodalAnalysisService:
         )
 
         # 3. Invoca o provedor multimodal
-        ai_response = active_provider.analyze_frames(
-            metadata=analysis_result.metadata,
-            frames=proxy_frames,
-            config=cfg,
+        metrics_path = dest_dir / "ai_run_metrics.json"
+        start = time.perf_counter()
+        try:
+            ai_response = active_provider.analyze_frames(
+                metadata=analysis_result.metadata,
+                frames=proxy_frames,
+                config=cfg,
+            )
+        except AIProviderError as exc:
+            failed = AIRunMetrics(
+                provider=active_provider.provider_name,
+                model_id=cfg.model_id,
+                frames_sent=len(proxy_frames),
+                latency_sec=time.perf_counter() - start,
+                input_tokens=active_provider.last_input_tokens,
+                output_tokens=active_provider.last_output_tokens,
+                success=False,
+                error_type=type(exc).__name__,
+            )
+            metrics_path.write_text(failed.model_dump_json(indent=2), encoding="utf-8")
+            raise
+
+        metrics = AIRunMetrics(
+            provider=active_provider.provider_name,
+            model_id=cfg.model_id,
+            frames_sent=len(proxy_frames),
+            latency_sec=time.perf_counter() - start,
+            input_tokens=active_provider.last_input_tokens,
+            output_tokens=active_provider.last_output_tokens,
+            success=True,
         )
+        metrics_path.write_text(metrics.model_dump_json(indent=2), encoding="utf-8")
 
         # 4. Salva o resultado estruturado em JSON separado
         json_path = dest_dir / "ai_analysis.json"
@@ -121,12 +151,14 @@ class MultimodalAnalysisService:
             analysis_result=analysis_result,
             ai_response=ai_response,
             output_file=md_path,
+            metrics=metrics,
         )
 
         return CompleteAIReport(
             analysis_response=ai_response,
             markdown_path=md_path.resolve(),
             json_path=json_path.resolve(),
+            metrics=metrics,
         )
 
     @classmethod

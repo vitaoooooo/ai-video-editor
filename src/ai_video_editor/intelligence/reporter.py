@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from ai_video_editor.analyzer.schema import VideoAnalysisResult
-from ai_video_editor.intelligence.schema import VisualAnalysisResponse
+from ai_video_editor.intelligence.schema import AIRunMetrics, VisualAnalysisResponse
 
 
 def _format_timestamp(seconds: float) -> str:
@@ -24,6 +24,7 @@ class MarkdownReportGenerator:
         analysis_result: VideoAnalysisResult,
         ai_response: VisualAnalysisResponse,
         output_file: Path,
+        metrics: Optional[AIRunMetrics] = None,
     ) -> Path:
         """Gera o arquivo Markdown e salva no disco.
 
@@ -31,6 +32,7 @@ class MarkdownReportGenerator:
             analysis_result: Dados técnicos e frames da Fase 2.
             ai_response: Interpretação estruturada da IA da Fase 3.
             output_file: Destino final do arquivo .md.
+            metrics: Métricas da execução da IA (seção omitida se None).
 
         Returns:
             Path resolvido do relatório gerado.
@@ -136,6 +138,21 @@ class MarkdownReportGenerator:
         for limitation in ai_response.limitations_and_blindspots:
             lines.append(f"* {limitation}")
         lines.append("")
+
+        if metrics is not None:
+            tokens_in = "n/d" if metrics.input_tokens is None else str(metrics.input_tokens)
+            tokens_out = "n/d" if metrics.output_tokens is None else str(metrics.output_tokens)
+            lines.extend([
+                "---",
+                "",
+                "## 6. Métricas da execução",
+                "",
+                f"* **Provedor / Modelo:** `{metrics.provider}` / `{metrics.model_id}`",
+                f"* **Frames enviados:** {metrics.frames_sent}",
+                f"* **Latência:** {metrics.latency_sec:.2f}s",
+                f"* **Tokens (entrada / saída):** {tokens_in} / {tokens_out}",
+                "",
+            ])
 
         # Grava o relatório final no disco
         content = "\n".join(lines)
