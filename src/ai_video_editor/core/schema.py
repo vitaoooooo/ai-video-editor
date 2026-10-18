@@ -39,6 +39,12 @@ class EditPlan(BaseModel):
         description="Target (width, height) for standardized output canvas",
     )
     target_fps: int = Field(default=30, gt=0, description="Target frames per second")
+    audio_fade_sec: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description="Micro fade de áudio (in e out) aplicado em cada segmento, em segundos (0 desativa)",
+    )
     segments: list[ClipSegment] = Field(
         ..., min_length=1, description="Ordered list of video segments to trim and concatenate"
     )

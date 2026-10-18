@@ -1,7 +1,10 @@
 """Executes compiled FFmpeg commands and validates output results."""
 
 import json
+import os
 import subprocess
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
@@ -29,9 +32,14 @@ class RenderExecutor:
         self,
         compiler: Optional[FFmpegCompiler] = None,
         ffprobe_bin: Optional[Path] = None,
+        max_workers: Optional[int] = None,
+        temp_root: Optional[Path] = None,
     ):
         self.compiler = compiler or FFmpegCompiler()
         self.ffprobe_bin = ffprobe_bin or get_ffprobe_path()
+        # Limita quantos ffmpeg rodam ao mesmo tempo (memória independe do total de segmentos)
+        self.max_workers = max_workers or min(8, os.cpu_count() or 2)
+        self.temp_root = temp_root
 
     def probe_output(self, output_file: Path) -> Tuple[float, Tuple[int, int]]:
         """Extracts verified duration and resolution from rendered video."""
@@ -59,26 +67,42 @@ class RenderExecutor:
 
         return duration, (width, height)
 
-    def execute(self, plan: EditPlan) -> RenderResult:
-        """Renders the edit plan to disk and validates output integrity."""
-        # Ensure target directory exists
-        plan.output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Compile command
-        cmd_args = self.compiler.compile(plan)
-
-        # Run FFmpeg
-        proc = subprocess.run(
-            cmd_args,
-            capture_output=True,
-            text=True,
-        )
-
+    @staticmethod
+    def _run_ffmpeg(cmd_args: list[str]) -> None:
+        proc = subprocess.run(cmd_args, capture_output=True, text=True)
         if proc.returncode != 0:
             error_msg = proc.stderr.strip() or proc.stdout.strip()
             raise RuntimeError(
                 f"FFmpeg execution failed with code {proc.returncode}:\n{error_msg}"
             )
+
+    def execute(self, plan: EditPlan) -> RenderResult:
+        """Renders the edit plan to disk and validates output integrity.
+
+        Cada segmento vira um arquivo intermediário (em paralelo, até `max_workers`),
+        depois os intermediários são unidos pelo concat demuxer. Os temporários são
+        apagados ao final, mesmo em caso de erro.
+        """
+        # Ensure target directory exists
+        plan.output_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.temp_root is not None:
+            self.temp_root.mkdir(parents=True, exist_ok=True)
+
+        with tempfile.TemporaryDirectory(prefix="ave_render_", dir=self.temp_root) as tmp:
+            job = self.compiler.compile_segmented(plan, Path(tmp))
+
+            with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+                futures = [pool.submit(self._run_ffmpeg, cmd) for cmd in job.segment_commands]
+                try:
+                    for future in futures:
+                        future.result()
+                except BaseException:
+                    for pending in futures:
+                        pending.cancel()
+                    raise
+
+            job.concat_list_path.write_text(job.concat_list_content, encoding="utf-8")
+            self._run_ffmpeg(job.concat_command)
 
         # Validate output file
         if not plan.output_path.is_file():
@@ -98,5 +122,5 @@ class RenderExecutor:
             duration_sec=duration,
             resolution=resolution,
             size_bytes=file_size,
-            command_executed=cmd_args,
+            command_executed=job.concat_command,
         )
