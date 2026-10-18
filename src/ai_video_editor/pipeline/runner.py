@@ -1,0 +1,334 @@
+"""Orquestrador do comando `edit`: probe → silêncios → transcrição → plano → render → relatório.
+
+Cada etapa grava um artefato na pasta do projeto e um fingerprint no `project.json`.
+Na execução seguinte, a etapa é pulada se o artefato existe e o fingerprint (hash das
+entradas e parâmetros que a afetam, encadeado com o das etapas anteriores) não mudou.
+"""
+
+import json
+import subprocess
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Optional
+
+from ai_video_editor.analyzer.exceptions import VideoNotFoundError
+from ai_video_editor.analyzer.probe import VideoProbe
+from ai_video_editor.analyzer.schema import VideoMetadata
+from ai_video_editor.audio import AudioAnalysisResult, detect_silences
+from ai_video_editor.core.schema import EditPlan
+from ai_video_editor.pipeline.project import (
+    AUDIO_ANALYSIS_FILE,
+    DEFAULT_PROJECTS_ROOT,
+    EDIT_PLAN_FILE,
+    EDIT_REPORT_FILE,
+    MANIFEST_FILE,
+    PROBE_FILE,
+    TRANSCRIPT_FILE,
+    file_hash,
+    fingerprint,
+    output_video_name,
+    project_dir_for,
+)
+from ai_video_editor.pipeline.report import build_edit_report
+from ai_video_editor.pipeline.schema import (
+    EditPipelineParams,
+    EditPipelineResult,
+    ProjectManifest,
+    StageName,
+    StageOutcome,
+    StageRecord,
+)
+from ai_video_editor.planning import build_edit_plan, plan_silence_cuts, removed_ranges
+from ai_video_editor.planning.schema import TimeRange
+from ai_video_editor.renderer.executor import RenderExecutor
+from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
+from ai_video_editor.transcription.provider import TranscriptionProvider
+
+# (etapa, evento, detalhe). Eventos: "start", "done", "cached", "skipped", "failed".
+ProgressCallback = Callable[[StageName, str, str], None]
+
+# Resultado de uma etapa: métricas gravadas no manifesto e uma linha de resumo para o terminal.
+StageWork = Callable[[], tuple[dict, str]]
+
+
+def probe_rotation(video_path: Path, ffprobe_bin: Optional[Path] = None) -> int:
+    """Rotação de exibição do vídeo em graus (metadado `rotate` ou display matrix)."""
+    args = [
+        str(ffprobe_bin or get_ffprobe_path()),
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream_tags=rotate:stream_side_data=rotation",
+        "-of",
+        "json",
+        str(video_path),
+    ]
+    proc = subprocess.run(args, capture_output=True, text=True, shell=False)
+    if proc.returncode != 0:
+        return 0
+    try:
+        streams = json.loads(proc.stdout or "{}").get("streams", [])
+    except json.JSONDecodeError:
+        return 0
+    if not streams:
+        return 0
+    stream = streams[0]
+    candidates = [stream.get("tags", {}).get("rotate")]
+    candidates += [sd.get("rotation") for sd in stream.get("side_data_list", [])]
+    for value in candidates:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class EditPipeline:
+    """Executa o fluxo de corte de silêncio de um vídeo com cache por etapa."""
+
+    def __init__(
+        self,
+        projects_root: Path = DEFAULT_PROJECTS_ROOT,
+        transcription_provider: Optional[TranscriptionProvider] = None,
+        render_executor: Optional[RenderExecutor] = None,
+        on_progress: Optional[ProgressCallback] = None,
+    ):
+        self.projects_root = Path(projects_root)
+        self._transcription_provider = transcription_provider
+        self._render_executor = render_executor
+        self.on_progress = on_progress
+
+    @property
+    def transcription_provider(self) -> TranscriptionProvider:
+        if self._transcription_provider is None:
+            from ai_video_editor.transcription.providers.faster_whisper import FasterWhisperProvider
+
+            self._transcription_provider = FasterWhisperProvider()
+        return self._transcription_provider
+
+    @property
+    def render_executor(self) -> RenderExecutor:
+        if self._render_executor is None:
+            self._render_executor = RenderExecutor()
+        return self._render_executor
+
+    def _emit(self, stage: StageName, event: str, detail: str = "") -> None:
+        if self.on_progress is not None:
+            self.on_progress(stage, event, detail)
+
+    def run(
+        self,
+        video_path: Path,
+        params: Optional[EditPipelineParams] = None,
+        force: bool = False,
+    ) -> EditPipelineResult:
+        """Executa (ou retoma do cache) todas as etapas e devolve o resumo."""
+        video_path = Path(video_path).resolve()
+        if not video_path.is_file():
+            raise VideoNotFoundError(video_path)
+        params = params or EditPipelineParams()
+
+        video_hash = file_hash(video_path)
+        project_dir = project_dir_for(video_path, video_hash, self.projects_root).resolve()
+        manifest_path = project_dir / MANIFEST_FILE
+        if manifest_path.is_file():
+            manifest = ProjectManifest.load(manifest_path)
+            manifest.video_path = video_path
+            manifest.params = params
+        else:
+            manifest = ProjectManifest(video_path=video_path, video_hash=video_hash, params=params)
+        manifest.save(manifest_path)
+
+        run = _Run(self, manifest, manifest_path, force)
+        outcomes: dict[StageName, StageOutcome] = {}
+        output_path = project_dir / output_video_name(video_path)
+
+        # 1. probe
+        fp_probe = fingerprint("probe", video_hash)
+
+        def do_probe() -> tuple[dict, str]:
+            metadata = VideoProbe().probe(video_path)
+            (project_dir / PROBE_FILE).write_text(metadata.model_dump_json(indent=2), encoding="utf-8")
+            v = metadata.video_stream
+            width, height = v.width, v.height
+            rotation = probe_rotation(video_path)
+            if abs(rotation) % 180 == 90:
+                width, height = height, width
+            metrics = {
+                "duration_sec": metadata.duration_sec,
+                "width": width,
+                "height": height,
+                "fps": v.fps,
+                "rotation": rotation,
+            }
+            return metrics, f"{metadata.duration_sec:.2f}s, {width}x{height} @ {v.fps}fps"
+
+        outcomes["probe"] = run.stage("probe", fp_probe, PROBE_FILE, do_probe)
+        metadata = VideoMetadata.model_validate_json((project_dir / PROBE_FILE).read_text(encoding="utf-8"))
+        probe_metrics = manifest.stages["probe"].metrics
+        resolution = (int(probe_metrics["width"]), int(probe_metrics["height"]))
+        source_fps = float(probe_metrics["fps"])
+
+        # 2. silêncios
+        fp_silences = fingerprint("silences", video_hash, params.threshold_db, params.min_silence_sec)
+
+        def do_silences() -> tuple[dict, str]:
+            result = detect_silences(video_path, params.threshold_db, params.min_silence_sec)
+            result.save_json(project_dir / AUDIO_ANALYSIS_FILE)
+            total = sum(s.duration for s in result.silences)
+            metrics = {"silences": len(result.silences), "silence_total_sec": round(total, 3)}
+            return metrics, f"{len(result.silences)} silêncios ({total:.2f}s)"
+
+        outcomes["silences"] = run.stage("silences", fp_silences, AUDIO_ANALYSIS_FILE, do_silences)
+
+        # 3. transcrição (opcional; ainda não influencia os cortes)
+        if params.transcribe:
+            provider = self.transcription_provider
+            fp_transcript = fingerprint(
+                "transcription", video_hash, provider.provider_name, params.transcription
+            )
+
+            def do_transcription() -> tuple[dict, str]:
+                transcript = provider.transcribe(video_path, params.transcription)
+                transcript.save(project_dir / TRANSCRIPT_FILE)
+                metrics = {
+                    "provider": provider.provider_name,
+                    "language": transcript.language,
+                    "segments": len(transcript.segments),
+                }
+                return metrics, f"{len(transcript.segments)} segmentos ({transcript.language})"
+
+            outcomes["transcription"] = run.stage(
+                "transcription", fp_transcript, TRANSCRIPT_FILE, do_transcription
+            )
+        else:
+            outcomes["transcription"] = run.skip("transcription", "use --transcribe para gerar")
+
+        # 4. plano
+        fp_plan = fingerprint("plan", fp_silences, params.cut, video_path, resolution, source_fps)
+
+        def do_plan() -> tuple[dict, str]:
+            audio = AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE)
+            keep = plan_silence_cuts(audio, params.cut)
+            plan = build_edit_plan(
+                video_path,
+                keep,
+                output_path,
+                resolution,
+                source_fps,
+                title=f"Corte de silêncio — {video_path.name}",
+            )
+            (project_dir / EDIT_PLAN_FILE).write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+            kept = sum(r.duration for r in keep)
+            metrics = {"segments": len(keep), "kept_sec": round(kept, 3)}
+            return metrics, f"{len(keep)} trechos mantidos ({kept:.2f}s)"
+
+        outcomes["plan"] = run.stage("plan", fp_plan, EDIT_PLAN_FILE, do_plan)
+        plan = EditPlan.model_validate_json((project_dir / EDIT_PLAN_FILE).read_text(encoding="utf-8"))
+
+        # 5. render
+        fp_render = fingerprint("render", fp_plan)
+
+        def do_render() -> tuple[dict, str]:
+            result = self.render_executor.execute(plan)
+            metrics = {
+                "duration_sec": round(result.duration_sec, 3),
+                "size_bytes": result.size_bytes,
+            }
+            return metrics, f"{result.duration_sec:.2f}s, {result.size_bytes / 1_048_576:.1f} MB"
+
+        outcomes["render"] = run.stage("render", fp_render, output_path.name, do_render)
+        final_duration = float(manifest.stages["render"].metrics["duration_sec"])
+
+        # 6. relatório
+        fp_report = fingerprint("report", fp_render, params)
+        removed = removed_ranges(
+            [TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments],
+            metadata.duration_sec,
+        )
+
+        def do_report() -> tuple[dict, str]:
+            markdown = build_edit_report(
+                video_path, metadata.duration_sec, final_duration, plan, removed, params, output_path
+            )
+            (project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
+            return {"cuts": len(removed)}, f"{len(removed)} cortes"
+
+        outcomes["report"] = run.stage("report", fp_report, EDIT_REPORT_FILE, do_report)
+
+        return EditPipelineResult(
+            project_dir=project_dir,
+            manifest_path=manifest_path,
+            output_path=output_path,
+            report_path=project_dir / EDIT_REPORT_FILE,
+            original_duration_sec=metadata.duration_sec,
+            final_duration_sec=final_duration,
+            outcomes=outcomes,
+        )
+
+
+class _Run:
+    """Estado de uma execução: aplica a regra de cache e persiste o manifesto a cada etapa."""
+
+    def __init__(
+        self, pipeline: EditPipeline, manifest: ProjectManifest, manifest_path: Path, force: bool
+    ):
+        self.pipeline = pipeline
+        self.manifest = manifest
+        self.manifest_path = manifest_path
+        self.project_dir = manifest_path.parent
+        self.force = force
+
+    def _save(self) -> None:
+        self.manifest.updated_at = _now()
+        self.manifest.save(self.manifest_path)
+
+    def stage(self, name: StageName, fp: str, artifact: str, work: StageWork) -> StageOutcome:
+        record = self.manifest.stages[name]
+        if (
+            not self.force
+            and record.status == "done"
+            and record.fingerprint == fp
+            and (self.project_dir / artifact).is_file()
+        ):
+            self.pipeline._emit(name, "cached", "")
+            return "cached"
+
+        self.pipeline._emit(name, "start", "")
+        started = time.perf_counter()
+        try:
+            metrics, detail = work()
+        except Exception as exc:
+            self.manifest.stages[name] = StageRecord(
+                status="failed", artifact=artifact, updated_at=_now(), error=str(exc)
+            )
+            self._save()
+            self.pipeline._emit(name, "failed", str(exc))
+            raise
+
+        self.manifest.stages[name] = StageRecord(
+            status="done",
+            fingerprint=fp,
+            artifact=artifact,
+            updated_at=_now(),
+            elapsed_sec=round(time.perf_counter() - started, 3),
+            metrics=metrics,
+        )
+        self._save()
+        self.pipeline._emit(name, "done", detail)
+        return "ran"
+
+    def skip(self, name: StageName, detail: str) -> StageOutcome:
+        """Etapa não pedida. Um artefato válido de execução anterior é preservado."""
+        if self.manifest.stages[name].status != "done":
+            self.manifest.stages[name] = StageRecord(status="skipped", updated_at=_now())
+            self._save()
+        self.pipeline._emit(name, "skipped", detail)
+        return "skipped"

@@ -10,7 +10,10 @@ from ai_video_editor.analyzer.service import VideoIngestService
 from ai_video_editor.core.schema import ClipSegment, EditPlan
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
 from ai_video_editor.intelligence.service import MultimodalAnalysisService
+from ai_video_editor.pipeline import STAGES, EditPipeline, EditPipelineParams
+from ai_video_editor.planning import SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
+from ai_video_editor.transcription.schema import TranscriptionConfig
 
 
 def handle_plan_render(args: argparse.Namespace) -> int:
@@ -151,6 +154,75 @@ def handle_report_ai(args: argparse.Namespace) -> int:
     return 0
 
 
+_STAGE_LABELS = {
+    "probe": "Metadados",
+    "silences": "Silêncios",
+    "transcription": "Transcrição",
+    "plan": "Plano de corte",
+    "render": "Renderização",
+    "report": "Relatório",
+}
+
+
+def _print_progress(stage: str, event: str, detail: str) -> None:
+    """Mostra o andamento de cada etapa do comando `edit`."""
+    step = f"[{STAGES.index(stage) + 1}/{len(STAGES)}] {_STAGE_LABELS[stage]}"
+    if event == "start":
+        print(f"{step}...", flush=True)
+    elif event == "done":
+        print(f"{step}: ok — {detail}", flush=True)
+    elif event == "cached":
+        print(f"{step}: em cache", flush=True)
+    elif event == "skipped":
+        print(f"{step}: pulada ({detail})", flush=True)
+    elif event == "failed":
+        print(f"{step}: FALHOU", flush=True)
+
+
+def handle_edit(args: argparse.Namespace) -> int:
+    """Corta as pausas de um vídeo falado, com pasta de projeto e cache por etapa."""
+    video_path = Path(args.video)
+    if not video_path.is_file():
+        print(f"Erro: vídeo não encontrado: {video_path}", file=sys.stderr)
+        return 1
+
+    try:
+        params = EditPipelineParams(
+            threshold_db=args.threshold_db,
+            min_silence_sec=args.min_silence_sec,
+            cut=SilenceCutParams(
+                padding_before_sec=args.padding_before,
+                padding_after_sec=args.padding_after,
+                min_gap_to_cut_sec=args.min_gap,
+                min_keep_sec=args.min_keep,
+            ),
+            transcribe=args.transcribe,
+            transcription=TranscriptionConfig(model_size=args.whisper_model, language=args.language),
+        )
+    except ValueError as e:
+        print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
+        return 1
+
+    pipeline = EditPipeline(projects_root=Path(args.projects_dir), on_progress=_print_progress)
+    try:
+        result = pipeline.run(video_path, params, force=args.force)
+    except Exception as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    removed = result.original_duration_sec - result.final_duration_sec
+    pct = removed / result.original_duration_sec * 100 if result.original_duration_sec > 0 else 0.0
+    print("\nEdição concluída!")
+    print(f"Projeto: {result.project_dir}")
+    print(f"Vídeo final: {result.output_path}")
+    print(f"Relatório: {result.report_path}")
+    print(
+        f"Duração: {result.original_duration_sec:.2f}s -> {result.final_duration_sec:.2f}s "
+        f"({pct:.1f}% removido)"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Constrói o analisador de argumentos da CLI."""
     parser = argparse.ArgumentParser(
@@ -257,6 +329,56 @@ def build_parser() -> argparse.ArgumentParser:
         help="Dimensão máxima em pixels para proxies leves (padrão: 1024)",
     )
 
+    # Subcomando: edit
+    edit_parser = subparsers.add_parser(
+        "edit", help="Remove as pausas de um vídeo falado (pasta de projeto com cache)"
+    )
+    edit_parser.add_argument("video", help="Caminho do vídeo a editar")
+    edit_parser.add_argument(
+        "--threshold-db", type=float, default=-35.0, help="Limiar de silêncio em dB (padrão: -35)"
+    )
+    edit_parser.add_argument(
+        "--min-silence-sec",
+        type=float,
+        default=0.5,
+        help="Duração mínima para detectar um silêncio (padrão: 0.5)",
+    )
+    edit_parser.add_argument(
+        "--padding-before", type=float, default=0.15, help="Folga antes de cada fala (padrão: 0.15)"
+    )
+    edit_parser.add_argument(
+        "--padding-after", type=float, default=0.20, help="Folga depois de cada fala (padrão: 0.20)"
+    )
+    edit_parser.add_argument(
+        "--min-gap",
+        type=float,
+        default=0.30,
+        help="Pausas menores que isso (após o padding) não são cortadas (padrão: 0.30)",
+    )
+    edit_parser.add_argument(
+        "--min-keep",
+        type=float,
+        default=0.10,
+        help="Falas mais curtas que isso são tratadas como ruído (padrão: 0.10)",
+    )
+    edit_parser.add_argument(
+        "--transcribe", action="store_true", help="Gera transcript.json com faster-whisper"
+    )
+    edit_parser.add_argument(
+        "--language", default=None, help="Idioma da transcrição (ex: pt); padrão: automático"
+    )
+    edit_parser.add_argument(
+        "--whisper-model", default="small", help="Modelo do faster-whisper (padrão: small)"
+    )
+    edit_parser.add_argument(
+        "--force", action="store_true", help="Refaz todas as etapas, ignorando o cache"
+    )
+    edit_parser.add_argument(
+        "--projects-dir",
+        default="output/projects",
+        help="Diretório base dos projetos (padrão: output/projects)",
+    )
+
     return parser
 
 
@@ -272,6 +394,8 @@ def main() -> None:
         sys.exit(handle_analyze(args))
     elif args.command == "report-ai":
         sys.exit(handle_report_ai(args))
+    elif args.command == "edit":
+        sys.exit(handle_edit(args))
     else:
         parser.print_help()
         sys.exit(1)

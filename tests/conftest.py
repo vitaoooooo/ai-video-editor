@@ -143,3 +143,50 @@ def short_video(tmp_path: Path) -> Path:
 def long_video(tmp_path: Path) -> Path:
     """8.5 second video for multi-frame testing."""
     return create_synthetic_video(tmp_path / "long_8_5s.mp4", duration_sec=8.5)
+
+
+def create_tone_silence_video(
+    output_path: Path,
+    pattern: list[Tuple[str, float]],
+    width: int = 320,
+    height: int = 240,
+    fps: int = 30,
+) -> Path:
+    """Gera MP4 com vídeo testsrc e áudio concatenando trechos ('tone' | 'silence', duração)."""
+    ffmpeg_bin = get_ffmpeg_path()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    total = sum(dur for _, dur in pattern)
+    inputs = ["-f", "lavfi", "-i", f"testsrc=duration={total}:size={width}x{height}:rate={fps}"]
+    for kind, dur in pattern:
+        src = (
+            f"sine=frequency=440:sample_rate=44100:duration={dur}"
+            if kind == "tone"
+            else f"anullsrc=r=44100:cl=mono:d={dur}"
+        )
+        inputs += ["-f", "lavfi", "-i", src]
+    n = len(pattern)
+    labels = "".join(f"[{i + 1}:a]" for i in range(n))
+    args = [
+        str(ffmpeg_bin),
+        "-y",
+        *inputs,
+        "-filter_complex",
+        f"{labels}concat=n={n}:v=0:a=1[a]",
+        "-map",
+        "0:v",
+        "-map",
+        "[a]",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        str(output_path.resolve()),
+    ]
+    subprocess.run(args, capture_output=True, check=True)
+    return output_path

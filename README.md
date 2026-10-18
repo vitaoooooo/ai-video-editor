@@ -104,6 +104,39 @@ Renderiza um plano de edição completo a partir de um arquivo JSON estruturado:
 .\.venv\Scripts\python.exe -m ai_video_editor.cli render output/sample_plan.json
 ```
 
+### Opção E: Remover as pausas de um vídeo falado (`edit`)
+Fluxo completo de corte de silêncio (sem IA): metadados → silêncios → transcrição (opcional) → plano de corte → render → relatório. A resolução e o FPS da saída são os do vídeo de origem (FPS arredondado para inteiro).
+
+```bash
+.\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4"
+
+# Ajustando a detecção e as folgas, e gerando a transcrição (requer pip install -e ".[transcription]")
+.\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4" `
+  --threshold-db -40 --min-silence-sec 0.6 `
+  --padding-before 0.15 --padding-after 0.25 --min-gap 0.3 --min-keep 0.1 `
+  --transcribe --language pt --whisper-model small
+```
+
+| Opção | Padrão | Efeito |
+| --- | --- | --- |
+| `--threshold-db` | -35 | Volume abaixo do qual o áudio é considerado silêncio |
+| `--min-silence-sec` | 0.5 | Duração mínima de um silêncio detectado |
+| `--padding-before` / `--padding-after` | 0.15 / 0.20 | Folga mantida antes/depois de cada fala |
+| `--min-gap` | 0.30 | Pausas menores que isso (após o padding) não são cortadas, inclusive no início/fim |
+| `--min-keep` | 0.10 | Falas mais curtas que isso são tratadas como ruído |
+| `--transcribe` | desligado | Gera `transcript.json` (ainda não influencia os cortes) |
+| `--force` | desligado | Refaz todas as etapas, ignorando o cache |
+| `--projects-dir` | `output/projects` | Diretório base dos projetos |
+
+Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
+
+* `project.json`: manifesto com caminho do vídeo, parâmetros e status/fingerprint/métricas de cada etapa.
+* `probe.json`, `audio_analysis.json`, `transcript.json` (se pedido), `edit_plan.json`.
+* `edit_report.md`: duração original e final, % removido, número de cortes, parâmetros e a lista dos trechos removidos.
+* `<nome-do-video>_edited.mp4`: o vídeo final.
+
+**Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` refaz silêncios, plano, render e relatório; mudar só um padding refaz a partir do plano; a transcrição nunca força novo render. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
+
 ---
 
 ## 5. Estrutura dos Módulos
@@ -130,3 +163,14 @@ Renderiza um plano de edição completo a partir de um arquivo JSON estruturado:
 * [`src/ai_video_editor/intelligence/providers/gemini.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/providers/gemini.py): Adaptador oficial do Google Gemini via SDK `google-genai`.
 * [`src/ai_video_editor/intelligence/providers/mock.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/providers/mock.py): Provedor simulado para testes offline rápidos e determinísticos.
 * [`src/ai_video_editor/intelligence/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/service.py): Orquestrador de análise multimodal e geração de relatórios.
+
+### Módulo Planning (corte de silêncio)
+* [`src/ai_video_editor/planning/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/schema.py): `SilenceCutParams` (paddings, `min_gap_to_cut_sec`, `min_keep_sec`) e `TimeRange`.
+* [`src/ai_video_editor/planning/silence_cut.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/silence_cut.py): `plan_silence_cuts` (trechos a manter a partir da `AudioAnalysisResult`), `removed_ranges` e `build_edit_plan` (lista de trechos → `EditPlan` na resolução/FPS da origem).
+* [`src/ai_video_editor/planning/exceptions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/exceptions.py): `PlanningError`, `NoSpeechDetectedError`.
+
+### Módulo Pipeline (comando `edit`)
+* [`src/ai_video_editor/pipeline/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que orquestra as etapas com cache por fingerprint e callback de progresso; `TranscriptionProvider` e `RenderExecutor` são injetáveis.
+* [`src/ai_video_editor/pipeline/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/schema.py): `EditPipelineParams`, `ProjectManifest` (`project.json`), `StageRecord`, `EditPipelineResult`.
+* [`src/ai_video_editor/pipeline/project.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/project.py): Hash curto do vídeo, nome da pasta do projeto, nomes dos artefatos e fingerprints.
+* [`src/ai_video_editor/pipeline/report.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/report.py): Geração do `edit_report.md`.
