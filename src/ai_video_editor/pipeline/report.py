@@ -103,6 +103,7 @@ def _director_section(director: DirectorRun) -> list[str]:
         "| Item | Valor |",
         "| --- | --- |",
         f"| Diretor | {director.provider} ({director.model_id}) |",
+        f"| Raciocínio | {director.thinking or '—'} |",
         f"| Intensidade | {brief.intensity} |",
         f"| Duração alvo | {target} |",
         f"| Remover enrolação | {'sim' if brief.remove_fillers else 'não'} |",

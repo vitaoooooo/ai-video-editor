@@ -62,7 +62,7 @@ def test_gemini_provider_success_mocked(tmp_path: Path):
     mock_response = MagicMock()
     mock_response.text = json.dumps({
         "provider_used": "gemini",
-        "model_used": "gemini-2.5-flash",
+        "model_used": "gemini-3.8-flash",
         "summary": "Cena urbana diurna.",
         "chronological_timeline": [
             {
@@ -82,11 +82,13 @@ def test_gemini_provider_success_mocked(tmp_path: Path):
     with patch.object(provider, "_get_client", return_value=mock_client):
         # Patch PIL.Image.open para não tentar decodificar o JPEG dummy incompleto
         with patch("PIL.Image.open", return_value=MagicMock()):
-            cfg = AIAnalysisConfig(model_id="gemini-2.5-flash")
+            cfg = AIAnalysisConfig(model_id="gemini-3.8-flash")
             res = provider.analyze_frames(metadata, [frame], cfg)
 
+            http = mock_client.models.generate_content.call_args.kwargs["config"].http_options
+            assert http.timeout == int(cfg.timeout_sec * 1000)
             assert res.provider_used == "gemini"
-            assert res.model_used == "gemini-2.5-flash"
+            assert res.model_used == "gemini-3.8-flash"
             assert len(res.chronological_timeline) == 1
             assert res.chronological_timeline[0].frame_index == 0
 

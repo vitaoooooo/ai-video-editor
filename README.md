@@ -73,13 +73,13 @@ $env:GEMINI_API_KEY = "sua_chave_do_google_ai_studio"
 .\.venv\Scripts\python.exe -m ai_video_editor.cli report-ai `
   --report output/analysis/<id_da_sessao>/analysis_report.json `
   --provider gemini `
-  --model gemini-2.5-flash `
+  --model gemini-3.8-flash `
   --max-images 15 `
   --proxy-dim 1024
 ```
 
 > **Modelos Gemini Compatíveis:**
-> Os modelos recomendados suportam entrada multimodal e saídas estruturadas em JSON (ex: `gemini-2.5-flash` para custo/velocidade, ou `gemini-2.5-pro` para raciocínio visual aprofundado). Consulte os modelos multimodais atualizados na [documentação oficial do Google AI Studio](https://ai.google.dev/gemini-api/docs/models/gemini).
+> Os modelos recomendados suportam entrada multimodal e saídas estruturadas em JSON (ex: `gemini-3.8-flash` para custo/velocidade, ou `gemini-3.8-pro` para raciocínio visual aprofundado). Consulte os modelos multimodais atualizados na [documentação oficial do Google AI Studio](https://ai.google.dev/gemini-api/docs/models/gemini).
 
 #### 3. Executando em Modo Simulado / Teste Offline (`mock`)
 Permite validar o fluxo E2E e geração de relatórios Markdown sem gastar tokens ou depender de conexão de rede:
@@ -132,7 +132,9 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 | `--min-keep` | 0.10 | Falas mais curtas que isso são tratadas como ruído |
 | `--transcribe` | desligado | Gera `transcript.json` (necessário para o Diretor) |
 | `--director` | `none` | Diretor de IA: `none`, `mock` (remove frases repetidas, sem rede) ou `gemini`. Só roda com `--transcribe` |
-| `--director-model` | `gemini-2.5-flash` | Modelo do Diretor Gemini |
+| `--director-model` | `gemini-3.8-flash` | Modelo do Diretor Gemini |
+| `--director-thinking` | `off` | Raciocínio ("thinking") do Diretor Gemini: `off` (mínimo, mais rápido), `low` ou `high`. Aparece no relatório |
+| `--director-timeout` | 120 | Tempo limite (s) da chamada ao Diretor |
 | `--intensity` | `light` | Quanto o Diretor corta: `light`, `medium` ou `aggressive` |
 | `--target-duration` | — | Duração final desejada em segundos |
 | `--instructions` | — | Pedido livre ao Diretor (ex: `"corte as piadas"`) |

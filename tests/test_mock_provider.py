@@ -50,12 +50,12 @@ def dummy_frames(tmp_path: Path):
 def test_mock_provider_success(dummy_metadata, dummy_frames):
     """Verifica geração correta de observações correlacionadas aos frames de entrada."""
     provider = MockMultimodalProvider()
-    cfg = AIAnalysisConfig(model_id="gemini-2.5-flash")
+    cfg = AIAnalysisConfig(model_id="gemini-3.8-flash")
 
     resp = provider.analyze_frames(dummy_metadata, dummy_frames, cfg)
 
     assert resp.provider_used == "mock"
-    assert resp.model_used == "gemini-2.5-flash"
+    assert resp.model_used == "gemini-3.8-flash"
     assert len(resp.chronological_timeline) == 2
     assert resp.chronological_timeline[0].frame_index == 0
     assert resp.chronological_timeline[0].target_timestamp_sec == 0.0

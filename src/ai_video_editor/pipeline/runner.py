@@ -143,7 +143,11 @@ class EditPipeline:
             return MockDirector()
         from ai_video_editor.director.providers.gemini import GeminiDirector
 
-        return GeminiDirector(model_id=params.director_model)
+        return GeminiDirector(
+            model_id=params.director_model,
+            thinking=params.director_thinking,
+            timeout_sec=params.director_timeout_sec,
+        )
 
     @property
     def render_executor(self) -> RenderExecutor:
@@ -254,7 +258,8 @@ class EditPipeline:
         else:
             director = self.director_for(params)
             fp_director = fingerprint(
-                "director", fp_transcript, director.provider_name, director.model_id, params.brief
+                "director", fp_transcript, director.provider_name, director.model_id,
+                director.thinking_label, params.brief
             )
 
             def do_director() -> tuple[dict, str]:

@@ -204,6 +204,8 @@ def handle_edit(args: argparse.Namespace) -> int:
             transcription=TranscriptionConfig(model_size=args.whisper_model, language=args.language),
             director=args.director,
             director_model=args.director_model,
+            director_thinking=args.director_thinking,
+            director_timeout_sec=args.director_timeout,
             brief=UserBrief(
                 intensity=args.intensity,
                 target_duration_sec=args.target_duration,
@@ -331,8 +333,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     report_ai_parser.add_argument(
         "--model",
-        default="gemini-2.5-flash",
-        help="Identificador do modelo (padrão: gemini-2.5-flash)",
+        default="gemini-3.8-flash",
+        help="Identificador do modelo (padrão: gemini-3.8-flash)",
     )
     report_ai_parser.add_argument(
         "--max-images",
@@ -396,8 +398,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     edit_parser.add_argument(
         "--director-model",
-        default="gemini-2.5-flash",
-        help="Modelo do Diretor Gemini (padrão: gemini-2.5-flash)",
+        default="gemini-3.8-flash",
+        help="Modelo do Diretor Gemini (padrão: gemini-3.8-flash)",
+    )
+    edit_parser.add_argument(
+        "--director-thinking",
+        choices=["off", "low", "high"],
+        default="off",
+        help="Raciocínio ('thinking') do Diretor Gemini: off = mínimo, mais rápido (padrão: off)",
+    )
+    edit_parser.add_argument(
+        "--director-timeout",
+        type=float,
+        default=120.0,
+        help="Tempo limite em segundos da chamada ao Diretor (padrão: 120)",
     )
     edit_parser.add_argument(
         "--intensity",

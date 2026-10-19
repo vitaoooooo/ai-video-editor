@@ -222,6 +222,50 @@ def _fake_client(*texts: str):
     return SimpleNamespace(models=_FakeModels(list(texts)))
 
 
+def _decide_with_fake(**kwargs):
+    client = _fake_client(json.dumps({"removals": [], "summary": "Nada a remover."}))
+    director = GeminiDirector(client=client, **kwargs)
+    sentences = build_sentences(_transcript([(0.0, 2.0, " Clique em salvar.")]))
+    director.decide(sentences, UserBrief(), CONTEXT)
+    return director, client.models.calls[0]
+
+
+def test_gemini_director_defaults_to_gemini_3_8_flash_with_minimal_thinking():
+    director, call = _decide_with_fake()
+
+    assert director.model_id == "gemini-3.8-flash"
+    assert call["model"] == "gemini-3.8-flash"
+    assert call["config"].thinking_config.thinking_level.value == "MINIMAL"
+    assert call["config"].http_options.timeout == 120_000
+    assert director.thinking_label == "off (thinking_level=MINIMAL)"
+
+
+@pytest.mark.parametrize("thinking, level", [("off", "MINIMAL"), ("low", "LOW"), ("high", "HIGH")])
+def test_gemini_director_passes_thinking_level_and_timeout(thinking, level):
+    director, call = _decide_with_fake(thinking=thinking, timeout_sec=45)
+
+    assert call["config"].thinking_config.thinking_level.value == level
+    assert call["config"].http_options.timeout == 45_000
+    assert director.thinking_label == f"{thinking} (thinking_level={level})"
+
+
+def test_gemini_director_25_family_uses_thinking_budget():
+    director, call = _decide_with_fake(model_id="gemini-2.5-flash", thinking="off")
+
+    assert call["config"].thinking_config.thinking_budget == 0
+    assert call["config"].thinking_config.thinking_level is None
+
+
+def test_run_director_records_thinking_label():
+    client = _fake_client(json.dumps({"removals": [], "summary": "ok"}))
+    director = GeminiDirector(client=client, thinking="low")
+    sentences = build_sentences(_transcript([(0.0, 2.0, " Clique em salvar.")]))
+
+    run = run_director(director, sentences, UserBrief(), CONTEXT)
+
+    assert run.thinking == "low (thinking_level=LOW)"
+
+
 def test_gemini_director_prompt_and_json_parse():
     sentences = build_sentences(
         _transcript(
@@ -237,7 +281,7 @@ def test_gemini_director_prompt_and_json_parse():
         "summary": "Removida uma frase recomeçada.",
     }
     client = _fake_client(json.dumps(payload))
-    director = GeminiDirector(model_id="gemini-2.5-pro", client=client)
+    director = GeminiDirector(model_id="gemini-3.8-pro", client=client)
     brief = UserBrief(intensity="medium", target_duration_sec=50, instructions="Mantenha as piadas")
 
     decision = director.decide(sentences, brief, CONTEXT)
@@ -248,7 +292,7 @@ def test_gemini_director_prompt_and_json_parse():
     assert (director.last_input_tokens, director.last_output_tokens) == (321, 45)
 
     call = client.models.calls[0]
-    assert call["model"] == "gemini-2.5-pro"
+    assert call["model"] == "gemini-3.8-pro"
     assert call["config"].response_schema is DirectorDecision
     assert call["config"].response_mime_type == "application/json"
     prompt = call["contents"]

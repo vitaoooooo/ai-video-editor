@@ -50,6 +50,13 @@ def resolve_gemini_api_key() -> str:
     )
 
 
+def build_http_options(timeout_sec: float):
+    """HttpOptions do SDK com o tempo limite (o SDK espera milissegundos)."""
+    from google.genai import types
+
+    return types.HttpOptions(timeout=int(timeout_sec * 1000))
+
+
 def map_gemini_error(error: Exception, timeout_sec: float) -> AIProviderError:
     """Converte uma exceção do SDK em exceção de domínio, sem expor credenciais."""
     err_str = str(error).lower()
@@ -137,6 +144,7 @@ class GeminiMultimodalProvider(MultimodalAIProvider):
                     response_mime_type="application/json",
                     response_schema=VisualAnalysisResponse,
                     temperature=config.temperature,
+                    http_options=build_http_options(config.timeout_sec),
                 ),
             )
         except Exception as e:

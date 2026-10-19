@@ -6,7 +6,7 @@ from typing import Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
-from ai_video_editor.director.schema import UserBrief
+from ai_video_editor.director.schema import DirectorThinking, UserBrief
 from ai_video_editor.planning.schema import SilenceCutParams
 from ai_video_editor.subtitles.schema import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
@@ -40,7 +40,11 @@ class EditPipelineParams(BaseModel):
     transcribe: bool = Field(default=False, description="Gera transcript.json (necessário para o Diretor)")
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     director: DirectorName = Field(default="none", description="Diretor de IA que remove frases")
-    director_model: str = Field(default="gemini-2.5-flash", description="Modelo do Diretor Gemini")
+    director_model: str = Field(default="gemini-3.8-flash", description="Modelo do Diretor Gemini")
+    director_thinking: DirectorThinking = Field(
+        default="off", description="Nível de raciocínio do Diretor Gemini (off/low/high)"
+    )
+    director_timeout_sec: float = Field(default=120.0, gt=5.0, description="Tempo limite da chamada ao Diretor")
     brief: UserBrief = Field(default_factory=UserBrief)
     subtitles: bool = Field(default=True, description="Gera o .srt quando há transcrição")
     subtitle: SubtitleParams = Field(default_factory=SubtitleParams)

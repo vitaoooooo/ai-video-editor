@@ -32,6 +32,7 @@ Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`.
 - Erros de IA usam as exceções de `intelligence/exceptions.py`; erros de mídia usam `analyzer/exceptions.py`.
 - FFmpeg sempre via lista de argumentos em `subprocess` (nunca `shell=True`).
 - Testes não fazem chamadas de rede: usam vídeos sintéticos gerados por FFmpeg (`tests/conftest.py`) e provedores mock.
+- Diretor Gemini: raciocínio mínimo por padrão (`--director-thinking off`) e timeout de 120s repassado ao SDK via `http_options`.
 - Chaves de API só por variável de ambiente (`GEMINI_API_KEY`) ou `.env` local. Nunca commitar, logar ou imprimir chaves.
 - Docstrings e mensagens em português; nomes de código em inglês.
 - Não adicionar dependências sem necessidade clara; se adicionar, atualizar `pyproject.toml`.

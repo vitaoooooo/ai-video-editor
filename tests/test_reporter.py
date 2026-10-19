@@ -70,7 +70,7 @@ def test_markdown_report_generator_content(tmp_path: Path):
 
     ai_resp = VisualAnalysisResponse(
         provider_used="gemini",
-        model_used="gemini-2.5-flash",
+        model_used="gemini-3.8-flash",
         summary="Apresentador em estúdio de gravação iluminado.",
         chronological_timeline=[
             VisualObservation(
@@ -109,7 +109,7 @@ def test_markdown_report_generator_content(tmp_path: Path):
     assert "aac" in content
 
     # 2. Valida síntese e modelo
-    assert "gemini-2.5-flash" in content
+    assert "gemini-3.8-flash" in content
     assert "Apresentador em estúdio" in content
 
     # 3. Valida linha do tempo e separação de fatos vs inferências

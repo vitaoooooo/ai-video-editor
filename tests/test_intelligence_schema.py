@@ -53,7 +53,7 @@ def test_ai_analysis_config_limits():
     """Valida os tetos e limites de custo da configuração de IA."""
     cfg = AIAnalysisConfig()
     assert cfg.provider == "gemini"
-    assert cfg.model_id == "gemini-2.5-flash"
+    assert cfg.model_id == "gemini-3.8-flash"
     assert cfg.max_images_per_request == 15
     assert cfg.max_image_dimension == 1024
     assert cfg.image_quality == 80
@@ -71,7 +71,7 @@ def test_visual_analysis_response_json_roundtrip():
     """Valida a serialização e desserialização completa de VisualAnalysisResponse."""
     resp = VisualAnalysisResponse(
         provider_used="gemini",
-        model_used="gemini-2.5-flash",
+        model_used="gemini-3.8-flash",
         summary="Apresentação institucional em ambiente de escritório corporativo.",
         chronological_timeline=[
             VisualObservation(

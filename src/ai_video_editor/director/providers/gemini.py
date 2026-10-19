@@ -4,16 +4,48 @@ import json
 from typing import Optional
 
 from ai_video_editor.director.provider import EditDirector
-from ai_video_editor.director.schema import DirectorContext, DirectorDecision, Sentence, UserBrief
+from ai_video_editor.director.schema import (
+    DirectorContext,
+    DirectorDecision,
+    DirectorThinking,
+    Sentence,
+    UserBrief,
+)
 from ai_video_editor.director.service import allowed_removal_ratio, speech_duration
 from ai_video_editor.intelligence.exceptions import AIResponseValidationError
 from ai_video_editor.intelligence.providers.gemini import (
     _as_int,
+    build_http_options,
     map_gemini_error,
     resolve_gemini_api_key,
 )
 
-DEFAULT_DIRECTOR_MODEL = "gemini-2.5-flash"
+DEFAULT_DIRECTOR_MODEL = "gemini-3.8-flash"
+
+# Família 3.x: `thinking_level`. Família 2.5 (legado): `thinking_budget` em tokens (-1 = dinâmico).
+_THINKING_LEVELS = {"off": "MINIMAL", "low": "LOW", "high": "HIGH"}
+_THINKING_BUDGETS = {"off": 0, "low": 1024, "high": -1}
+
+
+def _thinking_setting(model_id: str, thinking: DirectorThinking) -> tuple[str, int | str]:
+    if "gemini-2.5" in model_id:
+        return "thinking_budget", _THINKING_BUDGETS[thinking]
+    return "thinking_level", _THINKING_LEVELS[thinking]
+
+
+def thinking_label(model_id: str, thinking: DirectorThinking) -> str:
+    """Descrição da configuração de raciocínio, para o relatório."""
+    name, value = _thinking_setting(model_id, thinking)
+    return f"{thinking} ({name}={value})"
+
+
+def build_thinking_config(model_id: str, thinking: DirectorThinking):
+    """ThinkingConfig do SDK para o nível pedido."""
+    from google.genai import types
+
+    name, value = _thinking_setting(model_id, thinking)
+    return types.ThinkingConfig(**{name: value})
+
 
 _INTENSITY_GUIDE = {
     "light": (
@@ -94,13 +126,16 @@ class GeminiDirector(EditDirector):
         api_key: Optional[str] = None,
         temperature: float = 0.2,
         timeout_sec: float = 120.0,
+        thinking: DirectorThinking = "off",
         client=None,
     ):
         self._model_id = model_id
         self._api_key = api_key
         self.temperature = temperature
         self.timeout_sec = timeout_sec
+        self.thinking = thinking
         self._client = client
+        self.thinking_label = thinking_label(model_id, thinking)
 
     @property
     def provider_name(self) -> str:
@@ -127,6 +162,7 @@ class GeminiDirector(EditDirector):
         self.last_output_tokens = None
         client = self._get_client()
         prompt = build_director_prompt(sentences, brief, context)
+        thinking_config = build_thinking_config(self._model_id, self.thinking)
 
         try:
             response = client.models.generate_content(
@@ -136,6 +172,8 @@ class GeminiDirector(EditDirector):
                     response_mime_type="application/json",
                     response_schema=DirectorDecision,
                     temperature=self.temperature,
+                    thinking_config=thinking_config,
+                    http_options=build_http_options(self.timeout_sec),
                 ),
             )
         except Exception as e:

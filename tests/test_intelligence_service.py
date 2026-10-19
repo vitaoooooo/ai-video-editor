@@ -88,7 +88,7 @@ def test_analyze_and_report_end_to_end(tmp_path: Path):
 
     # Executa o serviço configurado com o MockProvider
     service = MultimodalAnalysisService(provider=MockMultimodalProvider())
-    cfg = AIAnalysisConfig(provider="mock", model_id="gemini-2.5-flash", max_images_per_request=10)
+    cfg = AIAnalysisConfig(provider="mock", model_id="gemini-3.8-flash", max_images_per_request=10)
 
     report_out = service.analyze_and_report(analysis_res, config=cfg)
 
@@ -110,7 +110,7 @@ def test_analyze_and_report_end_to_end(tmp_path: Path):
     # 4. Valida conteúdo do relatório Markdown
     md_content = report_out.markdown_path.read_text(encoding="utf-8")
     assert "# Relatório de Análise Visual e Técnica" in md_content
-    assert "gemini-2.5-flash" in md_content
+    assert "gemini-3.8-flash" in md_content
 
 
 def test_from_report_file(tmp_path: Path):

@@ -16,6 +16,8 @@ class EditDirector(ABC):
     # Uso de tokens da última chamada; provedores que não informam mantêm None.
     last_input_tokens: Optional[int] = None
     last_output_tokens: Optional[int] = None
+    # Descrição da configuração de raciocínio usada (vai para o relatório); None se não se aplica.
+    thinking_label: Optional[str] = None
 
     @property
     @abstractmethod

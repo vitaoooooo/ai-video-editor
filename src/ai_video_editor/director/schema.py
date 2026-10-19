@@ -67,11 +67,17 @@ class DirectorDecision(BaseModel):
     summary: str = Field(..., description="Resumo das decisões, em português")
 
 
+DirectorThinking = Literal["off", "low", "high"]
+
+
 class DirectorRun(BaseModel):
     """Conteúdo do `director_decision.json`: frases, decisão aceita (se houver) e métricas."""
 
     provider: str
     model_id: str
+    thinking: Optional[str] = Field(
+        default=None, description="Configuração de raciocínio usada pelo modelo, quando aplicável"
+    )
     brief: UserBrief
     sentences: list[Sentence]
     decision: Optional[DirectorDecision] = Field(

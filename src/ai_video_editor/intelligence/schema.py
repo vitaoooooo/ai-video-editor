@@ -61,8 +61,8 @@ class AIAnalysisConfig(BaseModel):
 
     provider: str = Field(default="gemini", description="Identificador do provedor (ex: 'gemini', 'mock')")
     model_id: str = Field(
-        default="gemini-2.5-flash",
-        description="Identificador configurável do modelo (ex: 'gemini-2.5-flash', 'gemini-2.5-pro')",
+        default="gemini-3.8-flash",
+        description="Identificador configurável do modelo (ex: 'gemini-3.8-flash', 'gemini-3.8-pro')",
     )
     max_images_per_request: int = Field(
         default=15,

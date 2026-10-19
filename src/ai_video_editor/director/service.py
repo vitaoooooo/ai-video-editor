@@ -84,7 +84,8 @@ def run_director(
     (autenticação, cota, timeout) não são tratados aqui e sobem para o chamador.
     """
     run = DirectorRun(
-        provider=director.provider_name, model_id=director.model_id, brief=brief, sentences=sentences
+        provider=director.provider_name, model_id=director.model_id,
+        thinking=director.thinking_label, brief=brief, sentences=sentences
     )
     if not sentences:
         run.decision = DirectorDecision(summary="Transcrição sem frases; nada a decidir.")
