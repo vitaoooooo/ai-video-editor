@@ -1,3 +1,5 @@
+[![Tests](https://github.com/vitaoooooo/ai-video-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/vitaoooooo/ai-video-editor/actions/workflows/tests.yml)
+
 # AI Video Editor — Core Editing, Ingestion & Multimodal AI Analysis Engine
 
 Motor de edição, ingestão técnica e análise visual com IA multimodal para o **AI Video Editor**, baseado em schemas Pydantic, FFmpeg determinístico e arquitetura multi-provedor (Google Gemini, Mock).
