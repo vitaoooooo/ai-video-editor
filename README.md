@@ -133,7 +133,7 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 | `--transcribe` | desligado | Gera `transcript.json` (necessário para o Diretor) |
 | `--director` | `none` | Diretor de IA: `none`, `mock` (remove frases repetidas, sem rede) ou `gemini`. Só roda com `--transcribe` |
 | `--director-model` | `gemini-3.8-flash` | Modelo do Diretor Gemini |
-| `--director-thinking` | `off` | Raciocínio ("thinking") do Diretor Gemini: `off` (mínimo, mais rápido), `low` ou `high`. Aparece no relatório |
+| `--director-thinking` | `low` | Raciocínio ("thinking") do Diretor Gemini: `off` (mínimo; nem todo modelo aceita), `low` ou `high`. Se a API recusar o nível, sobe sozinho (off → low → high); o nível pedido e o efetivo aparecem no relatório e no `director_decision.json` |
 | `--director-timeout` | 120 | Tempo limite (s) da chamada ao Diretor |
 | `--intensity` | `light` | Quanto o Diretor corta: `light`, `medium` ou `aggressive` |
 | `--target-duration` | — | Duração final desejada em segundos |

@@ -102,6 +102,8 @@ def run_director(
             validate_decision(decision, sentences, brief)
         except AIResponseValidationError as exc:
             error = exc
+        if director.effective_thinking_label:
+            run.thinking = director.effective_thinking_label
         run.attempts.append(
             AIRunMetrics(
                 provider=director.provider_name,

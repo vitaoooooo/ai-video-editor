@@ -19,7 +19,11 @@ from ai_video_editor.director.providers.gemini import GeminiDirector, build_dire
 from ai_video_editor.director.providers.mock import MockDirector
 from ai_video_editor.director.schema import Sentence
 from ai_video_editor.director.sentences import split_by_removal
-from ai_video_editor.intelligence.exceptions import AIRateLimitError, AIResponseValidationError
+from ai_video_editor.intelligence.exceptions import (
+    AIProviderError,
+    AIRateLimitError,
+    AIResponseValidationError,
+)
 from ai_video_editor.transcription.schema import Transcript, TranscriptSegment
 
 
@@ -230,14 +234,14 @@ def _decide_with_fake(**kwargs):
     return director, client.models.calls[0]
 
 
-def test_gemini_director_defaults_to_gemini_3_8_flash_with_minimal_thinking():
+def test_gemini_director_defaults_to_gemini_3_8_flash_with_low_thinking():
     director, call = _decide_with_fake()
 
     assert director.model_id == "gemini-3.8-flash"
     assert call["model"] == "gemini-3.8-flash"
-    assert call["config"].thinking_config.thinking_level.value == "MINIMAL"
+    assert call["config"].thinking_config.thinking_level.value == "LOW"
     assert call["config"].http_options.timeout == 120_000
-    assert director.thinking_label == "off (thinking_level=MINIMAL)"
+    assert director.thinking_label == "low (thinking_level=LOW)"
 
 
 @pytest.mark.parametrize("thinking, level", [("off", "MINIMAL"), ("low", "LOW"), ("high", "HIGH")])
@@ -335,3 +339,62 @@ def test_gemini_director_maps_sdk_errors():
     director = GeminiDirector(client=SimpleNamespace(models=Broken()))
     with pytest.raises(AIRateLimitError):
         director.decide(_sentences(3), UserBrief(), CONTEXT)
+
+
+# --- Recusa do nível de raciocínio ---
+
+_MINIMAL_REFUSED = (
+    "400 INVALID_ARGUMENT: 'Thinking level MINIMAL is not supported for this model. "
+    "Please retry with other thinking level.'"
+)
+
+
+class _RefusingModels(_FakeModels):
+    def __init__(self, texts, refused_levels):
+        super().__init__(texts)
+        self.refused_levels = refused_levels
+
+    def generate_content(self, **kwargs):
+        level = kwargs["config"].thinking_config.thinking_level.value
+        if level in self.refused_levels:
+            self.calls.append(kwargs)
+            raise RuntimeError(
+                _MINIMAL_REFUSED.replace("MINIMAL", level)
+            )
+        return super().generate_content(**kwargs)
+
+
+def _refusing_client(refused_levels, *texts):
+    return SimpleNamespace(models=_RefusingModels(list(texts), refused_levels))
+
+
+def test_run_director_escalates_thinking_when_level_refused():
+    client = _refusing_client({"MINIMAL"}, json.dumps({"removals": [], "summary": "ok"}))
+    director = GeminiDirector(client=client, thinking="off")
+    run = run_director(director, build_sentences(_transcript([(0.0, 2.0, " Oi.")])), UserBrief(), CONTEXT)
+
+    levels = [c["config"].thinking_config.thinking_level.value for c in client.models.calls]
+    assert levels == ["MINIMAL", "LOW"]
+    assert run.decision is not None
+    assert len(run.attempts) == 1  # a nova tentativa de nível não conta como correção
+    assert run.thinking == "off → LOW (MINIMAL não suportado)"
+    # o fingerprint continua usando o nível pedido
+    assert director.thinking_label == "off (thinking_level=MINIMAL)"
+
+
+def test_gemini_director_fails_clearly_when_all_levels_refused():
+    client = _refusing_client({"MINIMAL", "LOW", "HIGH"})
+    director = GeminiDirector(client=client, thinking="off")
+    with pytest.raises(AIProviderError, match="recusou todos os níveis de raciocínio"):
+        director.decide(build_sentences(_transcript([(0.0, 2.0, " Oi.")])), UserBrief(), CONTEXT)
+    assert len(client.models.calls) == 3
+
+
+def test_gemini_director_does_not_escalate_on_other_errors():
+    class _Boom:
+        def generate_content(self, **kwargs):
+            raise RuntimeError("429 quota exceeded")
+
+    director = GeminiDirector(client=SimpleNamespace(models=_Boom()), thinking="off")
+    with pytest.raises(AIRateLimitError):
+        director.decide(build_sentences(_transcript([(0.0, 2.0, " Oi.")])), UserBrief(), CONTEXT)
