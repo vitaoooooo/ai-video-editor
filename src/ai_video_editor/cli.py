@@ -404,8 +404,8 @@ def build_parser() -> argparse.ArgumentParser:
     edit_parser.add_argument(
         "--director-thinking",
         choices=["off", "low", "high"],
-        default="off",
-        help="Raciocínio ('thinking') do Diretor Gemini: off = mínimo, mais rápido (padrão: off)",
+        default="low",
+        help="Raciocínio ('thinking') do Diretor Gemini: off = mínimo (nem todo modelo aceita; sobe de nível sozinho) (padrão: low)",
     )
     edit_parser.add_argument(
         "--director-timeout",

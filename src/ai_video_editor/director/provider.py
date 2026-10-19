@@ -18,6 +18,8 @@ class EditDirector(ABC):
     last_output_tokens: Optional[int] = None
     # Descrição da configuração de raciocínio usada (vai para o relatório); None se não se aplica.
     thinking_label: Optional[str] = None
+    # Nível efetivamente usado na última chamada (difere do pedido se a API recusou o nível).
+    effective_thinking_label: Optional[str] = None
 
     @property
     @abstractmethod

@@ -42,7 +42,7 @@ class EditPipelineParams(BaseModel):
     director: DirectorName = Field(default="none", description="Diretor de IA que remove frases")
     director_model: str = Field(default="gemini-3.8-flash", description="Modelo do Diretor Gemini")
     director_thinking: DirectorThinking = Field(
-        default="off", description="Nível de raciocínio do Diretor Gemini (off/low/high)"
+        default="low", description="Nível de raciocínio do Diretor Gemini (off/low/high)"
     )
     director_timeout_sec: float = Field(default=120.0, gt=5.0, description="Tempo limite da chamada ao Diretor")
     brief: UserBrief = Field(default_factory=UserBrief)

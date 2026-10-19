@@ -12,7 +12,7 @@ from ai_video_editor.director.schema import (
     UserBrief,
 )
 from ai_video_editor.director.service import allowed_removal_ratio, speech_duration
-from ai_video_editor.intelligence.exceptions import AIResponseValidationError
+from ai_video_editor.intelligence.exceptions import AIProviderError, AIResponseValidationError
 from ai_video_editor.intelligence.providers.gemini import (
     _as_int,
     build_http_options,
@@ -45,6 +45,24 @@ def build_thinking_config(model_id: str, thinking: DirectorThinking):
 
     name, value = _thinking_setting(model_id, thinking)
     return types.ThinkingConfig(**{name: value})
+
+
+_THINKING_ORDER: tuple[DirectorThinking, ...] = ("off", "low", "high")
+
+
+def _fallback_ladder(model_id: str, thinking: DirectorThinking) -> list[DirectorThinking]:
+    """Níveis a tentar, do pedido para cima (off → low → high). Só a família 3.x tem níveis."""
+    if "gemini-2.5" in model_id:
+        return [thinking]
+    return list(_THINKING_ORDER[_THINKING_ORDER.index(thinking):])
+
+
+def is_thinking_level_unsupported(error: Exception) -> bool:
+    """True se o erro do SDK é a recusa 400 do nível de raciocínio pelo modelo."""
+    text = str(error).lower()
+    return "thinking level" in text and "not supported" in text and (
+        "400" in text or "invalid_argument" in text
+    )
 
 
 _INTENSITY_GUIDE = {
@@ -126,7 +144,7 @@ class GeminiDirector(EditDirector):
         api_key: Optional[str] = None,
         temperature: float = 0.2,
         timeout_sec: float = 120.0,
-        thinking: DirectorThinking = "off",
+        thinking: DirectorThinking = "low",
         client=None,
     ):
         self._model_id = model_id
@@ -135,7 +153,10 @@ class GeminiDirector(EditDirector):
         self.timeout_sec = timeout_sec
         self.thinking = thinking
         self._client = client
+        # `thinking_label` é o nível PEDIDO (entra no fingerprint do cache);
+        # `effective_thinking_label` só muda quando a API recusa o nível e subimos de nível.
         self.thinking_label = thinking_label(model_id, thinking)
+        self.effective_thinking_label = self.thinking_label
 
     @property
     def provider_name(self) -> str:
@@ -160,24 +181,43 @@ class GeminiDirector(EditDirector):
 
         self.last_input_tokens = None
         self.last_output_tokens = None
+        self.effective_thinking_label = self.thinking_label
         client = self._get_client()
         prompt = build_director_prompt(sentences, brief, context)
-        thinking_config = build_thinking_config(self._model_id, self.thinking)
 
-        try:
-            response = client.models.generate_content(
-                model=self._model_id,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=DirectorDecision,
-                    temperature=self.temperature,
-                    thinking_config=thinking_config,
-                    http_options=build_http_options(self.timeout_sec),
-                ),
+        ladder = _fallback_ladder(self._model_id, self.thinking)
+        refused: list[str] = []
+        response = None
+        for level in ladder:
+            name, value = _thinking_setting(self._model_id, level)
+            try:
+                response = client.models.generate_content(
+                    model=self._model_id,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=DirectorDecision,
+                        temperature=self.temperature,
+                        thinking_config=build_thinking_config(self._model_id, level),
+                        http_options=build_http_options(self.timeout_sec),
+                    ),
+                )
+            except Exception as e:
+                if not is_thinking_level_unsupported(e):
+                    raise map_gemini_error(e, self.timeout_sec) from e
+                refused.append(str(value))
+                continue
+            if refused:
+                self.effective_thinking_label = (
+                    f"{self.thinking} → {value} ({', '.join(refused)} não suportado)"
+                )
+            break
+        else:
+            raise AIProviderError(
+                f"O modelo '{self._model_id}' recusou todos os níveis de raciocínio "
+                f"tentados ({', '.join(refused)}).",
+                provider="gemini",
             )
-        except Exception as e:
-            raise map_gemini_error(e, self.timeout_sec) from e
 
         usage = getattr(response, "usage_metadata", None)
         self.last_input_tokens = _as_int(getattr(usage, "prompt_token_count", None))
