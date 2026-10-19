@@ -12,6 +12,7 @@ from ai_video_editor.subtitles import (
     generate_srt,
     remap_time,
 )
+from ai_video_editor.subtitles.remap import TimelineMapper
 from ai_video_editor.transcription.schema import Transcript, TranscriptSegment, Word
 
 FPS = 30.0
@@ -105,6 +106,35 @@ def test_removed_words_are_dropped():
     blocks = build_subtitle_blocks(t, [tr(0.0, 1.0), tr(3.0, 4.0)], FPS)
     assert [b.text for b in blocks] == ["a", "d"]
     assert blocks[1].start_sec == pytest.approx(1.0)
+
+
+def test_word_inflated_over_removed_pause_is_kept():
+    # Caso real: "first" marcada em 92,70-94,00s, mas a pausa 93,17-93,64s foi cortada.
+    t = make_transcript([("this", 92.0, 92.6), ("first", 92.70, 94.00), ("rectangular", 94.0, 95.0)])
+    kept = [tr(90.0, 93.17), tr(93.64, 100.0)]
+    blocks = build_subtitle_blocks(t, kept, FPS)
+    text = " ".join(b.text for b in blocks)
+    assert "first" in text and "rectangular" in text
+    first_block = next(b for b in blocks if "first" in b.text)
+    assert first_block.end_sec <= TimelineMapper(kept, FPS).range_output_bounds(0)[1] + 1e-9
+
+
+def test_word_crossing_cut_goes_to_range_with_most_of_it():
+    t = make_transcript([("mais", 1.8, 2.4)])  # 0,2s no 1º trecho, 0,4s no 2º
+    blocks = build_subtitle_blocks(t, [tr(0.0, 2.0), tr(2.0, 3.0)], FPS)
+    assert len(blocks) == 1
+    assert blocks[0].start_sec >= 2.0 - 1e-9
+
+
+def test_word_inside_removed_range_is_dropped():
+    t = make_transcript([("a", 0.0, 0.5), ("frase", 2.0, 2.6), ("removida", 2.7, 3.2), ("b", 5.0, 5.5)])
+    blocks = build_subtitle_blocks(t, [tr(0.0, 1.0), tr(5.0, 6.0)], FPS)
+    assert [b.text for b in blocks] == ["a", "b"]
+
+
+def test_word_with_tiny_overlap_is_dropped():
+    t = make_transcript([("quase", 0.9, 1.9)])  # 0,1s mantido de 1,0s: 10% < 30% e < 0,15s
+    assert build_subtitle_blocks(t, [tr(0.0, 1.0)], FPS) == []
 
 
 def test_max_duration_splits_block():

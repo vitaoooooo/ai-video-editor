@@ -74,6 +74,28 @@ def _group_words(words: list[_TimedWord], params: SubtitleParams) -> list[list[_
     return groups
 
 
+def _best_range(mapper: TimelineMapper, word: Word, params: SubtitleParams) -> int | None:
+    """Trecho mantido onde está a maior parte da palavra (o primeiro, se empatar), ou None se descartada."""
+    duration = word.end_sec - word.start_sec
+    if duration <= 0:
+        return mapper.range_index(word.start_sec)
+    best_idx: int | None = None
+    best_overlap = 0.0
+    total = 0.0
+    for idx, r in enumerate(mapper.ranges):
+        overlap = min(word.end_sec, r.end_sec) - max(word.start_sec, r.start_sec)
+        if overlap <= 0:
+            continue
+        total += overlap
+        if overlap > best_overlap + 1e-9:
+            best_idx, best_overlap = idx, overlap
+    if best_idx is None:
+        return None
+    if total < params.min_kept_fraction * duration and total < params.min_kept_sec:
+        return None
+    return best_idx
+
+
 def build_subtitle_blocks(
     transcript: Transcript,
     kept_ranges: list[TimeRange],
@@ -82,8 +104,10 @@ def build_subtitle_blocks(
 ) -> list[SubtitleBlock]:
     """Gera blocos de legenda sincronizados com o vídeo editado.
 
-    Palavras cujo ponto médio cai em trecho removido são descartadas; um bloco nunca
-    atravessa um corte; os blocos não se sobrepõem.
+    Uma palavra só é descartada se a parte dela em trechos mantidos for pequena demais
+    (menor que `min_kept_fraction` da duração E menor que `min_kept_sec`). A palavra mantida
+    vai para o trecho onde está a maior parte dela, com o tempo limitado às bordas dele.
+    Um bloco nunca atravessa um corte; os blocos não se sobrepõem.
     """
     params = params or SubtitleParams()
     mapper = TimelineMapper(kept_ranges, fps)
@@ -97,7 +121,7 @@ def build_subtitle_blocks(
         text = word.text.strip()
         if not text:
             continue
-        idx = mapper.range_index((word.start_sec + word.end_sec) / 2)
+        idx = _best_range(mapper, word, params)
         if idx is None:
             continue
         r = mapper.ranges[idx]
