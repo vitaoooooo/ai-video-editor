@@ -8,6 +8,7 @@ from pathlib import Path
 from ai_video_editor.analyzer.schema import FrameExtractionConfig
 from ai_video_editor.analyzer.service import VideoIngestService
 from ai_video_editor.core.schema import ClipSegment, EditPlan
+from ai_video_editor.director.schema import UserBrief
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
 from ai_video_editor.intelligence.service import MultimodalAnalysisService
 from ai_video_editor.pipeline import STAGES, EditPipeline, EditPipelineParams
@@ -158,6 +159,7 @@ _STAGE_LABELS = {
     "probe": "Metadados",
     "silences": "Silêncios",
     "transcription": "Transcrição",
+    "director": "Diretor",
     "plan": "Plano de corte",
     "render": "Renderização",
     "report": "Relatório",
@@ -198,6 +200,14 @@ def handle_edit(args: argparse.Namespace) -> int:
             ),
             transcribe=args.transcribe,
             transcription=TranscriptionConfig(model_size=args.whisper_model, language=args.language),
+            director=args.director,
+            director_model=args.director_model,
+            brief=UserBrief(
+                intensity=args.intensity,
+                target_duration_sec=args.target_duration,
+                remove_fillers=not args.keep_fillers,
+                instructions=args.instructions,
+            ),
         )
     except ValueError as e:
         print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
@@ -212,6 +222,8 @@ def handle_edit(args: argparse.Namespace) -> int:
 
     removed = result.original_duration_sec - result.final_duration_sec
     pct = removed / result.original_duration_sec * 100 if result.original_duration_sec > 0 else 0.0
+    for warning in result.warnings:
+        print(f"Aviso: {warning}", file=sys.stderr)
     print("\nEdição concluída!")
     print(f"Projeto: {result.project_dir}")
     print(f"Vídeo final: {result.output_path}")
@@ -369,6 +381,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     edit_parser.add_argument(
         "--whisper-model", default="small", help="Modelo do faster-whisper (padrão: small)"
+    )
+    edit_parser.add_argument(
+        "--director",
+        choices=["none", "mock", "gemini"],
+        default="none",
+        help="Diretor de IA que remove frases repetidas/recomeçadas (requer --transcribe; padrão: none)",
+    )
+    edit_parser.add_argument(
+        "--director-model",
+        default="gemini-2.5-flash",
+        help="Modelo do Diretor Gemini (padrão: gemini-2.5-flash)",
+    )
+    edit_parser.add_argument(
+        "--intensity",
+        choices=["light", "medium", "aggressive"],
+        default="light",
+        help="Quanto o Diretor deve cortar (padrão: light)",
+    )
+    edit_parser.add_argument(
+        "--target-duration",
+        type=float,
+        default=None,
+        help="Duração final desejada em segundos (opcional)",
+    )
+    edit_parser.add_argument(
+        "--instructions", default=None, help="Pedido livre ao Diretor (ex: 'corte as piadas')"
+    )
+    edit_parser.add_argument(
+        "--keep-fillers",
+        action="store_true",
+        help="Impede o Diretor de remover frases só por serem enrolação",
     )
     edit_parser.add_argument(
         "--force", action="store_true", help="Refaz todas as etapas, ignorando o cache"

@@ -11,6 +11,7 @@ A IA **nunca executa cortes diretamente**. Ela produz dados estruturados (valida
 - Fase 1 — Core/Renderer: `core/schema.py` (`ClipSegment`, `EditPlan`), `renderer/` (compiler, executor, ffmpeg_locator). ✅
 - Fase 2 — Analyzer: `analyzer/` (ffprobe, extração de frames com timestamps, `VideoAnalysisResult`, `BatchAnalysisResult`). ✅
 - Fase 3 — Intelligence: `intelligence/` (interface `MultimodalAIProvider`, providers `gemini` e `mock`, proxies de imagem, relatório Markdown, métricas de execução). ✅
+- Comando `edit` (`pipeline/`): probe → silêncios (`audio/`) → transcrição (`transcription/`) → Diretor (`director/`: frases, `EditDirector` gemini/mock, validação com retry e fallback) → plano (`planning/`) → render → relatório. ✅
 - Rumo da V1: editar vídeos falados (tutorial, aula, pessoa falando). Pipeline: áudio → silêncios → transcrição → Diretor de IA (decide por IDs da transcrição, nunca inventa timestamps) → EditPlan → render. A análise visual vira opcional neste perfil. Arquitetura preparada para perfis de edição (v2: gameplay, vlog).
 
 ## Comandos
@@ -21,7 +22,7 @@ python -m pytest -q              # testes (devem passar todos antes de concluir)
 python -m ai_video_editor.cli --help
 ```
 
-Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`.
+Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`.
 
 ## Convenções
 

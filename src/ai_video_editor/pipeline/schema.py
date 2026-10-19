@@ -4,19 +4,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from ai_video_editor.director.schema import UserBrief
 from ai_video_editor.planning.schema import SilenceCutParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
 
-StageName = Literal["probe", "silences", "transcription", "plan", "render", "report"]
-STAGES: tuple[StageName, ...] = ("probe", "silences", "transcription", "plan", "render", "report")
+StageName = Literal["probe", "silences", "transcription", "director", "plan", "render", "report"]
+STAGES: tuple[StageName, ...] = (
+    "probe",
+    "silences",
+    "transcription",
+    "director",
+    "plan",
+    "render",
+    "report",
+)
 
 StageStatus = Literal["pending", "done", "skipped", "failed"]
 # Resultado de uma etapa nesta execução: executada, reaproveitada do cache ou não pedida.
 StageOutcome = Literal["ran", "cached", "skipped"]
 
 MetricValue = Union[int, float, str]
+DirectorName = Literal["none", "mock", "gemini"]
 
 
 class EditPipelineParams(BaseModel):
@@ -25,8 +35,11 @@ class EditPipelineParams(BaseModel):
     threshold_db: float = Field(default=-35.0, description="Limiar de silêncio em dB")
     min_silence_sec: float = Field(default=0.5, gt=0.0, description="Duração mínima do silêncio")
     cut: SilenceCutParams = Field(default_factory=SilenceCutParams)
-    transcribe: bool = Field(default=False, description="Gera transcript.json (ainda não afeta os cortes)")
+    transcribe: bool = Field(default=False, description="Gera transcript.json (necessário para o Diretor)")
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
+    director: DirectorName = Field(default="none", description="Diretor de IA que remove frases")
+    director_model: str = Field(default="gemini-2.5-flash", description="Modelo do Diretor Gemini")
+    brief: UserBrief = Field(default_factory=UserBrief)
 
 
 class StageRecord(BaseModel):
@@ -55,6 +68,12 @@ class ProjectManifest(BaseModel):
         default_factory=lambda: {name: StageRecord() for name in STAGES}
     )
 
+    @field_validator("stages")
+    @classmethod
+    def _fill_missing_stages(cls, stages: dict[StageName, StageRecord]) -> dict[StageName, StageRecord]:
+        """Manifestos antigos não têm as etapas novas: entram como pendentes."""
+        return {name: stages.get(name, StageRecord()) for name in STAGES}
+
     def save(self, path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.model_dump_json(indent=2), encoding="utf-8")
@@ -75,3 +94,4 @@ class EditPipelineResult(BaseModel):
     original_duration_sec: float
     final_duration_sec: float
     outcomes: dict[StageName, StageOutcome]
+    warnings: list[str] = Field(default_factory=list)

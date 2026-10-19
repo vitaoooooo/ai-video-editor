@@ -14,6 +14,7 @@ MANIFEST_FILE = "project.json"
 PROBE_FILE = "probe.json"
 AUDIO_ANALYSIS_FILE = "audio_analysis.json"
 TRANSCRIPT_FILE = "transcript.json"
+DIRECTOR_DECISION_FILE = "director_decision.json"
 EDIT_PLAN_FILE = "edit_plan.json"
 EDIT_REPORT_FILE = "edit_report.md"
 

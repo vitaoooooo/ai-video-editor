@@ -4,13 +4,16 @@ import pytest
 
 from ai_video_editor.analyzer.probe import VideoProbe
 from ai_video_editor.cli import build_parser, handle_edit
+from ai_video_editor.core.schema import EditPlan
+from ai_video_editor.director import DirectorDecision, DirectorRun, SentenceRemoval, UserBrief
+from ai_video_editor.director.providers.mock import MockDirector
 from ai_video_editor.pipeline import EditPipeline, EditPipelineParams, ProjectManifest
 from ai_video_editor.pipeline import runner as runner_module
 from ai_video_editor.planning import NoSpeechDetectedError, SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.transcription.providers.faster_whisper import FasterWhisperProvider
 from ai_video_editor.transcription.providers.mock import MockTranscriptionProvider
-from ai_video_editor.transcription.schema import Transcript
+from ai_video_editor.transcription.schema import Transcript, TranscriptSegment
 from tests.conftest import create_tone_silence_video
 
 
@@ -81,8 +84,10 @@ def test_end_to_end_silence_cut(tmp_path, talking_video):
     assert manifest.params.threshold_db == -35.0
     assert manifest.params.cut == SilenceCutParams()
     assert manifest.params.transcribe is True
-    assert all(record.status == "done" for record in manifest.stages.values())
-    assert all(record.fingerprint for record in manifest.stages.values())
+    assert manifest.stages["director"].status == "skipped"
+    done = {name: r for name, r in manifest.stages.items() if name != "director"}
+    assert all(record.status == "done" for record in done.values())
+    assert all(record.fingerprint for record in done.values())
     assert manifest.stages["plan"].metrics["segments"] == 10
     assert manifest.stages["render"].artifact == result.output_path.name
     assert manifest.stages["render"].metrics["duration_sec"] == pytest.approx(expected, abs=0.3)
@@ -113,6 +118,7 @@ def test_cache_skips_unchanged_stages_and_threshold_invalidates(
         "probe": "ran",
         "silences": "ran",
         "transcription": "skipped",
+        "director": "skipped",
         "plan": "ran",
         "render": "ran",
         "report": "ran",
@@ -200,13 +206,13 @@ def test_cli_edit(tmp_path, short_video, capsys):
     )
     assert handle_edit(args) == 0
     out = capsys.readouterr().out
-    assert "[2/6] Silêncios: ok" in out
-    assert "[3/6] Transcrição: pulada" in out
-    assert "[5/6] Renderização: ok" in out
+    assert "[2/7] Silêncios: ok" in out
+    assert "[3/7] Transcrição: pulada" in out
+    assert "[6/7] Renderização: ok" in out
     assert "Edição concluída!" in out
 
     assert handle_edit(args) == 0
-    assert "[5/6] Renderização: em cache" in capsys.readouterr().out
+    assert "[6/7] Renderização: em cache" in capsys.readouterr().out
 
     manifest = ProjectManifest.load(next((tmp_path / "projects").glob("*/project.json")))
     assert manifest.params.cut.padding_after_sec == 0.25
@@ -232,3 +238,131 @@ def test_stage_error_details_reach_cli_and_manifest(tmp_path, short_video, capsy
     assert "motivo-real-xyz" in capsys.readouterr().err
     manifest = ProjectManifest.load(next(projects.glob("*/project.json")))
     assert "motivo-real-xyz" in manifest.stages["transcription"].error
+
+
+# --- Diretor de IA ---
+
+
+@pytest.fixture(scope="module")
+def lesson_video(tmp_path_factory):
+    """16.5s: quatro falas de 3s (0–3, 4.5–7.5, 9–12, 13.5–16.5) separadas por 1.5s de silêncio."""
+    path = tmp_path_factory.mktemp("videos") / "aula-diretor.mp4"
+    return create_tone_silence_video(path, [("tone", 3.0), ("silence", 1.5)] * 3 + [("tone", 3.0)])
+
+
+def _lesson_transcript(video) -> Transcript:
+    """Tempos do Whisper levemente deslocados das falas reais; a frase 1 repete a 0."""
+    texts = [
+        "Hoje vamos falar de cortes.",
+        "Hoje vamos falar de cortes!",
+        "Primeiro abrimos o editor.",
+        "Obrigado por assistir.",
+    ]
+    starts = [0.1, 4.6, 9.1, 13.6]
+    return Transcript(
+        source_path=video,
+        language="pt",
+        duration_sec=16.5,
+        model_used="mock",
+        segments=[
+            TranscriptSegment(id=i, start_sec=s, end_sec=s + 2.8, text=t)
+            for i, (s, t) in enumerate(zip(starts, texts))
+        ],
+    )
+
+
+def test_end_to_end_director_removes_sentences(tmp_path, lesson_video):
+    pipeline = EditPipeline(
+        projects_root=tmp_path / "projects",
+        transcription_provider=MockTranscriptionProvider(custom_transcript=_lesson_transcript(lesson_video)),
+    )
+    params = EditPipelineParams(transcribe=True, director="mock")
+    result = pipeline.run(lesson_video, params)
+
+    # Sem o Diretor: 3.2 + 3.35 + 3.35 + 3.15 = 13.05s. A frase 1 sai com a pausa: corte 3.2 → 8.85
+    expected = 3.2 + 3.35 + 3.15
+    assert result.outcomes["director"] == "ran"
+    assert result.final_duration_sec == pytest.approx(expected, abs=0.3)
+    assert VideoProbe().probe(result.output_path).duration_sec == pytest.approx(expected, abs=0.3)
+    assert result.warnings == []
+
+    plan = EditPlan.model_validate_json((result.project_dir / "edit_plan.json").read_text(encoding="utf-8"))
+    assert all(seg.end_sec <= 4.5 or seg.start_sec >= 7.5 for seg in plan.segments)
+    assert [(s.start_sec, s.end_sec) for s in plan.segments] == [(0.0, 3.2), (8.85, 12.2), (13.35, 16.5)]
+
+    run = DirectorRun.model_validate_json(
+        (result.project_dir / "director_decision.json").read_text(encoding="utf-8")
+    )
+    assert [s.id for s, _ in run.removed_sentences] == [1]
+    manifest = ProjectManifest.load(result.manifest_path)
+    assert manifest.stages["director"].metrics["removed"] == 1
+    assert manifest.stages["plan"].metrics["director_cuts"] == 1
+
+    report = (result.project_dir / "edit_report.md").read_text(encoding="utf-8")
+    assert "## Decisões do Diretor" in report
+    assert "| 1 | 00:04.600 | 00:07.400 | repetition | Hoje vamos falar de cortes! | Repete a frase 0. |" in report
+    assert "| Diretor | mock (mock) |" in report
+
+    # Cache: nada muda; mudar o briefing refaz o Diretor
+    again = pipeline.run(lesson_video, params)
+    assert again.outcomes["director"] == "cached" and again.outcomes["render"] == "cached"
+    params.brief = UserBrief(intensity="medium")
+    changed = pipeline.run(lesson_video, params)
+    assert changed.outcomes["transcription"] == "cached"
+    assert changed.outcomes["director"] == "ran"
+
+
+def test_director_fallback_keeps_silence_cut_and_warns(tmp_path, lesson_video):
+    invalid = DirectorDecision(removals=[SentenceRemoval(sentence_id=99, category="other", reason="x")], summary="x")
+    pipeline = EditPipeline(
+        projects_root=tmp_path / "projects",
+        transcription_provider=MockTranscriptionProvider(custom_transcript=_lesson_transcript(lesson_video)),
+        edit_director=MockDirector(responses=[invalid, invalid]),
+    )
+    result = pipeline.run(lesson_video, EditPipelineParams(transcribe=True, director="gemini"))
+
+    assert result.final_duration_sec == pytest.approx(13.05, abs=0.3)
+    assert len(result.warnings) == 1 and "só o corte de silêncio" in result.warnings[0]
+    report = (result.project_dir / "edit_report.md").read_text(encoding="utf-8")
+    assert "> **Aviso:** Diretor ignorado" in report
+    assert "inválida (AIResponseValidationError)" in report
+
+
+def test_director_requires_transcription(tmp_path, short_video):
+    pipeline = EditPipeline(projects_root=tmp_path / "projects")
+    result = pipeline.run(short_video, EditPipelineParams(director="mock"))
+    assert result.outcomes["director"] == "skipped"
+    assert not (result.project_dir / "director_decision.json").exists()
+
+
+def test_cli_edit_director_options(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_run(self, video_path, params, force=False):
+        captured["params"] = params
+        raise RuntimeError("parar aqui")
+
+    monkeypatch.setattr(EditPipeline, "run", fake_run)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"x")
+    args = build_parser().parse_args(
+        [
+            "edit", str(video), "--transcribe", "--director", "gemini", "--intensity", "aggressive",
+            "--target-duration", "240", "--instructions", "tire as piadas", "--director-model", "gemini-2.5-pro",
+        ]
+    )
+    assert handle_edit(args) == 1
+    params = captured["params"]
+    assert params.director == "gemini" and params.director_model == "gemini-2.5-pro"
+    assert params.brief == UserBrief(
+        intensity="aggressive", target_duration_sec=240, remove_fillers=True, instructions="tire as piadas"
+    )
+
+
+def test_old_manifest_without_director_stage_loads(tmp_path):
+    manifest = ProjectManifest(video_path=tmp_path / "v.mp4", video_hash="abc", params=EditPipelineParams())
+    data = manifest.model_dump(mode="json")
+    del data["stages"]["director"]
+    loaded = ProjectManifest.model_validate(data)
+    assert loaded.stages["director"].status == "pending"
+    assert list(loaded.stages) == list(manifest.stages)
