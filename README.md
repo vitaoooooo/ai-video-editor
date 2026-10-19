@@ -156,6 +156,41 @@ Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 
 **Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` refaz silêncios, plano, render e relatório; mudar só um padding refaz a partir do plano; sem Diretor, a transcrição nunca força novo render. As legendas dependem do plano, da transcrição e de `--subtitle-max-chars`: mudar só esse limite refaz apenas legendas e relatório, sem novo render. O Diretor é refeito quando mudam a transcrição, o briefing ou o modelo. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
 
+
+### Opção F: Revisar uma edição com pedidos em linguagem natural (`revise` e `versions`)
+Depois do `edit`, peça ajustes sem refazer as etapas caras (probe, silêncios e transcrição vêm do cache da pasta do projeto; nada é refeito). Cada edição vira uma **versão numerada**: o resultado do `edit` é a `v1`, e cada `revise` gera a próxima, sem tocar nas anteriores.
+
+```bash
+.\.venv\Scripts\python.exe -m ai_video_editor.cli revise "output\projects\aula-1a2b3c4d5e" "corta menos"
+.\.venv\Scripts\python.exe -m ai_video_editor.cli revise "output\projects\aula-1a2b3c4d5e" "tira a parte em que ele fala do site"
+.\.venv\Scripts\python.exe -m ai_video_editor.cli revise "output\projects\aula-1a2b3c4d5e" "mantém a frase sobre o livro" --from v1
+.\.venv\Scripts\python.exe -m ai_video_editor.cli versions "output\projects\aula-1a2b3c4d5e"
+```
+
+| Opção do `revise` | Padrão | Efeito |
+| --- | --- | --- |
+| `--from vN` | versão atual | Versão em que a revisão se baseia (as frases removidas/mantidas partem dela) |
+| `--reviser` | `gemini` | `gemini` (requer `GEMINI_API_KEY`) ou `mock` (determinístico, sem rede) |
+| `--reviser-model` / `--reviser-thinking` / `--reviser-timeout` | os do Diretor do projeto | Mesma configuração do Diretor: modelo, raciocínio (com subida automática de nível se a API recusar) e timeout |
+
+* O revisor recebe as frases numeradas com o estado atual na versão base (mantida ou removida, com categoria e motivo), o briefing original, os últimos pedidos e o pedido novo. Devolve o **novo conjunto completo** de frases removidas (pode restaurar frases removidas antes), o motivo de cada restauração, um resumo e, opcionalmente, o ritmo das pausas: `natural` (mais folga), `normal` (o do `edit`) ou `tight` (menos folga). Nunca timestamps.
+* A resposta passa pela mesma validação do Diretor (IDs existentes e únicos, limite de remoção, enrolação proibida com `--keep-fillers`) mais a coerência das restaurações, com uma nova tentativa enviando o erro ao modelo. **Se o pedido for impossível, ambíguo, não mudar nada ou a resposta continuar inválida, nenhuma versão é criada** e o comando explica o motivo (código de saída 1). Se o render falhar, nada fica pela metade.
+* O comando mostra as frases removidas e restauradas, o ritmo e a duração antes e depois.
+* `versions` lista cada versão (`*` = atual) com duração, número de cortes e o pedido que a originou. Projetos criados antes do versionamento são migrados sozinhos: o resultado atual vira a `v1`.
+
+Estrutura (o `project.json` guarda o histórico em `versions` e a versão em `current_version`):
+
+```
+<projeto>/
+  project.json, probe.json, audio_analysis.json, transcript.json   # compartilhados por todas as versões
+  edit_plan.json, <video>_edited.mp4, ...                          # resultado do último `edit` (cache)
+  versions/
+    v1/  director_decision.json, edit_plan.json, <video>_edited.mp4, <video>_edited.srt, edit_report.md, version.json
+    v2/  ...                                                       # version.json guarda o pedido, o resumo e as métricas
+```
+
+O `edit_report.md` de uma revisão traz a seção "Revisão": pedido, ritmo das pausas, resumo e uma tabela de mudanças (frase, texto, antes, depois, motivo). Rodar o `edit` de novo com os mesmos parâmetros não cria versão; com parâmetros que mudam o resultado, cria uma nova versão atual.
+
 ---
 
 ## 5. Estrutura dos Módulos
@@ -184,7 +219,7 @@ Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 * [`src/ai_video_editor/intelligence/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/service.py): Orquestrador de análise multimodal e geração de relatórios.
 
 ### Módulo Planning (corte de silêncio)
-* [`src/ai_video_editor/planning/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/schema.py): `SilenceCutParams` (paddings, `min_gap_to_cut_sec`, `min_keep_sec`) e `TimeRange`.
+* [`src/ai_video_editor/planning/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/schema.py): `SilenceCutParams` (paddings, `min_gap_to_cut_sec`, `min_keep_sec`), `TimeRange` e os presets de pausa (`PausePreset`, `apply_pause_preset`).
 * [`src/ai_video_editor/planning/silence_cut.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/silence_cut.py): `plan_silence_cuts` (trechos a manter a partir da `AudioAnalysisResult`), `removed_ranges` e `build_edit_plan` (lista de trechos → `EditPlan` na resolução/FPS da origem).
 * [`src/ai_video_editor/planning/sentence_cut.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/sentence_cut.py): `apply_sentence_cuts` (subtrai as frases removidas pelo Diretor dos trechos mantidos), `snap_cut` (leva os limites do corte para dentro dos silêncios) e `subtract_ranges`.
 * [`src/ai_video_editor/planning/exceptions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/exceptions.py): `PlanningError`, `NoSpeechDetectedError`.
@@ -197,8 +232,17 @@ Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 * [`src/ai_video_editor/director/providers/gemini.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/providers/gemini.py): `GeminiDirector` (texto, `response_schema=DirectorDecision`) e `build_director_prompt`.
 * [`src/ai_video_editor/director/providers/mock.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/providers/mock.py): `MockDirector` determinístico (remoções fixas, sequência de respostas ou frases repetidas).
 
-### Módulo Pipeline (comando `edit`)
+### Módulo Revision (Revisor de IA)
+* [`src/ai_video_editor/revision/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/schema.py): `SentenceState`, `RevisionContext`, `RevisionDecision` (conjunto completo de remoções, restaurações com motivo, ritmo, `feasible`/`problem`) e `RevisionRun`.
+* [`src/ai_video_editor/revision/provider.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/provider.py): Interface `EditReviser` (`revise(states, brief, context)`).
+* [`src/ai_video_editor/revision/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/service.py): `validate_revision` (regras do Diretor + restaurações) e `run_reviser` (nova tentativa; sem versão se falhar).
+* [`src/ai_video_editor/revision/providers/`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/providers): `GeminiReviser` (reaproveita `generate_structured` do Diretor) e `MockReviser` determinístico.
+
+### Módulo Pipeline (comandos `edit` e `revise`)
 * [`src/ai_video_editor/pipeline/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que orquestra as etapas com cache por fingerprint e callback de progresso; `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis.
 * [`src/ai_video_editor/pipeline/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/schema.py): `EditPipelineParams`, `ProjectManifest` (`project.json`), `StageRecord`, `EditPipelineResult`.
 * [`src/ai_video_editor/pipeline/project.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/project.py): Hash curto do vídeo, nome da pasta do projeto, nomes dos artefatos e fingerprints.
-* [`src/ai_video_editor/pipeline/report.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/report.py): Geração do `edit_report.md`.
+* [`src/ai_video_editor/pipeline/report.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/report.py): Geração do `edit_report.md` (e da seção "Revisão").
+* [`src/ai_video_editor/pipeline/versions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/versions.py): versões em `versions/vN/`, registro após o `edit` e migração de projetos antigos.
+* [`src/ai_video_editor/pipeline/revise.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/revise.py): `ProjectReviser` (revisor → plano → render → legendas → relatório numa versão nova).
+* [`src/ai_video_editor/pipeline/cutting.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/cutting.py): `plan_keep_ranges`, compartilhado por `edit` e `revise`.

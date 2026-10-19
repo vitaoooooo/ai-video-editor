@@ -7,7 +7,7 @@ from typing import Literal, Optional, Union
 from pydantic import BaseModel, Field, field_validator
 
 from ai_video_editor.director.schema import DirectorThinking, UserBrief
-from ai_video_editor.planning.schema import SilenceCutParams
+from ai_video_editor.planning.schema import PausePreset, SilenceCutParams
 from ai_video_editor.subtitles.schema import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
 
@@ -64,6 +64,30 @@ class StageRecord(BaseModel):
     error: Optional[str] = None
 
 
+class VersionRecord(BaseModel):
+    """Uma versão do projeto (`versions/vN/`): o resultado do `edit` (v1) ou de uma revisão."""
+
+    number: int = Field(..., ge=1)
+    kind: Literal["edit", "revision"]
+    request: str = Field(..., description="Pedido que originou a versão")
+    parent: Optional[int] = Field(default=None, description="Versão em que a revisão se baseou")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    summary: Optional[str] = Field(default=None, description="Resumo do revisor (só em revisões)")
+    cut: SilenceCutParams = Field(
+        default_factory=SilenceCutParams, description="Parâmetros de corte do `edit` (antes do preset)"
+    )
+    pacing: PausePreset = "normal"
+    duration_sec: float
+    cuts: int = Field(..., description="Número de trechos removidos do vídeo original")
+    segments: int
+    removed_sentences: int = 0
+    video: str
+    subtitles: Optional[str] = None
+    edit_fp: Optional[str] = Field(
+        default=None, description="Fingerprint do render/legendas do `edit` que gerou a versão"
+    )
+
+
 class ProjectManifest(BaseModel):
     """Conteúdo do `project.json`."""
 
@@ -75,6 +99,8 @@ class ProjectManifest(BaseModel):
     stages: dict[StageName, StageRecord] = Field(
         default_factory=lambda: {name: StageRecord() for name in STAGES}
     )
+    versions: list[VersionRecord] = Field(default_factory=list)
+    current_version: Optional[int] = Field(default=None, description="Número da versão atual")
 
     @field_validator("stages")
     @classmethod
@@ -102,6 +128,7 @@ class EditPipelineResult(BaseModel):
     subtitles_path: Optional[Path] = Field(
         default=None, description="Legenda .srt gerada ou reaproveitada nesta execução"
     )
+    version: Optional[int] = Field(default=None, description="Versão do projeto que corresponde ao resultado")
     original_duration_sec: float
     final_duration_sec: float
     outcomes: dict[StageName, StageOutcome]

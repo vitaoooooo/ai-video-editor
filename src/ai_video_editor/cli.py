@@ -11,9 +11,19 @@ from ai_video_editor.core.schema import ClipSegment, EditPlan
 from ai_video_editor.director.schema import UserBrief
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
 from ai_video_editor.intelligence.service import MultimodalAnalysisService
-from ai_video_editor.pipeline import STAGES, EditPipeline, EditPipelineParams
+from ai_video_editor.pipeline import (
+    STAGES,
+    EditPipeline,
+    EditPipelineParams,
+    ProjectManifest,
+    ProjectReviser,
+)
+from ai_video_editor.pipeline.project import MANIFEST_FILE
+from ai_video_editor.pipeline.report import format_timestamp
+from ai_video_editor.pipeline.versions import ensure_versions, parse_version_ref
 from ai_video_editor.planning import SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
+from ai_video_editor.revision import RevisionError
 from ai_video_editor.subtitles import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
 
@@ -236,10 +246,95 @@ def handle_edit(args: argparse.Namespace) -> int:
     print(f"Relatório: {result.report_path}")
     if result.subtitles_path is not None:
         print(f"Legendas: {result.subtitles_path}")
+    if result.version is not None:
+        print(f"Versão: v{result.version} (revise com: revise \"{result.project_dir}\" \"pedido\")")
     print(
         f"Duração: {result.original_duration_sec:.2f}s -> {result.final_duration_sec:.2f}s "
         f"({pct:.1f}% removido)"
     )
+    return 0
+
+
+def _short(text: str, limit: int = 70) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _print_revision_progress(step: str, detail: str) -> None:
+    print(f"[revisão] {step}: {detail}", flush=True)
+
+
+def handle_revise(args: argparse.Namespace) -> int:
+    """Gera uma nova versão do projeto a partir de um pedido em linguagem natural."""
+    project_dir = Path(args.project)
+    try:
+        from_version = parse_version_ref(args.from_version) if args.from_version else None
+        manifest_path = project_dir / MANIFEST_FILE
+        if not manifest_path.is_file():
+            print(f"Erro: {project_dir} não é uma pasta de projeto (falta {MANIFEST_FILE}).", file=sys.stderr)
+            return 1
+        params = ProjectManifest.load(manifest_path).params
+        if args.reviser == "mock":
+            from ai_video_editor.revision.providers.mock import MockReviser
+
+            reviser = MockReviser()
+        else:
+            from ai_video_editor.revision.providers.gemini import GeminiReviser
+
+            reviser = GeminiReviser(
+                model_id=args.reviser_model or params.director_model,
+                thinking=args.reviser_thinking or params.director_thinking,
+                timeout_sec=args.reviser_timeout or params.director_timeout_sec,
+            )
+        result = ProjectReviser(reviser, on_progress=_print_revision_progress).revise(
+            project_dir, args.request, from_version
+        )
+    except RevisionError as e:
+        print(f"Versão não criada: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    print(f"\nVersão v{result.version.number} criada (a partir da v{result.base_version}).")
+    print(f"Resumo: {result.summary.strip() or '—'}")
+    for label, items in (("Removidas", result.removed), ("Restauradas", result.restored)):
+        if items:
+            print(f"{label}:")
+            for item in items:
+                print(f"  [{item.id}] {_short(item.text)} — {_short(item.reason, 60)}")
+    if result.pacing_before != result.pacing_after:
+        print(f"Ritmo das pausas: {result.pacing_before} -> {result.pacing_after}")
+    print(
+        f"Duração: {result.duration_before_sec:.2f}s -> {result.duration_after_sec:.2f}s "
+        f"(v{result.base_version} -> v{result.version.number})"
+    )
+    print(f"Vídeo final: {result.video_path}")
+    print(f"Relatório: {result.report_path}")
+    if result.subtitles_path is not None:
+        print(f"Legendas: {result.subtitles_path}")
+    return 0
+
+
+def handle_versions(args: argparse.Namespace) -> int:
+    """Lista as versões de um projeto (migra projetos antigos para v1)."""
+    project_dir = Path(args.project)
+    manifest_path = project_dir / MANIFEST_FILE
+    if not manifest_path.is_file():
+        print(f"Erro: {project_dir} não é uma pasta de projeto (falta {MANIFEST_FILE}).", file=sys.stderr)
+        return 1
+    try:
+        manifest = ensure_versions(project_dir, ProjectManifest.load(manifest_path), manifest_path)
+    except Exception as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+    print(f"{'Versão':<8}{'Duração':>10}{'Cortes':>8}  Pedido")
+    for v in manifest.versions:
+        mark = "*" if v.number == manifest.current_version else " "
+        print(
+            f"{mark}v{v.number:<6}{format_timestamp(v.duration_sec):>10}{v.cuts:>8}  {_short(v.request, 80)}"
+        )
+    print("\n* = versão atual")
     return 0
 
 
@@ -453,6 +548,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diretório base dos projetos (padrão: output/projects)",
     )
 
+    # Subcomando: revise
+    revise_parser = subparsers.add_parser(
+        "revise", help="Ajusta uma edição com um pedido em linguagem natural (gera nova versão)"
+    )
+    revise_parser.add_argument("project", help="Pasta do projeto (criada pelo comando edit)")
+    revise_parser.add_argument("request", help='Pedido, ex: "corta menos" ou "tira a parte do site"')
+    revise_parser.add_argument(
+        "--from", dest="from_version", default=None, metavar="vN",
+        help="Versão em que a revisão se baseia (padrão: a atual)",
+    )
+    revise_parser.add_argument(
+        "--reviser", choices=["gemini", "mock"], default="gemini",
+        help="Revisor de IA (padrão: gemini; requer GEMINI_API_KEY)",
+    )
+    revise_parser.add_argument(
+        "--reviser-model", default=None, help="Modelo do revisor (padrão: o do Diretor do projeto)"
+    )
+    revise_parser.add_argument(
+        "--reviser-thinking", choices=["off", "low", "high"], default=None,
+        help="Raciocínio do revisor (padrão: o do Diretor do projeto)",
+    )
+    revise_parser.add_argument(
+        "--reviser-timeout", type=float, default=None,
+        help="Tempo limite em segundos (padrão: o do Diretor do projeto)",
+    )
+
+    # Subcomando: versions
+    versions_parser = subparsers.add_parser("versions", help="Lista as versões de um projeto")
+    versions_parser.add_argument("project", help="Pasta do projeto")
+
     return parser
 
 
@@ -470,6 +595,10 @@ def main() -> None:
         sys.exit(handle_report_ai(args))
     elif args.command == "edit":
         sys.exit(handle_edit(args))
+    elif args.command == "revise":
+        sys.exit(handle_revise(args))
+    elif args.command == "versions":
+        sys.exit(handle_versions(args))
     else:
         parser.print_help()
         sys.exit(1)

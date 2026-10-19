@@ -140,3 +140,40 @@ def _director_section(director: DirectorRun) -> list[str]:
         for sentence, removal in removed
     ]
     return lines
+
+
+def build_revision_section(
+    request: str,
+    base_version: int,
+    new_version: int,
+    summary: str,
+    pacing_before: str,
+    pacing_after: str,
+    changes: list[tuple[int, str, str, str, str]],
+) -> str:
+    """Seção "Revisão" do relatório de uma versão nova.
+
+    `changes`: (id da frase, texto, antes, depois, motivo), em ordem cronológica.
+    """
+    lines = [
+        "",
+        "## Revisão",
+        "",
+        "| Item | Valor |",
+        "| --- | --- |",
+        f"| Versão | v{new_version} (a partir da v{base_version}) |",
+        f"| Pedido | {_cell(request)} |",
+        f"| Ritmo das pausas | {pacing_before} → {pacing_after} |",
+        "",
+        f"**Resumo:** {summary.strip() or '—'}",
+        "",
+    ]
+    if not changes:
+        lines.append("Nenhuma frase mudou de estado.")
+    else:
+        lines += ["| Frase | Texto | Antes | Depois | Motivo |", "| --- | --- | --- | --- | --- |"]
+        lines += [
+            f"| {sid} | {_cell(text)} | {before} | {after} | {_cell(reason)} |"
+            for sid, text, before, after, reason in changes
+        ]
+    return "\n".join(lines) + "\n"

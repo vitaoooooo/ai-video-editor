@@ -65,6 +65,50 @@ def is_thinking_level_unsupported(error: Exception) -> bool:
     )
 
 
+def generate_structured(
+    client,
+    model_id: str,
+    thinking: DirectorThinking,
+    prompt: str,
+    schema,
+    temperature: float,
+    timeout_sec: float,
+):
+    """Chama o Gemini com saída JSON no `schema`, subindo o raciocínio se a API recusar o nível.
+
+    Returns:
+        (resposta, rótulo do nível efetivo ou None se o nível pedido foi aceito).
+    """
+    from google.genai import types
+
+    refused: list[str] = []
+    for level in _fallback_ladder(model_id, thinking):
+        name, value = _thinking_setting(model_id, level)
+        try:
+            response = client.models.generate_content(
+                model=model_id,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                    temperature=temperature,
+                    thinking_config=build_thinking_config(model_id, level),
+                    http_options=build_http_options(timeout_sec),
+                ),
+            )
+        except Exception as e:
+            if not is_thinking_level_unsupported(e):
+                raise map_gemini_error(e, timeout_sec) from e
+            refused.append(str(value))
+            continue
+        label = f"{thinking} → {value} ({', '.join(refused)} não suportado)" if refused else None
+        return response, label
+    raise AIProviderError(
+        f"O modelo '{model_id}' recusou todos os níveis de raciocínio tentados ({', '.join(refused)}).",
+        provider="gemini",
+    )
+
+
 _INTENSITY_GUIDE = {
     "light": (
         "LEVE: remova apenas problemas evidentes — frases recomeçadas, repetições quase "
@@ -177,47 +221,18 @@ class GeminiDirector(EditDirector):
     def decide(
         self, sentences: list[Sentence], brief: UserBrief, context: DirectorContext
     ) -> DirectorDecision:
-        from google.genai import types
-
         self.last_input_tokens = None
         self.last_output_tokens = None
         self.effective_thinking_label = self.thinking_label
         client = self._get_client()
         prompt = build_director_prompt(sentences, brief, context)
 
-        ladder = _fallback_ladder(self._model_id, self.thinking)
-        refused: list[str] = []
-        response = None
-        for level in ladder:
-            name, value = _thinking_setting(self._model_id, level)
-            try:
-                response = client.models.generate_content(
-                    model=self._model_id,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=DirectorDecision,
-                        temperature=self.temperature,
-                        thinking_config=build_thinking_config(self._model_id, level),
-                        http_options=build_http_options(self.timeout_sec),
-                    ),
-                )
-            except Exception as e:
-                if not is_thinking_level_unsupported(e):
-                    raise map_gemini_error(e, self.timeout_sec) from e
-                refused.append(str(value))
-                continue
-            if refused:
-                self.effective_thinking_label = (
-                    f"{self.thinking} → {value} ({', '.join(refused)} não suportado)"
-                )
-            break
-        else:
-            raise AIProviderError(
-                f"O modelo '{self._model_id}' recusou todos os níveis de raciocínio "
-                f"tentados ({', '.join(refused)}).",
-                provider="gemini",
-            )
+        response, effective = generate_structured(
+            client, self._model_id, self.thinking, prompt, DirectorDecision,
+            self.temperature, self.timeout_sec,
+        )
+        if effective:
+            self.effective_thinking_label = effective
 
         usage = getattr(response, "usage_metadata", None)
         self.last_input_tokens = _as_int(getattr(usage, "prompt_token_count", None))

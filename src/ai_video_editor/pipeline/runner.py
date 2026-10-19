@@ -24,7 +24,6 @@ from ai_video_editor.director import (
     build_sentences,
     run_director,
 )
-from ai_video_editor.director.sentences import split_by_removal
 from ai_video_editor.pipeline.project import (
     AUDIO_ANALYSIS_FILE,
     DEFAULT_PROJECTS_ROOT,
@@ -40,7 +39,9 @@ from ai_video_editor.pipeline.project import (
     project_dir_for,
     subtitles_file_name,
 )
+from ai_video_editor.pipeline.cutting import plan_keep_ranges
 from ai_video_editor.pipeline.report import build_edit_report
+from ai_video_editor.pipeline.versions import register_edit_version
 from ai_video_editor.pipeline.schema import (
     EditPipelineParams,
     EditPipelineResult,
@@ -49,13 +50,7 @@ from ai_video_editor.pipeline.schema import (
     StageOutcome,
     StageRecord,
 )
-from ai_video_editor.planning import (
-    NoSpeechDetectedError,
-    apply_sentence_cuts,
-    build_edit_plan,
-    plan_silence_cuts,
-    removed_ranges,
-)
+from ai_video_editor.planning import build_edit_plan, removed_ranges
 from ai_video_editor.planning.schema import TimeRange
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
@@ -301,16 +296,12 @@ class EditPipeline:
 
         def do_plan() -> tuple[dict, str]:
             audio = AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE)
-            keep = plan_silence_cuts(audio, params.cut)
-            director_cuts: list[TimeRange] = []
+            removed_ids = None
+            sentences = []
             if director_run is not None and director_run.decision is not None:
                 removed_ids = {r.sentence_id for r in director_run.decision.removals}
-                cuts, kept_sentences = split_by_removal(director_run.sentences, removed_ids)
-                keep, director_cuts = apply_sentence_cuts(
-                    keep, cuts, kept_sentences, audio.silences, params.cut
-                )
-                if not keep:
-                    raise NoSpeechDetectedError(audio.duration_sec, "o Diretor removeu toda a fala")
+                sentences = director_run.sentences
+            keep, director_cuts = plan_keep_ranges(audio, sentences, removed_ids, params.cut)
             plan = build_edit_plan(
                 video_path,
                 keep,
@@ -395,8 +386,11 @@ class EditPipeline:
 
         outcomes["report"] = run.stage("report", fp_report, EDIT_REPORT_FILE, do_report)
 
+        version = register_edit_version(project_dir, manifest, manifest_path)
+
         return EditPipelineResult(
             project_dir=project_dir,
+            version=version.number if version is not None else None,
             manifest_path=manifest_path,
             output_path=output_path,
             report_path=project_dir / EDIT_REPORT_FILE,

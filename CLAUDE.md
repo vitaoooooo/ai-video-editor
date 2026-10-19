@@ -11,7 +11,8 @@ A IA **nunca executa cortes diretamente**. Ela produz dados estruturados (valida
 - Fase 1 — Core/Renderer: `core/schema.py` (`ClipSegment`, `EditPlan`), `renderer/` (compiler, executor, ffmpeg_locator). ✅
 - Fase 2 — Analyzer: `analyzer/` (ffprobe, extração de frames com timestamps, `VideoAnalysisResult`, `BatchAnalysisResult`). ✅
 - Fase 3 — Intelligence: `intelligence/` (interface `MultimodalAIProvider`, providers `gemini` e `mock`, proxies de imagem, relatório Markdown, métricas de execução). ✅
-- Comando `edit` (`pipeline/`): probe → silêncios (`audio/`) → transcrição (`transcription/`) → Diretor (`director/`: frases, `EditDirector` gemini/mock, validação com retry e fallback) → plano (`planning/`) → render → relatório. ✅
+- Comando `edit` (`pipeline/`): probe → silêncios (`audio/`) → transcrição (`transcription/`) → Diretor (`director/`: frases, `EditDirector` gemini/mock, validação com retry e fallback) → plano (`planning/`) → render → legendas → relatório. ✅
+- Ciclo de revisão (`revision/`, `pipeline/revise.py`, `pipeline/versions.py`): cada resultado é uma versão em `versions/vN/` (v1 = `edit`; projetos antigos migram sozinhos). `revise <pasta> "pedido" [--from vN]` reusa probe/silêncios/transcrição do cache; `EditReviser` (gemini/mock) recebe o estado das frases na versão base e devolve o conjunto completo de removidas, restaurações com motivo e ritmo de pausas (`natural`/`normal`/`tight`); mesma validação do Diretor com retry, e sem versão criada se o pedido for impossível, ambíguo, sem efeito ou inválido. `versions <pasta>` lista o histórico. ✅
 - Rumo da V1: editar vídeos falados (tutorial, aula, pessoa falando). Pipeline: áudio → silêncios → transcrição → Diretor de IA (decide por IDs da transcrição, nunca inventa timestamps) → EditPlan → render. A análise visual vira opcional neste perfil. Arquitetura preparada para perfis de edição (v2: gameplay, vlog).
 
 ## Comandos
@@ -22,7 +23,7 @@ python -m pytest -q              # testes (devem passar todos antes de concluir)
 python -m ai_video_editor.cli --help
 ```
 
-Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`.
+Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revise`, `versions`.
 
 ## Convenções
 
@@ -32,6 +33,7 @@ Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`.
 - Erros de IA usam as exceções de `intelligence/exceptions.py`; erros de mídia usam `analyzer/exceptions.py`.
 - FFmpeg sempre via lista de argumentos em `subprocess` (nunca `shell=True`).
 - Testes não fazem chamadas de rede: usam vídeos sintéticos gerados por FFmpeg (`tests/conftest.py`) e provedores mock.
+- Revisor Gemini (`revise`): reaproveita a configuração do Diretor (`generate_structured`: modelo, raciocínio com fallback, timeout); como o Diretor, só referencia IDs de frases, nunca timestamps.
 - Diretor Gemini: raciocínio `low` por padrão (`--director-thinking low`; se a API recusar o nível, sobe automaticamente off → low → high e registra o nível efetivo) e timeout de 120s repassado ao SDK via `http_options`.
 - Chaves de API só por variável de ambiente (`GEMINI_API_KEY`) ou `.env` local. Nunca commitar, logar ou imprimir chaves.
 - Docstrings e mensagens em português; nomes de código em inglês.
