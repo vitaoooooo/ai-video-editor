@@ -14,6 +14,18 @@ class SubtitleParams(BaseModel):
         default=1.0, ge=0.0, description="Pausa entre palavras que força um novo bloco"
     )
 
+    min_kept_fraction: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Fração mínima da palavra em trechos mantidos para ela ser preservada",
+    )
+    min_kept_sec: float = Field(
+        default=0.15,
+        ge=0.0,
+        description="Duração mínima da palavra em trechos mantidos para ela ser preservada",
+    )
+
     @model_validator(mode="after")
     def _check_durations(self) -> "SubtitleParams":
         if self.min_duration_sec > self.max_duration_sec:
