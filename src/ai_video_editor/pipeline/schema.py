@@ -8,9 +8,10 @@ from pydantic import BaseModel, Field, field_validator
 
 from ai_video_editor.director.schema import UserBrief
 from ai_video_editor.planning.schema import SilenceCutParams
+from ai_video_editor.subtitles.schema import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
 
-StageName = Literal["probe", "silences", "transcription", "director", "plan", "render", "report"]
+StageName = Literal["probe", "silences", "transcription", "director", "plan", "render", "subtitles", "report"]
 STAGES: tuple[StageName, ...] = (
     "probe",
     "silences",
@@ -18,6 +19,7 @@ STAGES: tuple[StageName, ...] = (
     "director",
     "plan",
     "render",
+    "subtitles",
     "report",
 )
 
@@ -40,6 +42,8 @@ class EditPipelineParams(BaseModel):
     director: DirectorName = Field(default="none", description="Diretor de IA que remove frases")
     director_model: str = Field(default="gemini-2.5-flash", description="Modelo do Diretor Gemini")
     brief: UserBrief = Field(default_factory=UserBrief)
+    subtitles: bool = Field(default=True, description="Gera o .srt quando há transcrição")
+    subtitle: SubtitleParams = Field(default_factory=SubtitleParams)
 
 
 class StageRecord(BaseModel):
@@ -91,6 +95,9 @@ class EditPipelineResult(BaseModel):
     manifest_path: Path
     output_path: Path
     report_path: Path
+    subtitles_path: Optional[Path] = Field(
+        default=None, description="Legenda .srt gerada ou reaproveitada nesta execução"
+    )
     original_duration_sec: float
     final_duration_sec: float
     outcomes: dict[StageName, StageOutcome]

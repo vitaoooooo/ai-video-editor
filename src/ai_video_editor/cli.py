@@ -14,6 +14,7 @@ from ai_video_editor.intelligence.service import MultimodalAnalysisService
 from ai_video_editor.pipeline import STAGES, EditPipeline, EditPipelineParams
 from ai_video_editor.planning import SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
+from ai_video_editor.subtitles import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
 
 
@@ -162,6 +163,7 @@ _STAGE_LABELS = {
     "director": "Diretor",
     "plan": "Plano de corte",
     "render": "Renderização",
+    "subtitles": "Legendas",
     "report": "Relatório",
 }
 
@@ -208,6 +210,8 @@ def handle_edit(args: argparse.Namespace) -> int:
                 remove_fillers=not args.keep_fillers,
                 instructions=args.instructions,
             ),
+            subtitles=not args.no_subtitles,
+            subtitle=SubtitleParams(max_chars_per_line=args.subtitle_max_chars),
         )
     except ValueError as e:
         print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
@@ -228,6 +232,8 @@ def handle_edit(args: argparse.Namespace) -> int:
     print(f"Projeto: {result.project_dir}")
     print(f"Vídeo final: {result.output_path}")
     print(f"Relatório: {result.report_path}")
+    if result.subtitles_path is not None:
+        print(f"Legendas: {result.subtitles_path}")
     print(
         f"Duração: {result.original_duration_sec:.2f}s -> {result.final_duration_sec:.2f}s "
         f"({pct:.1f}% removido)"
@@ -412,6 +418,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-fillers",
         action="store_true",
         help="Impede o Diretor de remover frases só por serem enrolação",
+    )
+    edit_parser.add_argument(
+        "--no-subtitles",
+        action="store_true",
+        help="Não gera o .srt (por padrão sai ao lado do vídeo quando há --transcribe)",
+    )
+    edit_parser.add_argument(
+        "--subtitle-max-chars",
+        type=int,
+        default=SubtitleParams().max_chars_per_line,
+        help="Máximo de caracteres por linha da legenda (padrão: 42)",
     )
     edit_parser.add_argument(
         "--force", action="store_true", help="Refaz todas as etapas, ignorando o cache"

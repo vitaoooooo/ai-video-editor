@@ -52,6 +52,11 @@ def output_video_name(video_path: Path) -> str:
     return f"{slugify(video_path.stem)}_edited.mp4"
 
 
+def subtitles_file_name(video_path: Path) -> str:
+    """`<video>_edited.srt`: mesmo nome base do vídeo final, para os players carregarem sozinhos."""
+    return Path(output_video_name(video_path)).with_suffix(".srt").name
+
+
 def fingerprint(*parts: object) -> str:
     """Hash estável das entradas de uma etapa (modelos Pydantic, dicts, strings, números)."""
 

@@ -1,4 +1,4 @@
-"""Orquestrador do comando `edit`: probe → silêncios → transcrição → Diretor → plano → render → relatório.
+"""Orquestrador do comando `edit`: probe → silêncios → transcrição → Diretor → plano → render → legendas → relatório.
 
 Cada etapa grava um artefato na pasta do projeto e um fingerprint no `project.json`.
 Na execução seguinte, a etapa é pulada se o artefato existe e o fingerprint (hash das
@@ -38,6 +38,7 @@ from ai_video_editor.pipeline.project import (
     fingerprint,
     output_video_name,
     project_dir_for,
+    subtitles_file_name,
 )
 from ai_video_editor.pipeline.report import build_edit_report
 from ai_video_editor.pipeline.schema import (
@@ -58,6 +59,7 @@ from ai_video_editor.planning import (
 from ai_video_editor.planning.schema import TimeRange
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
+from ai_video_editor.subtitles import build_subtitle_blocks, write_srt
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
 
@@ -338,8 +340,33 @@ class EditPipeline:
         outcomes["render"] = run.stage("render", fp_render, output_path.name, do_render)
         final_duration = float(manifest.stages["render"].metrics["duration_sec"])
 
-        # 7. relatório
-        fp_report = fingerprint("report", fp_render, fp_director, params)
+        # 7. legendas (só com transcrição); tempos mapeados pelos mesmos trechos do plano final
+        srt_name = subtitles_file_name(video_path)
+        srt_path = project_dir / srt_name
+        fp_subtitles: Optional[str] = None
+        if not params.subtitles:
+            outcomes["subtitles"] = run.skip("subtitles", "desligada por --no-subtitles", artifact=srt_name)
+        elif fp_transcript is None:
+            outcomes["subtitles"] = run.skip("subtitles", "requer --transcribe", artifact=srt_name)
+        else:
+            fp_subtitles = fingerprint("subtitles", fp_plan, fp_transcript, params.subtitle)
+
+            def do_subtitles() -> tuple[dict, str]:
+                transcript = Transcript.load(project_dir / TRANSCRIPT_FILE)
+                kept_ranges = [
+                    TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments
+                ]
+                blocks = build_subtitle_blocks(transcript, kept_ranges, plan.target_fps, params.subtitle)
+                write_srt(blocks, srt_path)
+                return {"blocks": len(blocks)}, f"{srt_name}, {len(blocks)} blocos"
+
+            outcomes["subtitles"] = run.stage("subtitles", fp_subtitles, srt_name, do_subtitles)
+        subtitle_blocks: Optional[int] = None
+        if fp_subtitles is not None:
+            subtitle_blocks = int(manifest.stages["subtitles"].metrics["blocks"])
+
+        # 8. relatório
+        fp_report = fingerprint("report", fp_render, fp_director, fp_subtitles, params)
         removed = removed_ranges(
             [TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments],
             metadata.duration_sec,
@@ -355,6 +382,8 @@ class EditPipeline:
                 params,
                 output_path,
                 director=director_run,
+                subtitles_path=srt_path if subtitle_blocks is not None else None,
+                subtitle_blocks=subtitle_blocks,
             )
             (project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
             return {"cuts": len(removed)}, f"{len(removed)} cortes"
@@ -366,6 +395,7 @@ class EditPipeline:
             manifest_path=manifest_path,
             output_path=output_path,
             report_path=project_dir / EDIT_REPORT_FILE,
+            subtitles_path=srt_path if subtitle_blocks is not None else None,
             original_duration_sec=metadata.duration_sec,
             final_duration_sec=final_duration,
             outcomes=outcomes,
@@ -424,9 +454,20 @@ class _Run:
         self.pipeline._emit(name, "done", detail)
         return "ran"
 
-    def skip(self, name: StageName, detail: str) -> StageOutcome:
-        """Etapa não pedida. Um artefato válido de execução anterior é preservado."""
-        if self.manifest.stages[name].status != "done":
+    def skip(self, name: StageName, detail: str, artifact: Optional[str] = None) -> StageOutcome:
+        """Etapa não pedida. Um artefato válido de execução anterior é preservado.
+
+        Com `artifact`, o arquivo fica obsoleto quando a etapa não vale mais (ex.: legenda de
+        um plano anterior ao lado do vídeo): é removido e a etapa volta a "skipped".
+        """
+        if artifact is not None:
+            stale = self.project_dir / artifact
+            if stale.is_file():
+                stale.unlink()
+            if self.manifest.stages[name].status != "skipped":
+                self.manifest.stages[name] = StageRecord(status="skipped", updated_at=_now())
+                self._save()
+        elif self.manifest.stages[name].status != "done":
             self.manifest.stages[name] = StageRecord(status="skipped", updated_at=_now())
             self._save()
         self.pipeline._emit(name, "skipped", detail)

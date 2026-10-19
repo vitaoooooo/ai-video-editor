@@ -29,12 +29,19 @@ def build_edit_report(
     params: EditPipelineParams,
     output_path: Path,
     director: Optional[DirectorRun] = None,
+    subtitles_path: Optional[Path] = None,
+    subtitle_blocks: Optional[int] = None,
 ) -> str:
     """Monta o Markdown com resumo, parâmetros, trechos removidos e decisões do Diretor."""
     removed_sec = max(0.0, original_duration_sec - final_duration_sec)
     pct = removed_sec / original_duration_sec * 100 if original_duration_sec > 0 else 0.0
     width, height = plan.target_resolution
     cut = params.cut
+    subtitle_rows = (
+        [f"| Legendas | `{subtitles_path.name}` ({subtitle_blocks} blocos) |"]
+        if subtitles_path is not None and subtitle_blocks is not None
+        else []
+    )
 
     lines = [
         f"# Relatório de edição — {video_path.name}",
@@ -51,6 +58,7 @@ def build_edit_report(
         f"| Número de cortes | {len(removed)} |",
         f"| Trechos mantidos | {len(plan.segments)} |",
         f"| Saída | {width}x{height} @ {plan.target_fps}fps |",
+        *subtitle_rows,
         "",
         "## Parâmetros",
         "",
@@ -63,6 +71,7 @@ def build_edit_report(
         f"| min_gap_to_cut_sec | {cut.min_gap_to_cut_sec}s |",
         f"| min_keep_sec | {cut.min_keep_sec}s |",
         f"| audio_fade_sec | {plan.audio_fade_sec}s |",
+        *([f"| subtitle_max_chars | {params.subtitle.max_chars_per_line} |"] if subtitle_rows else []),
         "",
         "## Trechos removidos",
         "",

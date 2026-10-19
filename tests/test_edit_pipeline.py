@@ -11,9 +11,10 @@ from ai_video_editor.pipeline import EditPipeline, EditPipelineParams, ProjectMa
 from ai_video_editor.pipeline import runner as runner_module
 from ai_video_editor.planning import NoSpeechDetectedError, SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
+from ai_video_editor.subtitles import SubtitleParams
 from ai_video_editor.transcription.providers.faster_whisper import FasterWhisperProvider
 from ai_video_editor.transcription.providers.mock import MockTranscriptionProvider
-from ai_video_editor.transcription.schema import Transcript, TranscriptSegment
+from ai_video_editor.transcription.schema import Transcript, TranscriptSegment, Word
 from tests.conftest import create_tone_silence_video
 
 
@@ -121,6 +122,7 @@ def test_cache_skips_unchanged_stages_and_threshold_invalidates(
         "director": "skipped",
         "plan": "ran",
         "render": "ran",
+        "subtitles": "skipped",
         "report": "ran",
     }
     assert count_silence_calls["n"] == 1 and executor.calls == 1
@@ -206,13 +208,13 @@ def test_cli_edit(tmp_path, short_video, capsys):
     )
     assert handle_edit(args) == 0
     out = capsys.readouterr().out
-    assert "[2/7] Silêncios: ok" in out
-    assert "[3/7] Transcrição: pulada" in out
-    assert "[6/7] Renderização: ok" in out
+    assert "[2/8] Silêncios: ok" in out
+    assert "[3/8] Transcrição: pulada" in out
+    assert "[6/8] Renderização: ok" in out
     assert "Edição concluída!" in out
 
     assert handle_edit(args) == 0
-    assert "[6/7] Renderização: em cache" in capsys.readouterr().out
+    assert "[6/8] Renderização: em cache" in capsys.readouterr().out
 
     manifest = ProjectManifest.load(next((tmp_path / "projects").glob("*/project.json")))
     assert manifest.params.cut.padding_after_sec == 0.25
@@ -366,3 +368,144 @@ def test_old_manifest_without_director_stage_loads(tmp_path):
     loaded = ProjectManifest.model_validate(data)
     assert loaded.stages["director"].status == "pending"
     assert list(loaded.stages) == list(manifest.stages)
+
+
+# --- Legendas ---
+
+
+def _words(text: str, start: float, step: float = 0.4) -> list[Word]:
+    return [
+        Word(text=t, start_sec=start + i * step, end_sec=start + (i + 1) * step - 0.05)
+        for i, t in enumerate(text.split())
+    ]
+
+
+def _lesson_transcript_with_words(video) -> Transcript:
+    texts = [
+        "Hoje vamos falar de cortes.",
+        "Frase repetida que sai do video.",
+        "Primeiro abrimos o editor.",
+        "Obrigado por assistir.",
+    ]
+    starts = [0.1, 4.6, 9.1, 13.6]
+    segments = []
+    for i, (start, text) in enumerate(zip(starts, texts)):
+        words = _words(text, start)
+        segments.append(
+            TranscriptSegment(id=i, start_sec=start, end_sec=words[-1].end_sec, text=text, words=words)
+        )
+    return Transcript(source_path=video, language="pt", duration_sec=16.5, model_used="mock", segments=segments)
+
+
+def _srt_blocks(path):
+    return [b for b in path.read_text(encoding="utf-8").strip().split("\n\n") if b]
+
+
+def test_end_to_end_subtitles_follow_director_cuts(tmp_path, lesson_video):
+    pipeline = EditPipeline(
+        projects_root=tmp_path / "projects",
+        transcription_provider=MockTranscriptionProvider(
+            custom_transcript=_lesson_transcript_with_words(lesson_video)
+        ),
+        edit_director=MockDirector(removals=[SentenceRemoval(sentence_id=1, category="repetition", reason="Repete.")]),
+    )
+    result = pipeline.run(lesson_video, EditPipelineParams(transcribe=True, director="mock"))
+
+    srt = result.subtitles_path
+    assert srt == result.project_dir / "aula-diretor_edited.srt"
+    assert srt.parent == result.output_path.parent and srt.stem == result.output_path.stem
+    content = srt.read_text(encoding="utf-8")
+    assert "Hoje vamos falar de cortes." in content and "Obrigado por assistir." in content
+    assert "repetida" not in content
+
+    duration = VideoProbe().probe(result.output_path).duration_sec
+    for line in content.splitlines():
+        if " --> " in line:
+            start, end = (_to_sec(t) for t in line.split(" --> "))
+            assert 0 <= start < end <= duration + 0.05
+
+    manifest = ProjectManifest.load(result.manifest_path)
+    assert manifest.stages["subtitles"].status == "done"
+    assert manifest.stages["subtitles"].artifact == srt.name
+    blocks = manifest.stages["subtitles"].metrics["blocks"]
+    assert blocks == len(_srt_blocks(srt)) == 3
+    report = result.report_path.read_text(encoding="utf-8")
+    assert f"| Legendas | `aula-diretor_edited.srt` ({blocks} blocos) |" in report
+
+
+def _to_sec(stamp: str) -> float:
+    h, m, rest = stamp.split(":")
+    s, ms = rest.split(",")
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+
+
+def test_subtitles_cache_and_max_chars_invalidation(tmp_path, lesson_video):
+    executor = CountingExecutor()
+    pipeline = EditPipeline(
+        projects_root=tmp_path / "projects",
+        transcription_provider=MockTranscriptionProvider(
+            custom_transcript=_lesson_transcript_with_words(lesson_video)
+        ),
+        render_executor=executor,
+    )
+    params = EditPipelineParams(transcribe=True)
+    first = pipeline.run(lesson_video, params)
+    assert first.outcomes["subtitles"] == "ran"
+    mtime = first.subtitles_path.stat().st_mtime_ns
+
+    second = pipeline.run(lesson_video, params)
+    assert second.outcomes["subtitles"] == "cached" and second.outcomes["report"] == "cached"
+    assert first.subtitles_path.stat().st_mtime_ns == mtime
+
+    params = EditPipelineParams(transcribe=True, subtitle=SubtitleParams(max_chars_per_line=10))
+    third = pipeline.run(lesson_video, params)
+    assert third.outcomes["subtitles"] == "ran" and third.outcomes["report"] == "ran"
+    assert third.outcomes["plan"] == "cached" and third.outcomes["render"] == "cached"
+    assert third.outcomes["transcription"] == "cached"
+    assert executor.calls == 1
+    assert max(len(line) for line in third.subtitles_path.read_text(encoding="utf-8").splitlines()
+               if line and " --> " not in line and not line.isdigit()) <= 10
+
+
+def test_subtitles_skipped_without_transcript_or_when_disabled(tmp_path, lesson_video):
+    pipeline = EditPipeline(
+        projects_root=tmp_path / "projects",
+        transcription_provider=MockTranscriptionProvider(
+            custom_transcript=_lesson_transcript_with_words(lesson_video)
+        ),
+    )
+    plain = pipeline.run(lesson_video, EditPipelineParams())
+    assert plain.outcomes["subtitles"] == "skipped" and plain.subtitles_path is None
+    assert not plain.subtitles_path and not list(plain.project_dir.glob("*.srt"))
+    assert "Legendas" not in plain.report_path.read_text(encoding="utf-8")
+
+    with_srt = pipeline.run(lesson_video, EditPipelineParams(transcribe=True))
+    assert with_srt.subtitles_path.is_file()
+
+    off = pipeline.run(lesson_video, EditPipelineParams(transcribe=True, subtitles=False))
+    assert off.outcomes["subtitles"] == "skipped" and off.subtitles_path is None
+    assert not list(off.project_dir.glob("*.srt"))
+    assert ProjectManifest.load(off.manifest_path).stages["subtitles"].status == "skipped"
+    assert "Legendas" not in off.report_path.read_text(encoding="utf-8")
+
+
+def test_cli_edit_subtitle_options(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_run(self, video_path, params, force=False):
+        captured["params"] = params
+        raise RuntimeError("parar aqui")
+
+    monkeypatch.setattr(EditPipeline, "run", fake_run)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"x")
+    parser = build_parser()
+
+    assert handle_edit(parser.parse_args(["edit", str(video)])) == 1
+    assert captured["params"].subtitles is True
+    assert captured["params"].subtitle == SubtitleParams()
+
+    args = parser.parse_args(["edit", str(video), "--no-subtitles", "--subtitle-max-chars", "30"])
+    assert handle_edit(args) == 1
+    assert captured["params"].subtitles is False
+    assert captured["params"].subtitle.max_chars_per_line == 30
