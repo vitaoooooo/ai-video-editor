@@ -1,8 +1,10 @@
 """Relatório Markdown da edição (`edit_report.md`)."""
 
 from pathlib import Path
+from typing import Optional
 
 from ai_video_editor.core.schema import EditPlan
+from ai_video_editor.director.schema import DirectorRun
 from ai_video_editor.pipeline.schema import EditPipelineParams
 from ai_video_editor.planning.schema import TimeRange
 
@@ -26,8 +28,9 @@ def build_edit_report(
     removed: list[TimeRange],
     params: EditPipelineParams,
     output_path: Path,
+    director: Optional[DirectorRun] = None,
 ) -> str:
-    """Monta o Markdown com resumo, parâmetros e a lista de trechos removidos."""
+    """Monta o Markdown com resumo, parâmetros, trechos removidos e decisões do Diretor."""
     removed_sec = max(0.0, original_duration_sec - final_duration_sec)
     pct = removed_sec / original_duration_sec * 100 if original_duration_sec > 0 else 0.0
     width, height = plan.target_resolution
@@ -72,4 +75,58 @@ def build_edit_report(
         ]
     else:
         lines.append("Nenhum trecho removido.")
+    if director is not None:
+        lines += ["", *_director_section(director)]
     return "\n".join(lines) + "\n"
+
+
+def _cell(text: str) -> str:
+    """Texto seguro para uma célula de tabela Markdown."""
+    return " ".join(text.split()).replace("|", "\\|")
+
+
+def _director_section(director: DirectorRun) -> list[str]:
+    brief = director.brief
+    target = f"{brief.target_duration_sec:.0f}s" if brief.target_duration_sec is not None else "—"
+    lines = [
+        "## Decisões do Diretor",
+        "",
+        "| Item | Valor |",
+        "| --- | --- |",
+        f"| Diretor | {director.provider} ({director.model_id}) |",
+        f"| Intensidade | {brief.intensity} |",
+        f"| Duração alvo | {target} |",
+        f"| Remover enrolação | {'sim' if brief.remove_fillers else 'não'} |",
+        f"| Instruções | {_cell(brief.instructions) if brief.instructions else '—'} |",
+        f"| Frases analisadas | {len(director.sentences)} |",
+    ]
+    for i, attempt in enumerate(director.attempts, start=1):
+        tokens = (
+            f"{attempt.input_tokens} entrada / {attempt.output_tokens} saída"
+            if attempt.input_tokens is not None or attempt.output_tokens is not None
+            else "não informado"
+        )
+        status = "ok" if attempt.success else f"inválida ({attempt.error_type})"
+        lines.append(f"| Tentativa {i} | {status}, {attempt.latency_sec:.2f}s, tokens: {tokens} |")
+    lines.append("")
+
+    for warning in director.warnings:
+        lines += [f"> **Aviso:** {warning}", ""]
+    if director.decision is None:
+        return lines
+
+    lines += [f"**Resumo:** {director.decision.summary.strip()}", ""]
+    removed = director.removed_sentences
+    if not removed:
+        lines.append("Nenhuma frase removida.")
+        return lines
+    lines += [
+        "| # | Início | Fim | Categoria | Texto | Motivo |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    lines += [
+        f"| {sentence.id} | {format_timestamp(sentence.start_sec)} | {format_timestamp(sentence.end_sec)} "
+        f"| {removal.category} | {_cell(sentence.text)} | {_cell(removal.reason)} |"
+        for sentence, removal in removed
+    ]
+    return lines

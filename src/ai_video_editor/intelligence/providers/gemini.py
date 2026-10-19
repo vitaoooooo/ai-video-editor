@@ -50,6 +50,20 @@ def resolve_gemini_api_key() -> str:
     )
 
 
+def map_gemini_error(error: Exception, timeout_sec: float) -> AIProviderError:
+    """Converte uma exceção do SDK em exceção de domínio, sem expor credenciais."""
+    err_str = str(error).lower()
+    if "401" in err_str or "403" in err_str or "unauthorized" in err_str or "permission" in err_str or "api_key" in err_str:
+        return AIAuthenticationError("gemini", details="Credencial inválida ou sem permissão de acesso.")
+    if "429" in err_str or "quota" in err_str or "rate limit" in err_str:
+        return AIRateLimitError("gemini", details="Cota de requisições excedida.")
+    if "timeout" in err_str or "timed out" in err_str:
+        return AITimeoutError("gemini", timeout_sec=timeout_sec)
+    if "500" in err_str or "503" in err_str or "unavailable" in err_str:
+        return AIUnavailableError("gemini", details="Serviço do Google Gemini temporariamente indisponível.")
+    return AIProviderError(f"Erro na chamada do Gemini: {error}", provider="gemini")
+
+
 def _as_int(value) -> Optional[int]:
     """Converte contagem de tokens do SDK para int, ignorando valores ausentes ou inesperados."""
     return value if isinstance(value, int) and not isinstance(value, bool) else None
@@ -126,18 +140,7 @@ class GeminiMultimodalProvider(MultimodalAIProvider):
                 ),
             )
         except Exception as e:
-            err_str = str(e).lower()
-            # Mapeamento seguro de erros sem expor credenciais
-            if "401" in err_str or "403" in err_str or "unauthorized" in err_str or "permission" in err_str or "api_key" in err_str:
-                raise AIAuthenticationError("gemini", details="Credencial inválida ou sem permissão de acesso.")
-            elif "429" in err_str or "quota" in err_str or "rate limit" in err_str:
-                raise AIRateLimitError("gemini", details="Cota de requisições excedida.")
-            elif "timeout" in err_str or "timed out" in err_str:
-                raise AITimeoutError("gemini", timeout_sec=config.timeout_sec)
-            elif "500" in err_str or "503" in err_str or "unavailable" in err_str:
-                raise AIUnavailableError("gemini", details="Serviço do Google Gemini temporariamente indisponível.")
-            else:
-                raise AIProviderError(f"Erro na chamada do Gemini: {e}", provider="gemini")
+            raise map_gemini_error(e, config.timeout_sec) from e
 
         usage = getattr(response, "usage_metadata", None)
         self.last_input_tokens = _as_int(getattr(usage, "prompt_token_count", None))

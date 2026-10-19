@@ -105,7 +105,7 @@ Renderiza um plano de edição completo a partir de um arquivo JSON estruturado:
 ```
 
 ### Opção E: Remover as pausas de um vídeo falado (`edit`)
-Fluxo completo de corte de silêncio (sem IA): metadados → silêncios → transcrição (opcional) → plano de corte → render → relatório. A resolução e o FPS da saída são os do vídeo de origem (FPS arredondado para inteiro).
+Fluxo completo: metadados → silêncios → transcrição (opcional) → Diretor de IA (opcional) → plano de corte → render → relatório. Sem `--director`, é só corte de silêncio, sem IA. A resolução e o FPS da saída são os do vídeo de origem (FPS arredondado para inteiro).
 
 ```bash
 .\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4"
@@ -115,6 +115,10 @@ Fluxo completo de corte de silêncio (sem IA): metadados → silêncios → tran
   --threshold-db -40 --min-silence-sec 0.6 `
   --padding-before 0.15 --padding-after 0.25 --min-gap 0.3 --min-keep 0.1 `
   --transcribe --language pt --whisper-model small
+
+# Com o Diretor de IA removendo frases repetidas, recomeçadas e enrolação (requer GEMINI_API_KEY)
+.\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4" `
+  --transcribe --language pt --director gemini --intensity light
 ```
 
 | Opção | Padrão | Efeito |
@@ -124,18 +128,26 @@ Fluxo completo de corte de silêncio (sem IA): metadados → silêncios → tran
 | `--padding-before` / `--padding-after` | 0.15 / 0.20 | Folga mantida antes/depois de cada fala |
 | `--min-gap` | 0.30 | Pausas menores que isso (após o padding) não são cortadas, inclusive no início/fim |
 | `--min-keep` | 0.10 | Falas mais curtas que isso são tratadas como ruído |
-| `--transcribe` | desligado | Gera `transcript.json` (ainda não influencia os cortes) |
+| `--transcribe` | desligado | Gera `transcript.json` (necessário para o Diretor) |
+| `--director` | `none` | Diretor de IA: `none`, `mock` (remove frases repetidas, sem rede) ou `gemini`. Só roda com `--transcribe` |
+| `--director-model` | `gemini-2.5-flash` | Modelo do Diretor Gemini |
+| `--intensity` | `light` | Quanto o Diretor corta: `light`, `medium` ou `aggressive` |
+| `--target-duration` | — | Duração final desejada em segundos |
+| `--instructions` | — | Pedido livre ao Diretor (ex: `"corte as piadas"`) |
+| `--keep-fillers` | desligado | Impede o Diretor de remover frases só por serem enrolação |
 | `--force` | desligado | Refaz todas as etapas, ignorando o cache |
 | `--projects-dir` | `output/projects` | Diretório base dos projetos |
 
 Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 
 * `project.json`: manifesto com caminho do vídeo, parâmetros e status/fingerprint/métricas de cada etapa.
-* `probe.json`, `audio_analysis.json`, `transcript.json` (se pedido), `edit_plan.json`.
-* `edit_report.md`: duração original e final, % removido, número de cortes, parâmetros e a lista dos trechos removidos.
+* `probe.json`, `audio_analysis.json`, `transcript.json` (se pedido), `director_decision.json` (se pedido), `edit_plan.json`.
+* `edit_report.md`: duração original e final, % removido, número de cortes, parâmetros, a lista dos trechos removidos e, com o Diretor, a seção "Decisões do Diretor" (tempo, texto, categoria e motivo de cada frase removida, latência e tokens).
 * `<nome-do-video>_edited.mp4`: o vídeo final.
 
-**Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` refaz silêncios, plano, render e relatório; mudar só um padding refaz a partir do plano; a transcrição nunca força novo render. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
+**Diretor de IA:** a transcrição é agrupada em frases (segmentos unidos até `.`, `?`, `!` ou uma pausa maior que 1s). O Diretor recebe as frases numeradas e o briefing e devolve só os IDs das frases a remover, com categoria (`repetition`, `false_start`, `filler`, `off_topic`, `other`) e motivo em português; nunca timestamps. A decisão é validada (IDs existentes e únicos; no máximo 40% do tempo de fala, ou mais se `--target-duration` exigir). Se for inválida, o modelo recebe o erro e tenta mais uma vez; se falhar de novo, o vídeo sai só com o corte de silêncio e o relatório traz um aviso. Os limites de cada corte vão para dentro do silêncio detectado mais próximo (até 0,5s); sem silêncio por perto, usa-se o limite da frase sem invadir o padding das frases mantidas.
+
+**Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` refaz silêncios, plano, render e relatório; mudar só um padding refaz a partir do plano; sem Diretor, a transcrição nunca força novo render. O Diretor é refeito quando mudam a transcrição, o briefing ou o modelo. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
 
 ---
 
@@ -167,10 +179,19 @@ Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 ### Módulo Planning (corte de silêncio)
 * [`src/ai_video_editor/planning/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/schema.py): `SilenceCutParams` (paddings, `min_gap_to_cut_sec`, `min_keep_sec`) e `TimeRange`.
 * [`src/ai_video_editor/planning/silence_cut.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/silence_cut.py): `plan_silence_cuts` (trechos a manter a partir da `AudioAnalysisResult`), `removed_ranges` e `build_edit_plan` (lista de trechos → `EditPlan` na resolução/FPS da origem).
+* [`src/ai_video_editor/planning/sentence_cut.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/sentence_cut.py): `apply_sentence_cuts` (subtrai as frases removidas pelo Diretor dos trechos mantidos), `snap_cut` (leva os limites do corte para dentro dos silêncios) e `subtract_ranges`.
 * [`src/ai_video_editor/planning/exceptions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/exceptions.py): `PlanningError`, `NoSpeechDetectedError`.
 
+### Módulo Director (Diretor de IA)
+* [`src/ai_video_editor/director/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/schema.py): `Sentence`, `UserBrief`, `DirectorContext`, `SentenceRemoval`, `DirectorDecision` e `DirectorRun` (conteúdo do `director_decision.json`).
+* [`src/ai_video_editor/director/sentences.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/sentences.py): `build_sentences` (transcrição → frases) e `split_by_removal` (frases → intervalos a cortar e a proteger).
+* [`src/ai_video_editor/director/provider.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/provider.py): Interface `EditDirector` (`decide(sentences, brief, context)`).
+* [`src/ai_video_editor/director/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/service.py): `validate_decision` e `run_director` (nova tentativa com o erro, fallback e métricas `AIRunMetrics`).
+* [`src/ai_video_editor/director/providers/gemini.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/providers/gemini.py): `GeminiDirector` (texto, `response_schema=DirectorDecision`) e `build_director_prompt`.
+* [`src/ai_video_editor/director/providers/mock.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/providers/mock.py): `MockDirector` determinístico (remoções fixas, sequência de respostas ou frases repetidas).
+
 ### Módulo Pipeline (comando `edit`)
-* [`src/ai_video_editor/pipeline/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que orquestra as etapas com cache por fingerprint e callback de progresso; `TranscriptionProvider` e `RenderExecutor` são injetáveis.
+* [`src/ai_video_editor/pipeline/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que orquestra as etapas com cache por fingerprint e callback de progresso; `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis.
 * [`src/ai_video_editor/pipeline/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/schema.py): `EditPipelineParams`, `ProjectManifest` (`project.json`), `StageRecord`, `EditPipelineResult`.
 * [`src/ai_video_editor/pipeline/project.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/project.py): Hash curto do vídeo, nome da pasta do projeto, nomes dos artefatos e fingerprints.
 * [`src/ai_video_editor/pipeline/report.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/report.py): Geração do `edit_report.md`.
