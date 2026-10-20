@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "name": "mit-1806-lecture01",
+  "created_at": "2026-10-20T17:00:05.714937-03:00",
+  "environment": {
+    "project_version": "0.1.0",
+    "python": "3.14.8",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+    "gpu": "NVIDIA GeForce RTX 2060",
+    "faster_whisper": "1.2.1"
+  },
+  "items": [
+    {
+      "name": "mit_1806_lecture01",
+      "audio": "benchmark\\data\\mit_1806_lecture01.webm",
+      "reference": "benchmark\\data\\mit_1806_lecture01_reference.txt",
+      "language": "en"
+    }
+  ],
+  "configs": [
+    {
+      "config": {
+        "provider": "faster_whisper",
+        "model": "small",
+        "device": "cpu",
+        "compute_type": "int8"
+      },
+      "status": "ok",
+      "error": null,
+      "effective_device": "cpu",
+      "effective_compute_type": "int8",
+      "load_time_sec": 2.007002199999988,
+      "items": [
+        {
+          "item": "mit_1806_lecture01",
+          "status": "ok",
+          "error": null,
+          "audio_duration_sec": 2388.8426875,
+          "transcription_time_sec": 702.1412203,
+          "real_time_factor": 0.29392526513950284,
+          "wer": {
+            "wer": 0.09191919191919191,
+            "substitutions": 227,
+            "deletions": 98,
+            "insertions": 130,
+            "reference_words": 4950,
+            "hypothesis_words": 4982,
+            "top_substitutions": [
+              {
+                "reference": "one",
+                "hypothesis": "1",
+                "count": 42
+              },
+              {
+                "reference": "two",
+                "hypothesis": "2",
+                "count": 31
+              },
+              {
+                "reference": "zero",
+                "hypothesis": "0",
+                "count": 22
+              },
+              {
+                "reference": "okay",
+                "hypothesis": "ok",
+                "count": 21
+              },
+              {
+                "reference": "three",
+                "hypothesis": "3",
+                "count": 17
+              },
+              {
+                "reference": "a",
+                "hypothesis": "the",
+                "count": 5
+              },
+              {
+                "reference": "twelve",
+                "hypothesis": "12",
+                "count": 5
+              },
+              {
+                "reference": "four",
+                "hypothesis": "4",
+                "count": 4
+              },
+              {
+                "reference": "ys",
+                "hypothesis": "y's",
+                "count": 4
+              },
+              {
+                "reference": "zs",
+                "hypothesis": "z's",
+                "count": 4
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "provider": "faster_whisper",
+        "model": "small",
+        "device": "cuda",
+        "compute_type": "float16"
+      },
+      "status": "ok",
+      "error": null,
+      "effective_device": "cuda",
+      "effective_compute_type": "float16",
+      "load_time_sec": 1.0353015000000596,
+      "items": [
+        {
+          "item": "mit_1806_lecture01",
+          "status": "ok",
+          "error": null,
+          "audio_duration_sec": 2388.8426875,
+          "transcription_time_sec": 104.77224709999791,
+          "real_time_factor": 0.04385899818696115,
+          "wer": {
+            "wer": 0.10323232323232323,
+            "substitutions": 218,
+            "deletions": 98,
+            "insertions": 195,
+            "reference_words": 4950,
+            "hypothesis_words": 5047,
+            "top_substitutions": [
+              {
+                "reference": "one",
+                "hypothesis": "1",
+                "count": 39
+              },
+              {
+                "reference": "two",
+                "hypothesis": "2",
+                "count": 28
+              },
+              {
+                "reference": "zero",
+                "hypothesis": "0",
+                "count": 22
+              },
+              {
+                "reference": "okay",
+                "hypothesis": "ok",
+                "count": 19
+              },
+              {
+                "reference": "three",
+                "hypothesis": "3",
+                "count": 15
+              },
+              {
+                "reference": "four",
+                "hypothesis": "4",
+                "count": 4
+              },
+              {
+                "reference": "xs",
+                "hypothesis": "x's",
+                "count": 4
+              },
+              {
+                "reference": "ys",
+                "hypothesis": "y's",
+                "count": 4
+              },
+              {
+                "reference": "zs",
+                "hypothesis": "z's",
+                "count": 4
+              },
+              {
+                "reference": "a",
+                "hypothesis": "ax",
+                "count": 3
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "provider": "faster_whisper",
+        "model": "large-v3-turbo",
+        "device": "cuda",
+        "compute_type": "float16"
+      },
+      "status": "ok",
+      "error": null,
+      "effective_device": "cuda",
+      "effective_compute_type": "float16",
+      "load_time_sec": 58.21648170000117,
+      "items": [
+        {
+          "item": "mit_1806_lecture01",
+          "status": "ok",
+          "error": null,
+          "audio_duration_sec": 2388.8426875,
+          "transcription_time_sec": 84.03935040000215,
+          "real_time_factor": 0.03517994334233537,
+          "wer": {
+            "wer": 0.0892929292929293,
+            "substitutions": 118,
+            "deletions": 70,
+            "insertions": 254,
+            "reference_words": 4950,
+            "hypothesis_words": 5134,
+            "top_substitutions": [
+              {
+                "reference": "okay",
+                "hypothesis": "ok",
+                "count": 22
+              },
+              {
+                "reference": "0",
+                "hypothesis": "zero",
+                "count": 9
+              },
+              {
+                "reference": "a",
+                "hypothesis": "the",
+                "count": 5
+              },
+              {
+                "reference": "2",
+                "hypothesis": "two",
+                "count": 4
+              },
+              {
+                "reference": "xs",
+                "hypothesis": "x's",
+                "count": 4
+              },
+              {
+                "reference": "ys",
+                "hypothesis": "y's",
+                "count": 4
+              },
+              {
+                "reference": "zs",
+                "hypothesis": "z's",
+                "count": 4
+              },
+              {
+                "reference": "1",
+                "hypothesis": "one",
+                "count": 3
+              },
+              {
+                "reference": "2x",
+                "hypothesis": "minus",
+                "count": 3
+              },
+              {
+                "reference": "a",
+                "hypothesis": "ax",
+                "count": 3
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "averages": [
+    {
+      "config": "small:cpu:int8",
+      "items_ok": 1,
+      "items_total": 1,
+      "audio_duration_sec": 2388.8426875,
+      "transcription_time_sec": 702.1412203,
+      "real_time_factor": 0.29392526513950284,
+      "wer": {
+        "wer": 0.09191919191919191,
+        "substitutions": 227,
+        "deletions": 98,
+        "insertions": 130,
+        "reference_words": 4950,
+        "hypothesis_words": 4982,
+        "top_substitutions": []
+      }
+    },
+    {
+      "config": "small:cuda:float16",
+      "items_ok": 1,
+      "items_total": 1,
+      "audio_duration_sec": 2388.8426875,
+      "transcription_time_sec": 104.77224709999791,
+      "real_time_factor": 0.04385899818696115,
+      "wer": {
+        "wer": 0.10323232323232323,
+        "substitutions": 218,
+        "deletions": 98,
+        "insertions": 195,
+        "reference_words": 4950,
+        "hypothesis_words": 5047,
+        "top_substitutions": []
+      }
+    },
+    {
+      "config": "large-v3-turbo:cuda:float16",
+      "items_ok": 1,
+      "items_total": 1,
+      "audio_duration_sec": 2388.8426875,
+      "transcription_time_sec": 84.03935040000215,
+      "real_time_factor": 0.03517994334233537,
+      "wer": {
+        "wer": 0.0892929292929293,
+        "substitutions": 118,
+        "deletions": 70,
+        "insertions": 254,
+        "reference_words": 4950,
+        "hypothesis_words": 5134,
+        "top_substitutions": []
+      }
+    }
+  ],
+  "normalization": "minúsculas, apóstrofos unificados, pontuação/hífens removidos, espaços colapsados"
+}

@@ -220,6 +220,57 @@ Estrutura (o `project.json` guarda o histórico em `versions` e a versão em `cu
 
 O `edit_report.md` de uma revisão traz a seção "Revisão": pedido, ritmo das pausas, resumo e uma tabela de mudanças (frase, texto, antes, depois, aplicação, motivo), com a contagem `Revisão vN: N remoções pedidas, X aplicadas...` no topo. A transcrição comparativa da versão marca as frases restauradas (✅) e as removidas nesta revisão (🆕, com o pedido). Rodar o `edit` de novo com os mesmos parâmetros não cria versão; com parâmetros que mudam o resultado, cria uma nova versão atual.
 
+### Opção G: Benchmark de transcrição (`benchmark transcription`)
+
+Mede velocidade e precisão (WER, taxa de erro de palavras) de configurações do faster-whisper contra uma transcrição de referência. Cada configuração é `modelo:dispositivo:compute_type`; o modelo é carregado uma vez antes de medir (o tempo de carga sai separado), e uma configuração que falha (ex.: sem GPU) é registrada e as demais seguem.
+
+```bash
+# Um áudio, com referência (sem --reference, mede só velocidade e o WER aparece como "—")
+python -m ai_video_editor.cli benchmark transcription --audio benchmark/data/mit_1806_lecture01.webm --reference benchmark/data/mit_1806_lecture01_reference.txt --language en --configs small:cpu:int8 small:cuda:float16 large-v3-turbo:cuda:float16
+
+# Vários itens, todas as configurações em todos os itens
+python -m ai_video_editor.cli benchmark transcription --manifest benchmark/manifest.json --configs small:cpu:int8,small:cuda:float16
+```
+
+Saída em `benchmark/results/<data>-<nome>/`: `results.json` (validado por Pydantic: versão do projeto, CPU/GPU, configurações e medições) e `results.md` (uma tabela por item, a tabela de **média geral** quando há mais de um item, as 10 substituições mais frequentes por configuração e as falhas). Os áudios de `benchmark/data/` não são versionados; o texto de referência (`*_reference.txt`) é.
+
+Resultado (aula 1 de Álgebra Linear do MIT, 39min 49s, RTX 2060; `benchmark/results/2026-10-20-mit-1806-lecture01/`):
+
+| Configuração | Carga | Tempo | Tempo real | WER | S | D | I |
+|---|---|---|---|---|---|---|---|
+| `small:cpu:int8` | 2,0s | 11min 42s | 0,294x | 9,2% | 227 | 98 | 130 |
+| `small:cuda:float16` | 1,0s | 1min 45s | 0,044x | 10,3% | 218 | 98 | 195 |
+| `large-v3-turbo:cuda:float16` | 58,2s | 1min 24s | 0,035x | 8,9% | 118 | 70 | 254 |
+
+**Manifesto** (`--manifest arquivo.json`): objeto com a lista `items` (ou a própria lista). Caminhos relativos valem a partir da pasta do manifesto; `name` é obrigatório e único.
+
+```json
+{
+  "items": [
+    {
+      "name": "mit-aula-1",
+      "audio": "data/mit_1806_lecture01.webm",
+      "reference": "data/mit_1806_lecture01_reference.txt",
+      "language": "en"
+    },
+    { "name": "so-velocidade", "audio": "data/outro.wav" }
+  ]
+}
+```
+
+| Campo | Obrigatório | Significado |
+|---|---|---|
+| `name` | sim | Nome do item (título da tabela); único no manifesto |
+| `audio` | sim | Áudio ou vídeo a transcrever |
+| `reference` | não | Texto de referência (linhas iniciadas por `#` são ignoradas); sem ele, o item só mede velocidade |
+| `language` | não | Código do idioma (ex.: `en`, `pt`); sem ele, detecção automática |
+
+Como ler as colunas: *Tempo* é a transcrição (inclui decodificar o áudio com FFmpeg, não inclui a carga do modelo); *Tempo real* é tempo ÷ duração do áudio (0,1x = 10 vezes mais rápido que o áudio); S/D/I são substituições, omissões (palavras da referência que faltam) e inserções. Na média geral, o tempo real é o tempo total ÷ áudio total e o WER é agregado (erros somados ÷ palavras de referência somadas, só dos itens com referência).
+
+**Limitações do WER**: a comparação é textual. Antes dela, o texto vai para minúsculas, apóstrofos são unificados, pontuação e hífens somem e os espaços são colapsados; fora isso nada é normalizado. Por isso "2" (dígito) × "two" (por extenso), "okay" × "OK", "gonna" × "going to" e hesitações ("uh", "um") que só um dos textos registra contam como erro, e erros da própria referência entram na conta. Compare configurações entre si com a mesma referência; o valor absoluto tem esse piso de ruído.
+
+Para incluir outro provedor de transcrição (ex.: Gemini), registre uma fábrica com `register_benchmark_provider("nome", fabrica)` em `benchmark/runner.py` e use `nome/modelo:dispositivo:compute_type` nas configurações (o `mock/...` existe para testes).
+
 ### Usando a GPU
 A transcrição usa a GPU NVIDIA automaticamente quando ela existe e as bibliotecas CUDA estão instaladas (`--whisper-device auto`, o padrão); senão, volta para a CPU com um aviso. Para instalar as bibliotecas (cuBLAS para CUDA 12 e cuDNN 9, compatíveis com o ctranslate2 4.x do faster-whisper) no Windows:
 
@@ -290,6 +341,11 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 * [`src/ai_video_editor/llm/chain.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/chain.py): `ModelChain` (troca automática de modelo) e `resolve_chain`/`parse_chain` (`provedor:modelo,...`).
 * [`src/ai_video_editor/llm/providers/`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/providers): `GeminiLLMClient` (`google-genai`, `response_schema`), `OpenAILLMClient` (SDK `openai`, Responses API com `text_format` / JSON schema estrito; as novas tentativas do SDK ficam desligadas) e `MockLLMClient`.
 * [`src/ai_video_editor/llm/keys.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/keys.py) e [`errors.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/errors.py): chaves por variável de ambiente/`.env` e utilitários de erro (remove chaves `AIza…`/`sk-…` das mensagens).
+
+### Módulo Benchmark (comando `benchmark transcription`)
+* [`src/ai_video_editor/benchmark/wer.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/wer.py): normalização e WER por distância de edição entre palavras (S/D/I e substituições mais frequentes), sem dependências.
+* [`src/ai_video_editor/benchmark/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/runner.py): `run_benchmark` (configurações × itens, carga do modelo medida à parte, falhas registradas) e o registro extensível de provedores.
+* [`src/ai_video_editor/benchmark/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/schema.py) e [`report.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/report.py): modelos Pydantic (`BenchmarkRun`, manifesto) e o `results.md`.
 
 ### Módulo Pipeline (comandos `edit` e `revise`)
 * [`src/ai_video_editor/pipeline/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que orquestra as etapas com cache por fingerprint e callbacks de eventos (`on_progress`) e de andamento da etapa em curso (`on_stage_progress`, com `StageProgress`); `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis. O transcriber (`transcribe(..., on_progress)`) e o executor (`execute(plan, on_progress)`) informam o progresso; o pipeline só repassa, sem depender do terminal.

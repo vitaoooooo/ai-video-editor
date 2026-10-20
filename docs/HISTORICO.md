@@ -101,6 +101,19 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   - 📊 Tom a -34,8 LUFS → -16,0 LUFS; tom a -4,3 LUFS (pico -0,6 dBTP) → -16,1 LUFS. Custo da passada de medição: **17,7s para 8min20s de áudio** (trechos de um vídeo 720p de 10 min; o render inteiro foi de 95s para 108s). Quase todo o tempo é o próprio loudnorm (reamostra para 192 kHz para medir o true peak): decodificar o áudio leva 1,5s, o `ebur128` mediria em 3s, mas não calcula o `target_offset`. Na palestra de 57 min, a estimativa é de ~2 min a mais.
   - 📊 358 testes automatizados (somando os do `live-progress`).
 
+- ✅ **Benchmark de transcrição** (`benchmark transcription`): mede tempo, fator de tempo real e **WER** (distância de edição por palavras, com S/D/I e as 10 substituições mais frequentes) de configurações `modelo:dispositivo:compute_type` do faster-whisper contra a transcrição oficial do MIT. Aceita `--reference` opcional (sem ela, só velocidade; WER aparece como "—") e `--manifest` com vários itens (tabela por item + média geral). Saída em `benchmark/results/<data>-<nome>/` (`results.json` validado por Pydantic e `results.md`). O WER foi implementado no projeto, sem dependência nova; o `pypdf` foi instalado só temporariamente para extrair a referência.
+  - 🔁 `FasterWhisperProvider` ganhou `preload(config)`: o modelo é carregado antes e reaproveitado pelo `transcribe`. **Por quê:** o benchmark precisa medir a carga (inclui download na primeira vez) separada da transcrição. O comportamento do `edit` não muda.
+  - 🔁 **Fonte do áudio:** o link do archive.org da tarefa (`MIT18.06S05_MP4/01.mp4`) está fora do ar (404, inclusive na página do OCW); o áudio veio do YouTube oficial do MIT OCW (`J7DzL2_Na80`, mesma aula e mesmo ID do PDF), baixado com yt-dlp instalado fora do projeto. Áudio em `benchmark/data/` (não versionado); a referência (`mit_1806_lecture01_reference.txt`) é versionada com fonte e licença.
+  - 📊 Aula 1 de Álgebra Linear (39min 49s, RTX 2060, `--language en`; tempo sem a carga do modelo):
+
+    | Configuração | Carga | Tempo | Tempo real | WER | S | D | I |
+    |---|---|---|---|---|---|---|---|
+    | `small:cpu:int8` | 2,0s | 11min 42s | 0,294x | 9,2% | 227 | 98 | 130 |
+    | `small:cuda:float16` | 1,0s | 1min 45s | 0,044x | 10,3% | 218 | 98 | 195 |
+    | `large-v3-turbo:cuda:float16` | 58,2s | 1min 24s | 0,035x | 8,9% | 118 | 70 | 254 |
+
+  - 📊 Boa parte do "erro" do `small` é de grafia, não de escuta: dígitos no lugar de números por extenso ("1" × "one", "2" × "two", "0" × "zero") e "ok" × "okay" respondem por mais de 130 substituições. O `large-v3-turbo` escreve mais por extenso (as substituições caem de ~220 para 118), mas insere mais palavras (254). A GPU é ~7x mais rápida que a CPU com o `small`, com WER parecido; o turbo é o mais rápido e o mais preciso. A referência termina no meio de uma frase, então parte das inserções pode ser o fim da aula que a referência não cobre (não verificado).
+
 📊 **Palestra de 57 min, resultado atual:** 57:07 → 53:43, 259 cortes, processada em **8min48s** (0,15× o tempo real, com transcrição em cache).
 
 ---
@@ -113,7 +126,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
 - **Ponto de corte de palavras curtas pela energia do áudio**: na palestra de 57 min, fillers como "Um" e "By" ficaram no vídeo. O tempo do Whisper para essas palavras inclui a pausa ao redor, e o corte só tirou o silêncio (nenhuma palavra foi cortada pela metade). Refinar o início/fim do corte pela energia do áudio dentro do intervalo da palavra.
 - **Status "não aplicada (só a pausa saiu)"**: quando a parte removida de uma frase for apenas silêncio, marcar assim em vez de "parcial" (caso do "By": 0,19s de 0,74s saiu, mas era só pausa).
-- **Benchmark de transcrição**: CPU × GPU × Gemini, comparando com a **transcrição oficial do MIT** (taxa de erro de palavras, tempo e custo) → tabela no README.
+- **Benchmark de transcrição com Gemini**: incluir o provedor (e custo) na comparação; a estrutura aceita novos provedores (`register_benchmark_provider`). Também normalizar números/"ok" no WER, que hoje inflam o erro.
 - **Provedor de transcrição Gemini** (alternativa para quem não tem GPU).
 - **Render na GPU (NVENC)**: o render é hoje a etapa mais lenta em vídeos longos.
 - **Teste com vídeo em português** com mais enrolação.
