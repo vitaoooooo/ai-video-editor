@@ -1,5 +1,7 @@
 """Orquestrador do comando `edit`: probe → silêncios → transcrição → Diretor → plano → render → legendas → relatório.
 
+O relatório vem com a transcrição comparativa (`edit_transcript.md` + `edit_diff.json`) quando há transcrição.
+
 Cada etapa grava um artefato na pasta do projeto e um fingerprint no `project.json`.
 Na execução seguinte, a etapa é pulada se o artefato existe e o fingerprint (hash das
 entradas e parâmetros que a afetam, encadeado com o das etapas anteriores) não mudou.
@@ -31,6 +33,7 @@ from ai_video_editor.pipeline.project import (
     DIRECTOR_DECISION_FILE,
     EDIT_PLAN_FILE,
     EDIT_REPORT_FILE,
+    EDIT_TRANSCRIPT_FILE,
     MANIFEST_FILE,
     PROBE_FILE,
     TRANSCRIPT_FILE,
@@ -41,10 +44,12 @@ from ai_video_editor.pipeline.project import (
     subtitles_file_name,
 )
 from ai_video_editor.pipeline.cutting import plan_keep_ranges
+from ai_video_editor.pipeline.edit_diff import build_edit_diff, remove_edit_diff, write_edit_diff
 from ai_video_editor.pipeline.report import build_edit_report
 from ai_video_editor.pipeline.timing import TimingRecorder, format_duration
 from ai_video_editor.pipeline.versions import register_edit_version
 from ai_video_editor.pipeline.schema import (
+    EditDiff,
     EditPipelineParams,
     EditPipelineResult,
     ProjectManifest,
@@ -60,6 +65,9 @@ from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
 from ai_video_editor.subtitles import build_subtitle_blocks, write_srt
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
+
+# Versão do formato do relatório; entra no fingerprint para refazer relatórios antigos.
+REPORT_FORMAT = "report-v2-comparison"
 
 # (etapa, evento, detalhe). Eventos: "start", "done", "cached", "skipped", "failed", "retry".
 ProgressCallback = Callable[[StageName, str, str], None]
@@ -393,8 +401,10 @@ class EditPipeline:
         if fp_subtitles is not None:
             subtitle_blocks = int(manifest.stages["subtitles"].metrics["blocks"])
 
-        # 8. relatório
-        fp_report = fingerprint("report", fp_render, fp_director, fp_subtitles, fp_transcript, params)
+        # 8. relatório (+ transcrição comparativa, que só existe com transcrição)
+        fp_report = fingerprint(
+            "report", REPORT_FORMAT, fp_render, fp_director, fp_subtitles, fp_transcript, params
+        )
         removed = removed_ranges(
             [TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments],
             metadata.duration_sec,
@@ -402,6 +412,17 @@ class EditPipeline:
 
         def do_report() -> tuple[dict, str]:
             report_started = time.perf_counter()
+            audio = AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE)
+            comparison: Optional[EditDiff] = None
+            if fp_transcript is not None:
+                comparison = _edit_comparison(
+                    video_path, Transcript.load(project_dir / TRANSCRIPT_FILE), director_run, plan,
+                    audio, params, metadata.duration_sec, final_duration,
+                )
+                write_edit_diff(comparison, project_dir)
+            else:
+                remove_edit_diff(project_dir)
+            has_decision = director_run is not None and director_run.decision is not None
             markdown = build_edit_report(
                 video_path,
                 metadata.duration_sec,
@@ -411,19 +432,31 @@ class EditPipeline:
                 params,
                 output_path,
                 director=director_run,
-                audio=AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE),
+                audio=audio,
                 subtitles_path=srt_path if subtitle_blocks is not None else None,
                 subtitle_blocks=subtitle_blocks,
                 transcription_model=(
                     Transcript.load(project_dir / TRANSCRIPT_FILE).model_used if fp_transcript else None
                 ),
                 timings=recorder.snapshot(in_progress=("report", report_started)),
+                comparison=comparison,
+                removal_label="Diretor" if has_decision else None,
             )
             (project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
-            return {"cuts": len(removed)}, f"{len(removed)} cortes"
+            metrics: dict = {"cuts": len(removed)}
+            detail = f"{len(removed)} cortes"
+            if comparison is not None:
+                metrics.update(
+                    applied=comparison.count("applied"),
+                    partial=comparison.count("partial"),
+                    not_applied=comparison.count("not_applied"),
+                )
+                detail += f", transcrição comparativa em {EDIT_TRANSCRIPT_FILE}"
+            return metrics, detail
 
         outcomes["report"] = run.stage("report", fp_report, EDIT_REPORT_FILE, do_report)
 
+        transcript_path = project_dir / EDIT_TRANSCRIPT_FILE
         timings = recorder.snapshot()
         manifest.last_run = timings
         manifest.save(manifest_path)
@@ -436,12 +469,47 @@ class EditPipeline:
             output_path=output_path,
             report_path=project_dir / EDIT_REPORT_FILE,
             subtitles_path=srt_path if subtitle_blocks is not None else None,
+            transcript_path=transcript_path if transcript_path.is_file() else None,
             original_duration_sec=metadata.duration_sec,
             final_duration_sec=final_duration,
             outcomes=outcomes,
             timings=timings,
             warnings=director_run.warnings if director_run is not None else [],
         )
+
+
+def _edit_comparison(
+    video_path: Path,
+    transcript: Transcript,
+    director_run: Optional[DirectorRun],
+    plan: EditPlan,
+    audio: AudioAnalysisResult,
+    params: EditPipelineParams,
+    original_duration_sec: float,
+    final_duration_sec: float,
+) -> EditDiff:
+    """Transcrição comparativa do `edit`: frases do Diretor (ou da transcrição) contra o plano final."""
+    removals = {}
+    cut_results = []
+    if director_run is not None:
+        sentences = director_run.sentences
+        if director_run.decision is not None:
+            removals = {r.sentence_id: r for r in director_run.decision.removals}
+            # Mesmo cálculo da etapa do plano: explica remoções não aplicadas ou parciais.
+            _, cut_results = plan_keep_ranges(audio, sentences, set(removals), params.cut)
+    else:
+        sentences = build_sentences(transcript, params.sentences)
+    return build_edit_diff(
+        video_path.name,
+        sentences,
+        removals,
+        [TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments],
+        cut_results,
+        plan.target_fps,
+        original_duration_sec,
+        final_duration_sec,
+        min_pause_sec=params.transcript_min_pause_sec,
+    )
 
 
 class _Run:

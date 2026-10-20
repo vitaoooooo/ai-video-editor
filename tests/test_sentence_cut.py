@@ -60,6 +60,7 @@ def test_apply_sentence_cuts_removes_sentence_inside_silences():
     silences = [sil(3.0, 4.5), sil(7.5, 9.0)]
     keep = [tr(0, 3.2), tr(4.35, 7.7), tr(8.85, 12)]  # saída do corte de silêncio
     kept_sentences = [tr(0.1, 2.9), tr(9.1, 11.9)]
-    keep, applied = apply_sentence_cuts(keep, [tr(4.6, 7.4)], kept_sentences, silences, PARAMS)
-    assert bounds(applied) == [(3.2, 8.85)]
+    keep, results = apply_sentence_cuts(keep, [tr(4.6, 7.4)], kept_sentences, silences, PARAMS)
+    assert bounds([r.applied for r in results]) == [(3.2, 8.85)]
+    assert results[0].outcome == "applied"
     assert bounds(keep) == [(0, 3.2), (8.85, 12)]

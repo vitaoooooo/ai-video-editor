@@ -8,6 +8,7 @@ from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.director import DirectorDecision, DirectorRun, SentenceRemoval, UserBrief
 from ai_video_editor.director.providers.mock import MockDirector
 from ai_video_editor.pipeline import EditPipeline, EditPipelineParams, ProjectManifest
+from ai_video_editor.pipeline.schema import EditDiff
 from ai_video_editor.pipeline import runner as runner_module
 from ai_video_editor.planning import NoSpeechDetectedError, SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
@@ -321,7 +322,16 @@ def test_end_to_end_director_removes_sentences(tmp_path, lesson_video):
     report = (result.project_dir / "edit_report.md").read_text(encoding="utf-8")
     assert "## Decisões do Diretor" in report
     assert "Duração média das frases" in report and "Duração máxima das frases" in report
-    assert "| 1 | 00:04.600 | 00:07.400 | repetition | Hoje vamos falar de cortes! | Repete a frase 0. |" in report
+    assert (
+        "| 1 | 00:04.600 | 00:07.400 | repetition | Hoje vamos falar de cortes! | Repete a frase 0. | aplicada |"
+        in report
+    )
+    assert report.startswith(
+        "# Relatório de edição — aula-diretor.mp4\n\n"
+        "> **Diretor:** 1 remoção pedida, 1 aplicada, 0 parciais, 0 não aplicadas\n"
+    )
+    assert "| Transcrição comparativa | `edit_transcript.md` e `edit_diff.json` |" in report
+    assert manifest.stages["report"].metrics["applied"] == 1
     assert "| Diretor | mock (mock) |" in report
 
     # Cache: nada muda; mudar o briefing refaz o Diretor
@@ -454,6 +464,19 @@ def test_end_to_end_subtitles_follow_director_cuts(tmp_path, lesson_video):
     report = result.report_path.read_text(encoding="utf-8")
     assert f"| Legendas | `aula-diretor_edited.srt` ({blocks} blocos) |" in report
 
+    # Transcrição comparativa: na raiz e na v1; tempos no editado iguais aos do .srt
+    assert result.transcript_path == result.project_dir / "edit_transcript.md"
+    md = result.transcript_path.read_text(encoding="utf-8")
+    assert "~~Frase repetida que sai do video.~~" in md and "removida pelo Diretor · repetition: Repete." in md
+    diff = EditDiff.model_validate_json((result.project_dir / "edit_diff.json").read_text(encoding="utf-8"))
+    srt_starts = [
+        _to_sec(line.split(" --> ")[0]) for line in content.splitlines() if " --> " in line
+    ]
+    kept = [e for e in diff.sentences if e.status == "kept"]
+    assert [round(e.edited_start_sec, 3) for e in kept] == pytest.approx(srt_starts, abs=0.001)
+    for name in ("edit_transcript.md", "edit_diff.json"):
+        assert (result.project_dir / "versions" / "v1" / name).is_file(), name
+
 
 def _to_sec(stamp: str) -> float:
     h, m, rest = stamp.split(":")
@@ -502,6 +525,11 @@ def test_subtitles_skipped_without_transcript_or_when_disabled(tmp_path, lesson_
     assert plain.outcomes["subtitles"] == "skipped" and plain.subtitles_path is None
     assert not plain.subtitles_path and not list(plain.project_dir.glob("*.srt"))
     assert "| Legendas | `" not in plain.report_path.read_text(encoding="utf-8")
+    # Sem transcrição não há transcrição comparativa: aparece como pulada
+    assert plain.transcript_path is None and not (plain.project_dir / "edit_transcript.md").exists()
+    assert "| Transcrição comparativa | pulada (requer --transcribe) |" in plain.report_path.read_text(
+        encoding="utf-8"
+    )
 
     with_srt = pipeline.run(lesson_video, EditPipelineParams(transcribe=True))
     assert with_srt.subtitles_path.is_file()

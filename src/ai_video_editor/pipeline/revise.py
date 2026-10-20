@@ -15,18 +15,27 @@ from ai_video_editor.audio import AudioAnalysisResult
 from ai_video_editor.director import DirectorDecision, DirectorRun, Sentence, build_sentences
 from ai_video_editor.director.schema import SentenceRemoval
 from ai_video_editor.pipeline.cutting import plan_keep_ranges
+from ai_video_editor.pipeline.edit_diff import build_edit_diff, write_edit_diff
 from ai_video_editor.pipeline.project import (
     AUDIO_ANALYSIS_FILE,
     DIRECTOR_DECISION_FILE,
+    EDIT_DIFF_FILE,
     EDIT_PLAN_FILE,
     EDIT_REPORT_FILE,
+    EDIT_TRANSCRIPT_FILE,
     MANIFEST_FILE,
     PROBE_FILE,
     TRANSCRIPT_FILE,
     subtitles_file_name,
 )
-from ai_video_editor.pipeline.report import build_edit_report, build_revision_section
-from ai_video_editor.pipeline.schema import ProjectManifest, RunTimings, VersionRecord
+from ai_video_editor.pipeline.report import application_cell, build_edit_report, build_revision_section
+from ai_video_editor.pipeline.schema import (
+    EditDiff,
+    ProjectManifest,
+    RemovalOrigin,
+    RunTimings,
+    VersionRecord,
+)
 from ai_video_editor.pipeline.timing import TimingRecorder, build_timings_section, format_duration
 from ai_video_editor.pipeline.versions import (
     VERSION_FILE,
@@ -76,6 +85,7 @@ class RevisionResult(BaseModel):
     video_path: Path
     report_path: Path
     subtitles_path: Optional[Path] = None
+    transcript_path: Optional[Path] = Field(default=None, description="Transcrição comparativa da versão")
     removed: list[ChangedSentence] = Field(default_factory=list, description="Frases removidas nesta versão")
     restored: list[ChangedSentence] = Field(default_factory=list, description="Frases que voltaram ao vídeo")
     duration_before_sec: float
@@ -196,7 +206,7 @@ class ProjectReviser:
 
         cut = apply_pause_preset(base.cut, pacing)
         try:
-            keep, _ = plan_keep_ranges(audio, sentences, new_ids, cut)
+            keep, cut_results = plan_keep_ranges(audio, sentences, new_ids, cut)
         except NoSpeechDetectedError as exc:
             raise RevisionRejectedError(f"o pedido removeria todo o conteúdo ({exc})") from exc
 
@@ -207,8 +217,8 @@ class ProjectReviser:
         try:
             record = self._build_version(
                 project_dir, manifest, base, number, target, request, decision.summary, pacing,
-                cut, keep, sentences, transcript, audio, new_removals, run, decision, base_removals,
-                recorder,
+                cut, keep, cut_results, sentences, transcript, audio, new_removals, run, decision,
+                base_removals, recorder,
             )
         except Exception:
             shutil.rmtree(target, ignore_errors=True)
@@ -227,6 +237,7 @@ class ProjectReviser:
             video_path=target / record.video,
             report_path=target / EDIT_REPORT_FILE,
             subtitles_path=target / record.subtitles if record.subtitles else None,
+            transcript_path=target / EDIT_TRANSCRIPT_FILE,
             removed=[
                 ChangedSentence(id=i, text=by_id[i].text, reason=new_removals[i].reason)
                 for i in sorted(new_ids - base_ids, key=lambda i: by_id[i].start_sec)
@@ -267,10 +278,19 @@ class ProjectReviser:
             return {}
         return {r.sentence_id: r for r in run.decision.removals if r.sentence_id in valid_ids}
 
+    @staticmethod
+    def _base_origins(project_dir: Path, base: VersionRecord) -> dict[int, RemovalOrigin]:
+        """Quem removeu cada frase na versão base (sem diff gravado: Diretor no `edit`, senão revisão)."""
+        path = version_dir(project_dir, base.number) / EDIT_DIFF_FILE
+        if not path.is_file():
+            return {}
+        diff = EditDiff.model_validate_json(path.read_text(encoding="utf-8"))
+        return {e.sentence_id: e.origin for e in diff.sentences if e.removal_requested and e.origin}
+
     def _build_version(
         self, project_dir, manifest, base, number, target, request, summary, pacing,
-        cut, keep, sentences, transcript, audio, new_removals, run, decision, base_removals,
-        recorder,
+        cut, keep, cut_results, sentences, transcript, audio, new_removals, run, decision,
+        base_removals, recorder,
     ):
         probe = manifest.stages["probe"].metrics
         output_path = target / base.video
@@ -327,12 +347,38 @@ class ProjectReviser:
         by_id = {s.id: s for s in sentences}
         base_ids, new_ids = set(base_removals), set(new_removals)
         restored_reasons = {r.sentence_id: r.reason for r in decision.restorations}
+
+        base_origins = self._base_origins(project_dir, base)
+        default_origin: RemovalOrigin = "director" if base.kind == "edit" else "revision"
+        origins: dict[int, RemovalOrigin] = {
+            i: "revision" if i not in base_ids else base_origins.get(i, default_origin) for i in new_ids
+        }
+        comparison = build_edit_diff(
+            manifest.video_path.name,
+            sentences,
+            new_removals,
+            keep,
+            cut_results,
+            plan.target_fps,
+            duration,
+            rendered.duration_sec,
+            min_pause_sec=params.transcript_min_pause_sec,
+            origins=origins,
+            version=number,
+            base_version=base.number,
+            request=request,
+            restored={i: restored_reasons.get(i, "") for i in base_ids - new_ids},
+            removed_now=new_ids - base_ids,
+        )
+        write_edit_diff(comparison, target)
+
         changes = [
             (
                 i,
                 by_id[i].text,
                 "removida" if i in base_ids else "mantida",
                 "removida" if i in new_ids else "mantida",
+                application_cell(comparison, i),
                 new_removals[i].reason if i in new_ids else restored_reasons.get(i, ""),
             )
             for i in sorted(base_ids ^ new_ids, key=lambda i: by_id[i].start_sec)
@@ -348,6 +394,8 @@ class ProjectReviser:
             audio=audio,
             subtitles_path=target / subtitles_name if subtitles_name else None,
             subtitle_blocks=blocks if subtitles_name else None,
+            comparison=comparison,
+            removal_label=f"Revisão v{number}",
         ) + build_revision_section(
             request, base.number, number, summary, base.pacing, pacing, changes
         )

@@ -17,6 +17,8 @@ TRANSCRIPT_FILE = "transcript.json"
 DIRECTOR_DECISION_FILE = "director_decision.json"
 EDIT_PLAN_FILE = "edit_plan.json"
 EDIT_REPORT_FILE = "edit_report.md"
+EDIT_TRANSCRIPT_FILE = "edit_transcript.md"
+EDIT_DIFF_FILE = "edit_diff.json"
 
 # Hash por amostragem: lê só alguns blocos, então vídeos de vários GB não pagam leitura completa.
 _HASH_CHUNK = 4 * 1024 * 1024

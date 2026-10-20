@@ -12,8 +12,10 @@ from typing import Optional
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.pipeline.project import (
     DIRECTOR_DECISION_FILE,
+    EDIT_DIFF_FILE,
     EDIT_PLAN_FILE,
     EDIT_REPORT_FILE,
+    EDIT_TRANSCRIPT_FILE,
     fingerprint,
 )
 from ai_video_editor.pipeline.schema import ProjectManifest, RunTimings, VersionRecord
@@ -58,6 +60,16 @@ def edit_fingerprint(manifest: ProjectManifest) -> Optional[str]:
     return fingerprint("edit-version", render.fingerprint, manifest.stages["subtitles"].fingerprint)
 
 
+def _backfill_comparison(project_dir: Path, target: Path) -> None:
+    """Versão criada antes da transcrição comparativa: recebe os arquivos novos e o relatório refeito."""
+    source = project_dir / EDIT_TRANSCRIPT_FILE
+    if not target.is_dir() or not source.is_file() or (target / EDIT_TRANSCRIPT_FILE).is_file():
+        return
+    for name in (EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE, EDIT_REPORT_FILE):
+        if (project_dir / name).is_file():
+            shutil.copy2(project_dir / name, target / name)
+
+
 def register_edit_version(
     project_dir: Path,
     manifest: ProjectManifest,
@@ -76,6 +88,7 @@ def register_edit_version(
         return None
     for record in manifest.versions:
         if record.edit_fp == fp:
+            _backfill_comparison(project_dir, version_dir(project_dir, record.number))
             return record
 
     number = max((r.number for r in manifest.versions), default=0) + 1
@@ -96,6 +109,9 @@ def register_edit_version(
             shutil.copy2(project_dir / subtitles, target / subtitles)
         if manifest.stages["director"].status == "done" and (project_dir / DIRECTOR_DECISION_FILE).is_file():
             shutil.copy2(project_dir / DIRECTOR_DECISION_FILE, target / DIRECTOR_DECISION_FILE)
+        for name in (EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE):
+            if (project_dir / name).is_file():
+                shutil.copy2(project_dir / name, target / name)
 
         director_metrics = manifest.stages["director"].metrics
         record = VersionRecord(
