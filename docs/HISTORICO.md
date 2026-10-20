@@ -88,6 +88,10 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - ✅ **Provedores de IA plugáveis** (`llm-providers`): camada `llm/`, Gemini + **OpenAI**, e **troca automática de modelo** (3.8-flash → 3.6-flash → 3.5-flash-lite, e opcionalmente entre provedores) com aviso no terminal.
   - **Por quê:** quando um modelo fica sobrecarregado, outro costuma estar livre; e a arquitetura prova na prática que trocar de IA não exige reescrever o editor.
   - 📊 312 testes automatizados.
+- ✅ **Transcrição comparativa + status de aplicação** (`edit-transcript`): `edit_transcript.md` com a fala original inteira, em ordem cronológica — frases mantidas com `[tempo no original → tempo no vídeo editado]` (mesmo remapeamento das legendas), removidas riscadas com quem removeu, categoria e motivo, pausas removidas de 1s ou mais, e nas revisões as frases restauradas (✅) e removidas agora (🆕). O mesmo conteúdo sai estruturado em `edit_diff.json`. Cada remoção pedida é marcada como **aplicada** (≥ 90% saiu), **parcial** (segundos e %) ou **não aplicada** (com o motivo), na tabela do Diretor, na seção Revisão e num resumo no topo do relatório.
+  - **Por quê:** na palestra, o relatório dizia que a palavra "anymore" tinha sido removida, mas a trava de segurança das folgas das frases vizinhas anulou o corte — nada saiu do vídeo. E de "By" só 0,19s de 0,74s foi cortado. O relatório precisa refletir o que realmente aconteceu no plano final, não só o que a IA pediu.
+  - 🔁 **Regra do pedaço de palavra:** se o corte deixaria uma sobra da frase menor que 0,25s, ele é estendido até o limite da frase; se isso invadir uma frase mantida, o corte é desfeito. Nunca fica meia palavra no vídeo.
+  - 📊 320 testes automatizados.
 
 📊 **Palestra de 57 min, resultado atual:** 57:07 → 53:43, 259 cortes, processada em **8min48s** (0,15× o tempo real, com transcrição em cache).
 
@@ -95,8 +99,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
 ## 🔄 Em andamento
 
-- **Transcrição comparativa + status de aplicação** (`edit-transcript`): `edit_transcript.md` com a fala original e o que saiu (riscado, com motivo) e `edit_diff.json`; cada remoção marcada como **aplicada / parcial / não aplicada**.
-  - **Por quê:** o relatório dizia que a palavra "anymore" tinha sido removida, mas a trava de segurança das folgas anulou o corte — o relatório precisa refletir o que realmente aconteceu.
+- (nada no momento)
 
 ## 🔮 Próximos passos (V1)
 

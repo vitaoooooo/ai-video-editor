@@ -106,7 +106,7 @@ def test_edit_creates_v1_with_all_artifacts(edited):
     vdir = edited.project / "versions" / "v1"
     for name in (
         "director_decision.json", "edit_plan.json", "edit_report.md", "version.json",
-        v1.video, v1.subtitles,
+        "edit_transcript.md", "edit_diff.json", v1.video, v1.subtitles,
     ):
         assert (vdir / name).is_file(), name
     plan = json.loads((vdir / "edit_plan.json").read_text(encoding="utf-8"))
@@ -175,8 +175,21 @@ def test_revise_restores_one_sentence_and_removes_another_keeping_v1_intact(edit
     assert "## Revisão" in report
     assert "| Pedido | mantém a frase repetida e tira o final |" in report
     assert "Restaurei a frase 1 e tirei a despedida." in report
-    assert "| 1 | Frase repetida que sai do video. | removida | mantida | O usuário quer essa frase. |" in report
-    assert "| 3 | Obrigado por assistir. | mantida | removida | Despedida desnecessária. |" in report
+    assert "| 1 | Frase repetida que sai do video. | removida | mantida | — | O usuário quer essa frase. |" in report
+    assert "| 3 | Obrigado por assistir. | mantida | removida | aplicada | Despedida desnecessária. |" in report
+    assert "> **Revisão v2:** 1 remoção pedida, 1 aplicada, 0 parciais, 0 não aplicadas" in report
+    assert "| Transcrição comparativa | `edit_transcript.md` e `edit_diff.json` |" in report
+
+    # Transcrição comparativa da v2: frase restaurada marcada, removida nesta revisão com o pedido
+    assert result.transcript_path == v2_dir / "edit_transcript.md"
+    md = result.transcript_path.read_text(encoding="utf-8")
+    assert "| Versão | v2 (revisão da v1) |" in md
+    restored = next(line for line in md.splitlines() if "Frase repetida" in line)
+    assert restored.startswith("✅ ") and "restaurada nesta revisão: O usuário quer essa frase." in restored
+    removed = next(line for line in md.splitlines() if "Obrigado" in line)
+    assert removed.startswith("🆕 ~~Obrigado por assistir.~~")
+    assert "pedido: “mantém a frase repetida e tira o final”" in removed
+    assert (v2_dir / "edit_diff.json").is_file()
 
     # v1 e os artefatos da raiz continuam intactos
     assert {p.name: p.read_bytes() for p in v1_dir.iterdir()} == v1_files

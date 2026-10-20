@@ -254,6 +254,7 @@ def handle_edit(args: argparse.Namespace) -> int:
             ),
             subtitles=not args.no_subtitles,
             subtitle=SubtitleParams(max_chars_per_line=args.subtitle_max_chars),
+            transcript_min_pause_sec=args.transcript_min_pause,
         )
     except ValueError as e:
         print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
@@ -276,6 +277,8 @@ def handle_edit(args: argparse.Namespace) -> int:
     print(f"Relatório: {result.report_path}")
     if result.subtitles_path is not None:
         print(f"Legendas: {result.subtitles_path}")
+    if result.transcript_path is not None:
+        print(f"Transcrição comparativa: {result.transcript_path}")
     if result.version is not None:
         print(f"Versão: v{result.version} (revise com: revise \"{result.project_dir}\" \"pedido\")")
     print(
@@ -367,6 +370,8 @@ def handle_revise(args: argparse.Namespace) -> int:
     print(f"Relatório: {result.report_path}")
     if result.subtitles_path is not None:
         print(f"Legendas: {result.subtitles_path}")
+    if result.transcript_path is not None:
+        print(f"Transcrição comparativa: {result.transcript_path}")
     _print_run_summary(result.timings)
     return 0
 
@@ -629,6 +634,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=SubtitleParams().max_chars_per_line,
         help="Máximo de caracteres por linha da legenda (padrão: 42)",
+    )
+    edit_parser.add_argument(
+        "--transcript-min-pause",
+        type=float,
+        default=1.0,
+        help="Pausas removidas a partir desta duração (s) aparecem na transcrição comparativa (padrão: 1.0)",
     )
     edit_parser.add_argument(
         "--force", action="store_true", help="Refaz todas as etapas, ignorando o cache"

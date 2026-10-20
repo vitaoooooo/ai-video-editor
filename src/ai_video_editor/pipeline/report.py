@@ -7,7 +7,8 @@ from ai_video_editor.audio import AudioAnalysisResult
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.director.schema import DirectorRun
 from ai_video_editor.revision.schema import RevisionRun
-from ai_video_editor.pipeline.schema import EditPipelineParams, RunTimings
+from ai_video_editor.pipeline.project import EDIT_DIFF_FILE, EDIT_TRANSCRIPT_FILE
+from ai_video_editor.pipeline.schema import EditDiff, EditPipelineParams, RunTimings
 from ai_video_editor.pipeline.timing import build_timings_section
 from ai_video_editor.planning.schema import TimeRange
 
@@ -58,8 +59,14 @@ def build_edit_report(
     subtitle_blocks: Optional[int] = None,
     transcription_model: Optional[str] = None,
     timings: Optional[RunTimings] = None,
+    comparison: Optional[EditDiff] = None,
+    removal_label: Optional[str] = None,
 ) -> str:
-    """Monta o Markdown com resumo, parâmetros, trechos removidos, decisões do Diretor e tempos."""
+    """Monta o Markdown com resumo, parâmetros, trechos removidos, decisões do Diretor e tempos.
+
+    Com `comparison` (transcrição comparativa), mostra o status de aplicação de cada remoção;
+    com `removal_label` também, abre o relatório com a contagem (`Diretor: 7 remoções pedidas...`).
+    """
     removed_sec = max(0.0, original_duration_sec - final_duration_sec)
     pct = removed_sec / original_duration_sec * 100 if original_duration_sec > 0 else 0.0
     width, height = plan.target_resolution
@@ -70,9 +77,15 @@ def build_edit_report(
         else []
     )
 
-    lines = [
-        f"# Relatório de edição — {video_path.name}",
-        "",
+    comparison_row = (
+        f"| Transcrição comparativa | `{EDIT_TRANSCRIPT_FILE}` e `{EDIT_DIFF_FILE}` |"
+        if comparison is not None
+        else "| Transcrição comparativa | pulada (requer --transcribe) |"
+    )
+    lines = [f"# Relatório de edição — {video_path.name}", ""]
+    if comparison is not None and removal_label:
+        lines += [f"> **{removal_label}:** {comparison.removal_counts()}", ""]
+    lines += [
         "## Resumo",
         "",
         "| Item | Valor |",
@@ -87,6 +100,7 @@ def build_edit_report(
         f"| Saída | {width}x{height} @ {plan.target_fps}fps |",
         *subtitle_rows,
         *([f"| Transcrição | `{transcription_model}` |"] if transcription_model else []),
+        comparison_row,
         "",
         "## Parâmetros",
         "",
@@ -114,7 +128,7 @@ def build_edit_report(
     else:
         lines.append("Nenhum trecho removido.")
     if director is not None:
-        lines += ["", *_director_section(director)]
+        lines += ["", *_director_section(director, comparison)]
     text = "\n".join(lines) + "\n"
     if timings is not None:
         text += build_timings_section(timings)
@@ -138,7 +152,15 @@ def model_rows(run: Union[DirectorRun, RevisionRun]) -> list[str]:
     return rows
 
 
-def _director_section(director: DirectorRun) -> list[str]:
+def application_cell(comparison: Optional[EditDiff], sentence_id: int) -> str:
+    """Status de aplicação de uma remoção para uma célula de tabela (`—` sem transcrição comparativa)."""
+    entry = comparison.entry_for(sentence_id) if comparison is not None else None
+    if entry is None or not entry.removal_requested:
+        return "—"
+    return _cell(entry.application_label())
+
+
+def _director_section(director: DirectorRun, comparison: Optional[EditDiff] = None) -> list[str]:
     brief = director.brief
     target = f"{brief.target_duration_sec:.0f}s" if brief.target_duration_sec is not None else "—"
     lines = [
@@ -180,12 +202,13 @@ def _director_section(director: DirectorRun) -> list[str]:
         lines.append("Nenhuma frase removida.")
         return lines
     lines += [
-        "| # | Início | Fim | Categoria | Texto | Motivo |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| # | Início | Fim | Categoria | Texto | Motivo | Aplicação |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     lines += [
         f"| {sentence.id} | {format_timestamp(sentence.start_sec)} | {format_timestamp(sentence.end_sec)} "
-        f"| {removal.category} | {_cell(sentence.text)} | {_cell(removal.reason)} |"
+        f"| {removal.category} | {_cell(sentence.text)} | {_cell(removal.reason)} "
+        f"| {application_cell(comparison, sentence.id)} |"
         for sentence, removal in removed
     ]
     return lines
@@ -198,12 +221,12 @@ def build_revision_section(
     summary: str,
     pacing_before: str,
     pacing_after: str,
-    changes: list[tuple[int, str, str, str, str]],
+    changes: list[tuple[int, str, str, str, str, str]],
     reviser: Optional[RevisionRun] = None,
 ) -> str:
     """Seção "Revisão" do relatório de uma versão nova.
 
-    `changes`: (id da frase, texto, antes, depois, motivo), em ordem cronológica.
+    `changes`: (id da frase, texto, antes, depois, aplicação, motivo), em ordem cronológica.
     """
     lines = [
         "",
@@ -226,9 +249,12 @@ def build_revision_section(
     if not changes:
         lines.append("Nenhuma frase mudou de estado.")
     else:
-        lines += ["| Frase | Texto | Antes | Depois | Motivo |", "| --- | --- | --- | --- | --- |"]
         lines += [
-            f"| {sid} | {_cell(text)} | {before} | {after} | {_cell(reason)} |"
-            for sid, text, before, after, reason in changes
+            "| Frase | Texto | Antes | Depois | Aplicação | Motivo |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        lines += [
+            f"| {sid} | {_cell(text)} | {before} | {after} | {application} | {_cell(reason)} |"
+            for sid, text, before, after, application, reason in changes
         ]
     return "\n".join(lines) + "\n"

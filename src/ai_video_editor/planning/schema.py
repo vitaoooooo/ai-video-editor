@@ -1,6 +1,6 @@
 """Schemas Pydantic do planejamento de cortes."""
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -41,6 +41,20 @@ class TimeRange(BaseModel):
     @property
     def duration(self) -> float:
         return round(self.end_sec - self.start_sec, 3)
+
+
+# Destino de um corte de frase(s): aplicado (ajustado aos silêncios), estendido até o limite
+# da frase para não deixar pedaço de palavra, anulado pela folga das frases vizinhas
+# ("protected") ou desfeito por deixar pedaço de palavra que não podia ser removido ("undone").
+SentenceCutOutcome = Literal["applied", "extended", "protected", "undone"]
+
+
+class SentenceCutResult(BaseModel):
+    """O que aconteceu com um corte de frase(s) pedido pelo Diretor ou pela revisão."""
+
+    requested: TimeRange = Field(..., description="Intervalo da(s) frase(s) na transcrição")
+    applied: Optional[TimeRange] = Field(default=None, description="Corte efetivo; None se nada saiu")
+    outcome: SentenceCutOutcome
 
 
 PausePreset = Literal["natural", "normal", "tight"]

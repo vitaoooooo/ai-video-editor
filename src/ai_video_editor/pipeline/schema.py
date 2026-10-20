@@ -62,6 +62,11 @@ class EditPipelineParams(BaseModel):
     brief: UserBrief = Field(default_factory=UserBrief)
     subtitles: bool = Field(default=True, description="Gera o .srt quando há transcrição")
     subtitle: SubtitleParams = Field(default_factory=SubtitleParams)
+    transcript_min_pause_sec: float = Field(
+        default=1.0,
+        ge=0.0,
+        description="Pausas removidas a partir desta duração ganham marcador na transcrição comparativa",
+    )
 
 
     @model_validator(mode="after")
@@ -175,9 +180,139 @@ class EditPipelineResult(BaseModel):
     subtitles_path: Optional[Path] = Field(
         default=None, description="Legenda .srt gerada ou reaproveitada nesta execução"
     )
+    transcript_path: Optional[Path] = Field(
+        default=None, description="Transcrição comparativa (`edit_transcript.md`), quando há transcrição"
+    )
     version: Optional[int] = Field(default=None, description="Versão do projeto que corresponde ao resultado")
     original_duration_sec: float
     final_duration_sec: float
     outcomes: dict[StageName, StageOutcome]
     timings: Optional[RunTimings] = None
     warnings: list[str] = Field(default_factory=list)
+
+
+# --- Transcrição comparativa (`edit_diff.json`) ---
+
+DiffEntryType = Literal["sentence", "pause"]
+# kept: frase sem pedido de remoção. As demais são o status de aplicação de uma remoção pedida:
+# applied (>= 90% saiu), partial (saiu uma parte) ou not_applied (a frase continua no vídeo).
+SentenceDiffStatus = Literal["kept", "applied", "partial", "not_applied"]
+RemovalOrigin = Literal["director", "revision"]
+RevisionChange = Literal["restored", "removed"]
+
+_ORIGIN_LABELS: dict[str, str] = {"director": "Diretor", "revision": "revisão"}
+
+
+def format_seconds(seconds: float, digits: int = 2) -> str:
+    """`0.19` -> `0,19s`."""
+    return f"{seconds:.{digits}f}".replace(".", ",") + "s"
+
+
+class DiffEntry(BaseModel):
+    """Uma frase ou pausa removida da transcrição comparativa, nos tempos do original e do editado."""
+
+    type: DiffEntryType
+    original_start_sec: float = Field(..., ge=0.0)
+    original_end_sec: float = Field(..., ge=0.0)
+    edited_start_sec: Optional[float] = Field(
+        default=None, description="Onde o item começa no vídeo editado; None se nada dele ficou"
+    )
+    edited_end_sec: Optional[float] = Field(
+        default=None, description="Onde o item termina no vídeo editado; em pausas, igual ao início"
+    )
+    sentence_id: Optional[int] = None
+    text: Optional[str] = None
+    status: Optional[SentenceDiffStatus] = Field(default=None, description="Só em frases")
+    removed_sec: float = Field(default=0.0, ge=0.0, description="Quanto do intervalo saiu do vídeo")
+    removed_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    origin: Optional[RemovalOrigin] = Field(default=None, description="Quem pediu a remoção")
+    category: Optional[str] = None
+    reason: Optional[str] = Field(default=None, description="Motivo da remoção")
+    application_note: Optional[str] = Field(
+        default=None, description="Por que a remoção não foi aplicada ou foi só parcial"
+    )
+    revision_change: Optional[RevisionChange] = Field(
+        default=None, description="Mudança desta revisão: frase restaurada ou removida agora"
+    )
+    restoration_reason: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _check(self) -> "DiffEntry":
+        if self.original_end_sec < self.original_start_sec:
+            raise ValueError("original_end_sec deve ser maior ou igual a original_start_sec")
+        if self.type == "sentence" and (self.sentence_id is None or self.text is None or self.status is None):
+            raise ValueError("frases precisam de sentence_id, text e status")
+        return self
+
+    @property
+    def duration_sec(self) -> float:
+        return round(self.original_end_sec - self.original_start_sec, 3)
+
+    @property
+    def removal_requested(self) -> bool:
+        return self.type == "sentence" and self.status != "kept"
+
+    @property
+    def origin_label(self) -> str:
+        return _ORIGIN_LABELS.get(self.origin or "director", "Diretor")
+
+    def application_label(self) -> str:
+        """`aplicada`, `parcial (0,19s de 0,74s, 26%)` ou `não aplicada: motivo`; vazio se mantida."""
+        if self.status == "applied":
+            return "aplicada"
+        if self.status == "partial":
+            label = (
+                f"parcial ({format_seconds(self.removed_sec)} de {format_seconds(self.duration_sec)}, "
+                f"{self.removed_pct:.0f}%)"
+            )
+            return f"{label}: {self.application_note}" if self.application_note else label
+        if self.status == "not_applied":
+            return f"não aplicada: {self.application_note}" if self.application_note else "não aplicada"
+        return ""
+
+
+def _plural(count: int, singular: str, plural: str) -> str:
+    return f"{count} {singular if count == 1 else plural}"
+
+
+class EditDiff(BaseModel):
+    """Conteúdo do `edit_diff.json`: a fala original inteira com o que saiu, o que ficou e por quê."""
+
+    video_name: str
+    version: Optional[int] = Field(default=None, description="Versão de revisão; None no `edit`")
+    base_version: Optional[int] = Field(default=None, description="Versão em que a revisão se baseou")
+    request: Optional[str] = Field(default=None, description="Pedido da revisão")
+    original_duration_sec: float = Field(..., ge=0.0)
+    final_duration_sec: float = Field(..., ge=0.0)
+    removed_pause_sec: float = Field(
+        default=0.0, ge=0.0, description="Tempo removido fora das frases marcadas para remoção"
+    )
+    min_pause_marker_sec: float = Field(
+        default=1.0, ge=0.0, description="Pausas a partir desta duração aparecem como item"
+    )
+    entries: list[DiffEntry] = Field(default_factory=list, description="Itens em ordem cronológica")
+
+    @property
+    def sentences(self) -> list[DiffEntry]:
+        return [e for e in self.entries if e.type == "sentence"]
+
+    def count(self, status: SentenceDiffStatus) -> int:
+        return sum(1 for e in self.sentences if e.status == status)
+
+    def entry_for(self, sentence_id: int) -> Optional[DiffEntry]:
+        return next((e for e in self.sentences if e.sentence_id == sentence_id), None)
+
+    def application_counts(self) -> str:
+        """`5 aplicadas, 1 parcial, 1 não aplicada`."""
+        return ", ".join(
+            [
+                _plural(self.count("applied"), "aplicada", "aplicadas"),
+                _plural(self.count("partial"), "parcial", "parciais"),
+                _plural(self.count("not_applied"), "não aplicada", "não aplicadas"),
+            ]
+        )
+
+    def removal_counts(self) -> str:
+        """`7 remoções pedidas, 5 aplicadas, 1 parcial, 1 não aplicada`."""
+        requested = sum(1 for e in self.sentences if e.removal_requested)
+        return f"{_plural(requested, 'remoção pedida', 'remoções pedidas')}, {self.application_counts()}"
