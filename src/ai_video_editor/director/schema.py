@@ -30,6 +30,20 @@ class Sentence(BaseModel):
         return round(self.end_sec - self.start_sec, 3)
 
 
+class SentenceParams(BaseModel):
+    """Regras de montagem das frases; entram no fingerprint da etapa do Diretor."""
+
+    max_pause_sec: float = Field(
+        default=1.0, gt=0.0, description="Pausa entre segmentos acima da qual a frase termina"
+    )
+    max_sentence_sec: float = Field(
+        default=12.0, gt=0.0, description="Duração a partir da qual a frase é fechada no melhor ponto"
+    )
+    max_sentence_words: int = Field(
+        default=40, ge=1, description="Número de palavras a partir do qual a frase é fechada no melhor ponto"
+    )
+
+
 class UserBrief(BaseModel):
     """O que o usuário pediu para a edição."""
 

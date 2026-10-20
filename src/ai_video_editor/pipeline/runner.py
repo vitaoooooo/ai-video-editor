@@ -283,12 +283,12 @@ class EditPipeline:
             director = self.director_for(params)
             fp_director = fingerprint(
                 "director", fp_transcript, director.provider_name, director.model_id,
-                director.thinking_label, params.brief
+                director.thinking_label, params.brief, params.sentences
             )
 
             def do_director() -> tuple[dict, str]:
                 transcript = Transcript.load(project_dir / TRANSCRIPT_FILE)
-                sentences = build_sentences(transcript)
+                sentences = build_sentences(transcript, params.sentences)
                 context = DirectorContext(
                     video_name=video_path.name,
                     duration_sec=metadata.duration_sec,

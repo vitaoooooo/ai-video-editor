@@ -17,7 +17,7 @@ from ai_video_editor.director import (
 )
 from ai_video_editor.director.providers.gemini import GeminiDirector, build_director_prompt
 from ai_video_editor.director.providers.mock import MockDirector
-from ai_video_editor.director.schema import Sentence
+from ai_video_editor.director.schema import Sentence, SentenceParams
 from ai_video_editor.director.sentences import split_by_removal
 from ai_video_editor.intelligence.exceptions import (
     AIProviderError,
@@ -99,7 +99,7 @@ def test_sentences_split_on_long_pause_without_punctuation():
 def test_sentences_pause_threshold_is_strict_and_configurable():
     transcript = _transcript([(0.0, 1.0, "a"), (2.0, 3.0, "b"), (4.5, 5.0, "c")])
     assert [s.segment_ids for s in build_sentences(transcript)] == [[0, 1], [2]]
-    assert [s.segment_ids for s in build_sentences(transcript, max_pause_sec=2.0)] == [[0, 1, 2]]
+    assert [s.segment_ids for s in build_sentences(transcript, SentenceParams(max_pause_sec=2.0))] == [[0, 1, 2]]
 
 
 def test_split_by_removal_merges_consecutive_removed_sentences():
@@ -399,3 +399,42 @@ def test_gemini_director_does_not_escalate_on_other_errors():
     director = GeminiDirector(client=SimpleNamespace(models=_Boom()), thinking="off", retry=RetryPolicy(max_retries=0))
     with pytest.raises(AIRateLimitError):
         director.decide(build_sentences(_transcript([(0.0, 2.0, " Oi.")])), UserBrief(), CONTEXT)
+
+
+def test_unpunctuated_speech_is_capped_at_max_sentence_sec():
+    transcript = _transcript([(i * 2.0, i * 2.0 + 2.0, f"palavra{i}") for i in range(60)])
+    sentences = build_sentences(transcript)
+    assert len(sentences) == 10
+    assert max(s.duration for s in sentences) <= 12.0
+    assert [i for s in sentences for i in s.segment_ids] == list(range(60))
+
+
+def test_long_sentence_closes_at_comma_then_largest_pause_then_any_end():
+    comma = _transcript(
+        [(0.0, 4.0, "a"), (4.0, 8.0, "b,"), (8.0, 10.0, "c"), (10.0, 14.0, "d")]
+    )
+    assert [s.segment_ids for s in build_sentences(comma)] == [[0, 1], [2, 3]]
+    pause = _transcript(
+        [(0.0, 4.0, "a"), (4.1, 8.0, "b"), (8.5, 10.0, "c"), (10.0, 14.0, "d")]
+    )
+    assert [s.segment_ids for s in build_sentences(pause)] == [[0, 1], [2, 3]]
+    plain = _transcript([(0.0, 5.0, "a"), (5.0, 10.0, "b"), (10.0, 15.0, "c")])
+    assert [s.segment_ids for s in build_sentences(plain)] == [[0, 1], [2]]
+
+
+def test_word_limit_and_never_splitting_inside_a_segment():
+    words = " ".join(f"p{i}" for i in range(10))
+    transcript = _transcript([(0.0, 1.0, words), (1.0, 2.0, words), (2.0, 3.0, words)])
+    params = SentenceParams(max_sentence_words=15)
+    assert [s.segment_ids for s in build_sentences(transcript, params)] == [[0], [1], [2]]
+    huge = _transcript([(0.0, 30.0, "um segmento enorme sem pontuação")])
+    assert [s.segment_ids for s in build_sentences(huge)] == [[0]]
+
+
+def test_punctuated_speech_is_unchanged_by_the_size_limits():
+    transcript = _transcript(
+        [(0.0, 3.0, "Primeira."), (3.2, 6.0, "Segunda parte"), (6.1, 8.0, "continua."), (9.5, 11.0, "Sem fim")]
+    )
+    legacy = SentenceParams(max_sentence_sec=1e9, max_sentence_words=10**9)
+    assert build_sentences(transcript) == build_sentences(transcript, legacy)
+    assert [s.segment_ids for s in build_sentences(transcript)] == [[0], [1, 2], [3]]

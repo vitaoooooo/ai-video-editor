@@ -575,3 +575,25 @@ def test_mock_reviser_is_deterministic():
     b = MockReviser().revise(_states(), UserBrief(), context)
     assert a == b and a.pacing == "tight" and [r.sentence_id for r in a.restorations] == [1]
     assert AIResponseValidationError  # import usado em outros testes de erro
+
+
+@pytest.mark.slow
+def test_legacy_project_keeps_the_sentences_of_the_base_version(edited):
+    """Projeto de antes dos limites de frase: manifesto sem `sentences` e frases que a regra nova não remonta."""
+    manifest_path = edited.result.manifest_path
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    raw["params"].pop("sentences", None)
+    manifest_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    v1_path = edited.project / "versions" / "v1" / "director_decision.json"
+    v1 = json.loads(v1_path.read_text(encoding="utf-8"))
+    last, prev = v1["sentences"].pop(), v1["sentences"][-1]
+    prev.update(end_sec=last["end_sec"], text=f"{prev['text']} {last['text']}",
+                segment_ids=prev["segment_ids"] + last["segment_ids"])
+    v1_path.write_text(json.dumps(v1), encoding="utf-8")
+
+    assert ProjectManifest.load(manifest_path).params.sentences.max_sentence_sec == 12.0
+    result = _revise(edited.project, MockReviser(), "restaura")
+    assert result.version.number == 2
+    v2 = json.loads((edited.project / "versions" / "v2" / "director_decision.json").read_text(encoding="utf-8"))
+    assert v2["sentences"] == v1["sentences"]
