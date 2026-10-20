@@ -77,6 +77,7 @@ def test_short_sentence_between_kept_ones_is_not_applied_and_not_struck():
     line = next(l for l in md.splitlines() if "anymore" in l)
     assert line.startswith("⚠️ ") and "~~" not in line
     assert "**remoção não aplicada**, continua no vídeo: protegida pela folga das frases vizinhas" in line
+    assert line.endswith("vizinhas. Remoção pedida pelo Diretor · filler: Enrolação.")
     assert diff.removal_counts() == "1 remoção pedida, 0 aplicadas, 0 parciais, 1 não aplicada"
 
 
@@ -191,7 +192,7 @@ def test_applied_removal_is_struck_with_reason_and_long_pauses_get_a_marker(tmp_
     assert "⏸ pausa de 1,1s removida `[00:12.200]`" in md
     assert diff.removed_pause_sec == pytest.approx(1.4 + 1.15 + 1.15, abs=0.001)
     assert "| Frases mantidas | 3 |" in md
-    assert "| Frases marcadas para remoção | 1: 1 aplicadas, 0 parciais, 0 não aplicadas |" in md
+    assert "| Frases marcadas para remoção | 1 (1 aplicada, 0 parciais, 0 não aplicadas) |" in md
     assert "| Pausas removidas | 3,7s (no texto, só as de 1,0s ou mais) |" in md
 
     # Pausas menores que o limite só entram no total

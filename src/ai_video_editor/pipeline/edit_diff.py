@@ -191,14 +191,19 @@ def _span(entry: DiffEntry) -> str:
 
 
 def _removal_detail(entry: DiffEntry, request: Optional[str]) -> str:
-    """`removida pelo Diretor (repetition): motivo` ou `removida nesta revisão (...)`."""
+    """`removida pelo Diretor · repetition: motivo`; `remoção pedida ...` quando a frase não saiu toda."""
+    verb = "removida" if entry.status == "applied" else "remoção pedida"
     if entry.revision_change == "removed" and request:
-        who = f"removida nesta revisão (pedido: “{request}”)"
+        who = f"{verb} nesta revisão (pedido: “{request}”)"
     elif entry.origin == "revision":
-        who = "removida em revisão anterior"
+        who = f"{verb} em revisão anterior"
     else:
-        who = "removida pelo Diretor"
+        who = f"{verb} pelo Diretor"
     return f"{who} · {entry.category}: {entry.reason}"
+
+
+def _capitalize(text: str) -> str:
+    return text[:1].upper() + text[1:]
 
 
 def _entry_line(entry: DiffEntry, request: Optional[str]) -> str:
@@ -219,11 +224,11 @@ def _entry_line(entry: DiffEntry, request: Optional[str]) -> str:
         return (
             f"◐ {new_mark}{_span(entry)} {text} — **remoção parcial**: saíram "
             f"{format_seconds(entry.removed_sec)} de {format_seconds(entry.duration_sec)} "
-            f"({entry.removed_pct:.0f}%); {entry.application_note}. Pedido: {_removal_detail(entry, request)}"
+            f"({entry.removed_pct:.0f}%); {entry.application_note}. {_capitalize(_removal_detail(entry, request))}"
         )
     return (
         f"⚠️ {new_mark}{_span(entry)} {text} — **remoção não aplicada**, continua no vídeo: "
-        f"{entry.application_note}. Pedido: {_removal_detail(entry, request)}"
+        f"{entry.application_note}. {_capitalize(_removal_detail(entry, request))}"
     )
 
 
@@ -252,8 +257,7 @@ def render_edit_transcript(diff: EditDiff) -> str:
         f"| Duração final | {format_timestamp(diff.final_duration_sec)} ({diff.final_duration_sec:.2f}s) |",
         f"| Tempo removido | {format_seconds(removed_sec)} |",
         f"| Frases mantidas | {kept} |",
-        f"| Frases marcadas para remoção | {removed}: {diff.count('applied')} aplicadas, "
-        f"{diff.count('partial')} parciais, {diff.count('not_applied')} não aplicadas |",
+        f"| Frases marcadas para remoção | {removed} ({diff.application_counts()}) |",
         f"| Pausas removidas | {format_seconds(diff.removed_pause_sec, 1)} "
         f"(no texto, só as de {format_seconds(diff.min_pause_marker_sec, 1)} ou mais) |",
         "",

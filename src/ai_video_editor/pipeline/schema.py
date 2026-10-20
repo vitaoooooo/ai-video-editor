@@ -283,15 +283,17 @@ class EditDiff(BaseModel):
     def entry_for(self, sentence_id: int) -> Optional[DiffEntry]:
         return next((e for e in self.sentences if e.sentence_id == sentence_id), None)
 
+    def application_counts(self) -> str:
+        """`5 aplicadas, 1 parcial, 1 não aplicada`."""
+        return ", ".join(
+            [
+                _plural(self.count("applied"), "aplicada", "aplicadas"),
+                _plural(self.count("partial"), "parcial", "parciais"),
+                _plural(self.count("not_applied"), "não aplicada", "não aplicadas"),
+            ]
+        )
+
     def removal_counts(self) -> str:
         """`7 remoções pedidas, 5 aplicadas, 1 parcial, 1 não aplicada`."""
         requested = sum(1 for e in self.sentences if e.removal_requested)
-        applied, partial, missing = self.count("applied"), self.count("partial"), self.count("not_applied")
-        return ", ".join(
-            [
-                _plural(requested, "remoção pedida", "remoções pedidas"),
-                _plural(applied, "aplicada", "aplicadas"),
-                _plural(partial, "parcial", "parciais"),
-                _plural(missing, "não aplicada", "não aplicadas"),
-            ]
-        )
+        return f"{_plural(requested, 'remoção pedida', 'remoções pedidas')}, {self.application_counts()}"
