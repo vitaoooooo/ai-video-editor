@@ -443,6 +443,11 @@ def handle_revise(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_markdown(text: str) -> None:
+    """Imprime sem quebrar em consoles que não têm "→", "—" etc. (ex.: cp1252 no Windows)."""
+    print(text.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8"))
+
+
 def handle_benchmark_transcription(args: argparse.Namespace) -> int:
     """Mede velocidade e WER de configurações de transcrição em um ou mais áudios."""
     from datetime import date
@@ -513,7 +518,7 @@ def handle_benchmark_rescore(args: argparse.Namespace) -> int:
     except (RescoreError, ValueError) as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 1
-    print(save_run(run, run_dir))
+    _print_markdown(save_run(run, run_dir))
     print(f"Resultados recalculados em: {run_dir}")
     return 0
 
