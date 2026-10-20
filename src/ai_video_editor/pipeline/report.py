@@ -1,11 +1,12 @@
 """Relatório Markdown da edição (`edit_report.md`)."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from ai_video_editor.audio import AudioAnalysisResult
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.director.schema import DirectorRun
+from ai_video_editor.revision.schema import RevisionRun
 from ai_video_editor.pipeline.schema import EditPipelineParams, RunTimings
 from ai_video_editor.pipeline.timing import build_timings_section
 from ai_video_editor.planning.schema import TimeRange
@@ -125,6 +126,18 @@ def _cell(text: str) -> str:
     return " ".join(text.split()).replace("|", "\\|")
 
 
+def model_rows(run: Union[DirectorRun, RevisionRun]) -> list[str]:
+    """Linhas da tabela com a cadeia pedida, o modelo usado e as trocas automáticas."""
+    rows: list[str] = []
+    if len(run.model_chain) > 1:
+        rows.append(f"| Cadeia de modelos | {' → '.join(run.model_chain)} |")
+    if run.effective_model_id:
+        rows.append(f"| Modelo usado | {run.effective_provider}:{run.effective_model_id} |")
+    for switch in run.model_switches:
+        rows.append(f"| Troca de modelo | {switch.from_model} → {switch.to_model}: {_cell(switch.reason)} |")
+    return rows
+
+
 def _director_section(director: DirectorRun) -> list[str]:
     brief = director.brief
     target = f"{brief.target_duration_sec:.0f}s" if brief.target_duration_sec is not None else "—"
@@ -134,6 +147,7 @@ def _director_section(director: DirectorRun) -> list[str]:
         "| Item | Valor |",
         "| --- | --- |",
         f"| Diretor | {director.provider} ({director.model_id}) |",
+        *model_rows(director),
         f"| Raciocínio | {director.thinking or '—'} |",
         f"| Intensidade | {brief.intensity} |",
         f"| Duração alvo | {target} |",
@@ -185,6 +199,7 @@ def build_revision_section(
     pacing_before: str,
     pacing_after: str,
     changes: list[tuple[int, str, str, str, str]],
+    reviser: Optional[RevisionRun] = None,
 ) -> str:
     """Seção "Revisão" do relatório de uma versão nova.
 
@@ -199,6 +214,11 @@ def build_revision_section(
         f"| Versão | v{new_version} (a partir da v{base_version}) |",
         f"| Pedido | {_cell(request)} |",
         f"| Ritmo das pausas | {pacing_before} → {pacing_after} |",
+        *(
+            [f"| Revisor | {reviser.provider} ({reviser.model_id}) |", *model_rows(reviser)]
+            if reviser is not None
+            else []
+        ),
         "",
         f"**Resumo:** {summary.strip() or '—'}",
         "",

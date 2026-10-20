@@ -1,198 +1,43 @@
-"""Diretor de IA com o Google Gemini (só texto, saída JSON estruturada)."""
+"""Diretor de IA com o Google Gemini: atalho para `LLMDirector` com um único modelo Gemini.
 
-import json
+A lógica do Gemini (saída estruturada, novas tentativas, raciocínio, timeout) está em
+`ai_video_editor.llm.providers.gemini`.
+"""
+
 from typing import Optional
 
-from ai_video_editor.director.provider import EditDirector
-from ai_video_editor.director.schema import (
-    DirectorContext,
-    DirectorDecision,
-    DirectorThinking,
-    Sentence,
-    UserBrief,
+from ai_video_editor.director.prompt import build_director_prompt  # noqa: F401 — reexportado
+from ai_video_editor.director.providers.llm import LLMDirector
+from ai_video_editor.director.schema import DirectorThinking
+from ai_video_editor.intelligence.retry import RetryPolicy
+from ai_video_editor.llm.chain import ModelChain
+from ai_video_editor.llm.providers.gemini import (  # noqa: F401 — reexportados
+    DEFAULT_GEMINI_MODEL as DEFAULT_DIRECTOR_MODEL,
+    GeminiLLMClient,
+    generate_structured,
 )
-from ai_video_editor.director.service import allowed_removal_ratio, speech_duration
-from ai_video_editor.intelligence.exceptions import AIProviderError, AIResponseValidationError
-from ai_video_editor.intelligence.providers.gemini import (
-    _as_int,
-    build_http_options,
-    map_gemini_error,
-    resolve_gemini_api_key,
-)
-from ai_video_editor.intelligence.retry import RetryPolicy, call_with_retry
-
-DEFAULT_DIRECTOR_MODEL = "gemini-3.8-flash"
-
-# Família 3.x: `thinking_level`. Família 2.5 (legado): `thinking_budget` em tokens (-1 = dinâmico).
-_THINKING_LEVELS = {"off": "MINIMAL", "low": "LOW", "high": "HIGH"}
-_THINKING_BUDGETS = {"off": 0, "low": 1024, "high": -1}
+from ai_video_editor.llm.schema import ModelSpec
 
 
-def _thinking_setting(model_id: str, thinking: DirectorThinking) -> tuple[str, int | str]:
-    if "gemini-2.5" in model_id:
-        return "thinking_budget", _THINKING_BUDGETS[thinking]
-    return "thinking_level", _THINKING_LEVELS[thinking]
-
-
-def thinking_label(model_id: str, thinking: DirectorThinking) -> str:
-    """Descrição da configuração de raciocínio, para o relatório."""
-    name, value = _thinking_setting(model_id, thinking)
-    return f"{thinking} ({name}={value})"
-
-
-def build_thinking_config(model_id: str, thinking: DirectorThinking):
-    """ThinkingConfig do SDK para o nível pedido."""
-    from google.genai import types
-
-    name, value = _thinking_setting(model_id, thinking)
-    return types.ThinkingConfig(**{name: value})
-
-
-_THINKING_ORDER: tuple[DirectorThinking, ...] = ("off", "low", "high")
-
-
-def _fallback_ladder(model_id: str, thinking: DirectorThinking) -> list[DirectorThinking]:
-    """Níveis a tentar, do pedido para cima (off → low → high). Só a família 3.x tem níveis."""
-    if "gemini-2.5" in model_id:
-        return [thinking]
-    return list(_THINKING_ORDER[_THINKING_ORDER.index(thinking):])
-
-
-def is_thinking_level_unsupported(error: Exception) -> bool:
-    """True se o erro do SDK é a recusa 400 do nível de raciocínio pelo modelo."""
-    text = str(error).lower()
-    return "thinking level" in text and "not supported" in text and (
-        "400" in text or "invalid_argument" in text
-    )
-
-
-def generate_structured(
-    client,
+def gemini_chain(
     model_id: str,
-    thinking: DirectorThinking,
-    prompt: str,
-    schema,
+    api_key: Optional[str],
     temperature: float,
     timeout_sec: float,
-    retry: Optional[RetryPolicy] = None,
-):
-    """Chama o Gemini com saída JSON no `schema`, subindo o raciocínio se a API recusar o nível.
-
-    Falhas temporárias (503, 504, 429 por minuto, conexão) são repetidas conforme `retry`;
-    erros permanentes (autenticação, 400, 404) sobem na hora. Ao fim, `retry.attempts_made`
-    tem o total de chamadas à API.
-
-    Returns:
-        (resposta, rótulo do nível efetivo ou None se o nível pedido foi aceito).
-    """
-    from google.genai import types
-
-    retry = retry if retry is not None else RetryPolicy()
-    retry.reset()
-    refused: list[str] = []
-    for level in _fallback_ladder(model_id, thinking):
-        name, value = _thinking_setting(model_id, level)
-
-        def call(level=level):
-            return client.models.generate_content(
-                model=model_id,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                    temperature=temperature,
-                    thinking_config=build_thinking_config(model_id, level),
-                    http_options=build_http_options(timeout_sec),
-                ),
-            )
-
-        try:
-            response = call_with_retry(call, retry, lambda e: map_gemini_error(e, timeout_sec))
-        except AIProviderError as e:
-            if not is_thinking_level_unsupported(e.__cause__ or e):
-                raise
-            refused.append(str(value))
-            continue
-        label = f"{thinking} → {value} ({', '.join(refused)} não suportado)" if refused else None
-        return response, label
-    raise AIProviderError(
-        f"O modelo '{model_id}' recusou todos os níveis de raciocínio tentados ({', '.join(refused)}).",
-        provider="gemini",
+    thinking: DirectorThinking,
+    client,
+    retry: Optional[RetryPolicy],
+) -> ModelChain:
+    """Cadeia de um só modelo Gemini, com cliente do SDK opcionalmente injetado."""
+    return ModelChain(
+        [ModelSpec(provider="gemini", model_id=model_id)],
+        thinking=thinking, temperature=temperature, timeout_sec=timeout_sec, retry=retry,
+        clients={"gemini": GeminiLLMClient(api_key=api_key, client=client)},
     )
 
 
-_INTENSITY_GUIDE = {
-    "light": (
-        "LEVE: remova apenas problemas evidentes — frases recomeçadas, repetições quase "
-        "literais e enrolação sem conteúdo. Na maioria dos vídeos isso é pouco ou nada."
-    ),
-    "medium": (
-        "MÉDIA: além dos problemas evidentes, remova repetições de ideias já ditas e "
-        "digressões curtas que não acrescentam nada ao assunto."
-    ),
-    "aggressive": (
-        "AGRESSIVA: deixe o vídeo enxuto; remova também desvios do assunto e explicações "
-        "redundantes, mas mantenha toda informação necessária para entender o conteúdo."
-    ),
-}
-
-
-def build_director_prompt(sentences: list[Sentence], brief: UserBrief, context: DirectorContext) -> str:
-    """Monta o prompt do Diretor: regras, briefing do usuário e frases numeradas."""
-    total = speech_duration(sentences)
-    limit = allowed_removal_ratio(sentences, brief)
-    lines = [
-        "Você é um editor de vídeo experiente revisando a transcrição de um vídeo falado "
-        "(aula, tutorial ou pessoa falando para a câmera).",
-        f"Vídeo: '{context.video_name}', duração {context.duration_sec:.1f}s, "
-        f"idioma {context.language or 'desconhecido'}. Tempo de fala nas frases: {total:.1f}s.",
-        "",
-        "TAREFA: escolha quais frases devem ser REMOVIDAS do vídeo. As pausas silenciosas já "
-        "são cortadas automaticamente por outra etapa; não se preocupe com elas.",
-        "",
-        "REGRAS OBRIGATÓRIAS:",
-        "1. Seja conservador. Na dúvida, MANTENHA a frase.",
-        "2. Nunca remova uma frase que carrega informação nova (um passo, um conceito, um dado, "
-        "um exemplo, uma conclusão), mesmo que esteja mal falada.",
-        "3. Em repetições e frases recomeçadas, remova a versão pior ou incompleta e mantenha a "
-        "melhor (normalmente a última, completa).",
-        "4. Referencie as frases SOMENTE pelo ID entre colchetes. Não invente IDs e não "
-        "escreva tempos ou timestamps.",
-        "5. Cada ID pode aparecer no máximo uma vez.",
-        f"6. Não remova mais que {limit:.0%} do tempo de fala.",
-        "7. Escreva 'reason' e 'summary' em português, de forma curta e específica.",
-        "",
-        "CATEGORIAS: repetition (repete algo já dito), false_start (frase começada e "
-        "abandonada ou refeita logo depois), filler (enrolação sem conteúdo), off_topic "
-        "(fora do assunto do vídeo), other (outro motivo; explique).",
-        "",
-        "BRIEFING DO USUÁRIO:",
-        f"- Intensidade: {_INTENSITY_GUIDE[brief.intensity]}",
-    ]
-    if brief.target_duration_sec is not None:
-        lines.append(
-            f"- Duração final desejada: cerca de {brief.target_duration_sec:.0f}s. Corte o necessário "
-            "para se aproximar disso, priorizando o que tem menos informação."
-        )
-    if not brief.remove_fillers:
-        lines.append("- NÃO remova frases por serem enrolação: a categoria 'filler' está proibida.")
-    if brief.instructions:
-        lines.append(f"- Pedido do usuário: {brief.instructions.strip()}")
-    if context.previous_error:
-        lines += [
-            "",
-            "ATENÇÃO: sua resposta anterior foi rejeitada por este motivo:",
-            f"{context.previous_error}",
-            "Corrija o problema nesta nova resposta.",
-        ]
-    lines += ["", "FRASES (ID, duração e texto):"]
-    lines += [f"[{s.id}] ({s.duration:.1f}s) {s.text}" for s in sentences]
-    lines += ["", "Responda em JSON com 'removals' (pode ser vazia) e 'summary'."]
-    return "\n".join(lines)
-
-
-class GeminiDirector(EditDirector):
-    """Diretor usando o Gemini com `response_schema` = `DirectorDecision`."""
+class GeminiDirector(LLMDirector):
+    """Diretor usando um único modelo Gemini com `response_schema` = `DirectorDecision`."""
 
     def __init__(
         self,
@@ -204,58 +49,4 @@ class GeminiDirector(EditDirector):
         client=None,
         retry: Optional[RetryPolicy] = None,
     ):
-        self._model_id = model_id
-        self._api_key = api_key
-        self.temperature = temperature
-        self.timeout_sec = timeout_sec
-        self.thinking = thinking
-        self._client = client
-        self.retry = retry if retry is not None else RetryPolicy()
-        # `thinking_label` é o nível PEDIDO (entra no fingerprint do cache);
-        # `effective_thinking_label` só muda quando a API recusa o nível e subimos de nível.
-        self.thinking_label = thinking_label(model_id, thinking)
-        self.effective_thinking_label = self.thinking_label
-
-    @property
-    def provider_name(self) -> str:
-        return "gemini"
-
-    @property
-    def model_id(self) -> str:
-        return self._model_id
-
-    def _get_client(self):
-        """Instancia o cliente do SDK google-genai sob demanda."""
-        if self._client is None:
-            from google import genai
-
-            self._client = genai.Client(api_key=self._api_key or resolve_gemini_api_key())
-        return self._client
-
-    def decide(
-        self, sentences: list[Sentence], brief: UserBrief, context: DirectorContext
-    ) -> DirectorDecision:
-        self.last_input_tokens = None
-        self.last_output_tokens = None
-        self.effective_thinking_label = self.thinking_label
-        client = self._get_client()
-        prompt = build_director_prompt(sentences, brief, context)
-
-        try:
-            response, effective = generate_structured(
-                client, self._model_id, self.thinking, prompt, DirectorDecision,
-                self.temperature, self.timeout_sec, self.retry,
-            )
-        finally:
-            self.last_api_attempts = max(1, self.retry.attempts_made)
-        if effective:
-            self.effective_thinking_label = effective
-
-        usage = getattr(response, "usage_metadata", None)
-        self.last_input_tokens = _as_int(getattr(usage, "prompt_token_count", None))
-        self.last_output_tokens = _as_int(getattr(usage, "candidates_token_count", None))
-
-        try:
-            return DirectorDecision.model_validate(json.loads(response.text))
-        except Exception as e:
-            raise AIResponseValidationError("gemini", details=f"JSON inválido do modelo: {e}") from e
+        super().__init__(gemini_chain(model_id, api_key, temperature, timeout_sec, thinking, client, retry))

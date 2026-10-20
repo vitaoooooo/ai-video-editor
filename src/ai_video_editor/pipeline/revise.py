@@ -318,6 +318,10 @@ class ProjectReviser:
             sentences=sentences,
             decision=DirectorDecision(removals=list(new_removals.values()), summary=decision.summary),
             attempts=run.attempts,
+            model_chain=run.model_chain,
+            effective_provider=run.effective_provider,
+            effective_model_id=run.effective_model_id,
+            model_switches=run.model_switches,
         )
         (target / DIRECTOR_DECISION_FILE).write_text(director_run.model_dump_json(indent=2), encoding="utf-8")
 
@@ -349,7 +353,7 @@ class ProjectReviser:
             subtitles_path=target / subtitles_name if subtitles_name else None,
             subtitle_blocks=blocks if subtitles_name else None,
         ) + build_revision_section(
-            request, base.number, number, summary, base.pacing, pacing, changes
+            request, base.number, number, summary, base.pacing, pacing, changes, reviser=run
         )
         timings = recorder.snapshot(in_progress=("report", report_started))
         report += build_timings_section(timings)

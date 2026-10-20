@@ -6,8 +6,10 @@ from typing import Optional
 class AIProviderError(Exception):
     """Exceção base para falhas de comunicação ou execução de IA multimodal."""
 
-    # Preenchidos por `map_gemini_error` / `call_with_retry`; o padrão é "erro permanente".
+    # Preenchidos pelo mapeamento de erros do provedor / `call_with_retry`; o padrão é "erro permanente".
     transient: bool = False
+    # Cota diária/de cobrança esgotada: não adianta repetir, mas outro modelo pode atender.
+    quota_exhausted: bool = False
     status_code: Optional[int] = None
     retry_after_sec: Optional[float] = None
     api_attempts: int = 1

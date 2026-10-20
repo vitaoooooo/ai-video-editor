@@ -1,147 +1,24 @@
 """Adaptador para a API do Google Gemini utilizando o SDK oficial google-genai."""
 
 import json
-import os
-import re
-from pathlib import Path
 from typing import Optional
 from PIL import Image
 
 from ai_video_editor.analyzer.schema import ExtractedFrame, VideoMetadata
-from ai_video_editor.intelligence.exceptions import (
-    AIAuthenticationError,
-    AIProviderError,
-    AIRateLimitError,
-    AIResponseValidationError,
-    AITimeoutError,
-    AIUnavailableError,
-)
+from ai_video_editor.intelligence.exceptions import AIResponseValidationError
 from ai_video_editor.intelligence.provider import MultimodalAIProvider
 from ai_video_editor.intelligence.retry import RetryPolicy, call_with_retry
 from ai_video_editor.intelligence.schema import (
     AIAnalysisConfig,
     VisualAnalysisResponse,
 )
-
-
-def resolve_gemini_api_key() -> str:
-    """Obtém a chave da API do Gemini prioritariamente de variável de ambiente.
-
-    Suporta opcionalmente leitura de arquivo .env local sem expor chaves em logs.
-    """
-    key = os.environ.get("GEMINI_API_KEY")
-    if key and key.strip():
-        return key.strip()
-
-    # Suporte opcional a arquivo .env local (ignorado pelo Git)
-    env_file = Path(".env")
-    if env_file.is_file():
-        try:
-            for line in env_file.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line.startswith("GEMINI_API_KEY="):
-                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    if val:
-                        return val
-        except Exception:
-            pass
-
-    raise AIAuthenticationError(
-        "gemini",
-        details="Variável de ambiente GEMINI_API_KEY não encontrada.",
-    )
-
-
-def build_http_options(timeout_sec: float):
-    """HttpOptions do SDK com o tempo limite (o SDK espera milissegundos)."""
-    from google.genai import types
-
-    return types.HttpOptions(timeout=int(timeout_sec * 1000))
-
-
-_KEY_PATTERN = re.compile(r"AIza[0-9A-Za-z_\-]{20,}|(?i:key=)[^&\s'\"]+")
-_STATUS_PATTERN = re.compile(r"\b([45]\d\d)\b")
-_RETRY_AFTER_PATTERN = re.compile(r"retry(?:delay)?\W{1,6}(?:in\s+)?(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
-_CONNECTION_TYPES = ("connecterror", "connecttimeout", "remoteprotocolerror", "readerror", "networkerror")
-_CONNECTION_HINTS = (
-    "connection", "server disconnected", "reset by peer", "temporary failure in name resolution",
-    "name or service not known", "getaddrinfo", "eof occurred", "broken pipe",
+# A lógica comum do Gemini (chave, timeout, mapeamento de erros) mora na camada `llm`.
+from ai_video_editor.llm.client import as_int as _as_int
+from ai_video_editor.llm.providers.gemini import (  # noqa: F401 — reexportados
+    build_http_options,
+    map_gemini_error,
+    resolve_gemini_api_key,
 )
-
-
-def _redact(text: str, limit: int = 600) -> str:
-    """Detalhe original da API, sem chaves e em uma linha curta."""
-    text = _KEY_PATTERN.sub("[chave omitida]", " ".join(text.split()))
-    return text if len(text) <= limit else text[: limit - 1] + "…"
-
-
-def _status_code(error: Exception) -> Optional[int]:
-    code = getattr(error, "code", None)
-    if isinstance(code, int) and not isinstance(code, bool) and 100 <= code < 600:
-        return code
-    match = _STATUS_PATTERN.search(str(error))
-    return int(match.group(1)) if match else None
-
-
-def _retry_after_sec(error: Exception) -> Optional[float]:
-    """Retry-After do cabeçalho HTTP ou o `retryDelay` que o Gemini embute no corpo do 429."""
-    headers = getattr(getattr(error, "response", None), "headers", None)
-    if headers is not None:
-        try:
-            value = headers.get("retry-after") or headers.get("Retry-After")
-            if value is not None:
-                return max(0.0, float(value))
-        except (TypeError, ValueError, AttributeError):
-            pass
-    match = _RETRY_AFTER_PATTERN.search(str(error))
-    return float(match.group(1)) if match else None
-
-
-def map_gemini_error(error: Exception, timeout_sec: float) -> AIProviderError:
-    """Converte uma exceção do SDK em exceção de domínio, sem expor credenciais.
-
-    A mensagem inclui o detalhe original da API; `transient` indica se vale repetir
-    (503/500/504, 429 por minuto, conexão e timeout) ou não (autenticação, 400, 404).
-    """
-    text = str(error)
-    lower = text.lower()
-    detail = _redact(text)
-    code = _status_code(error)
-
-    def build(exc: AIProviderError, transient: bool) -> AIProviderError:
-        exc.args = (f"{exc.args[0]} Detalhe da API: {detail}",)
-        exc.details = detail
-        exc.transient = transient
-        exc.status_code = code
-        exc.retry_after_sec = _retry_after_sec(error) if transient else None
-        return exc
-
-    if code in (401, 403) or "unauthorized" in lower or "permission" in lower or "api_key" in lower:
-        return build(AIAuthenticationError("gemini"), False)
-    if code in (400, 404):
-        return build(AIProviderError("Pedido recusado pelo Gemini.", provider="gemini"), False)
-    if code == 429 or "quota" in lower or "rate limit" in lower or "resource_exhausted" in lower:
-        # Cota diária esgotada não volta em segundos: repetir só atrasaria o erro.
-        daily = "perday" in lower.replace(" ", "").replace("_", "")
-        return build(AIRateLimitError("gemini"), not daily)
-    if code in (500, 502, 503, 504) or "unavailable" in lower or "deadline" in lower or "overloaded" in lower:
-        return build(AIUnavailableError("gemini"), True)
-    if "timeout" in lower or "timed out" in lower:
-        return build(AITimeoutError("gemini", timeout_sec=timeout_sec), True)
-    if (
-        type(error).__name__.lower() in _CONNECTION_TYPES
-        or isinstance(error, (ConnectionError, TimeoutError))
-        or any(hint in lower for hint in _CONNECTION_HINTS)
-    ):
-        err = AIUnavailableError("gemini")
-        err.args = ("[GEMINI] Falha de conexão com o serviço 'gemini'.",)
-        return build(err, True)
-    return build(AIProviderError("Erro na chamada do Gemini.", provider="gemini"), False)
-
-
-def _as_int(value) -> Optional[int]:
-    """Converte contagem de tokens do SDK para int, ignorando valores ausentes ou inesperados."""
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 class GeminiMultimodalProvider(MultimodalAIProvider):

@@ -4,9 +4,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ai_video_editor.director.schema import DirectorThinking, SentenceParams, UserBrief
+from ai_video_editor.llm.chain import resolve_chain
+from ai_video_editor.llm.schema import ModelSpec
 from ai_video_editor.planning.schema import PausePreset, SilenceCutParams
 from ai_video_editor.subtitles.schema import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
@@ -28,7 +30,6 @@ StageStatus = Literal["pending", "done", "skipped", "failed"]
 StageOutcome = Literal["ran", "cached", "skipped"]
 
 MetricValue = Union[int, float, str]
-DirectorName = Literal["none", "mock", "gemini"]
 
 
 class EditPipelineParams(BaseModel):
@@ -41,10 +42,17 @@ class EditPipelineParams(BaseModel):
     cut: SilenceCutParams = Field(default_factory=SilenceCutParams)
     transcribe: bool = Field(default=False, description="Gera transcript.json (necessário para o Diretor)")
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
-    director: DirectorName = Field(default="none", description="Diretor de IA que remove frases")
-    director_model: str = Field(default="gemini-3.8-flash", description="Modelo do Diretor Gemini")
+    director: str = Field(
+        default="none",
+        description="Diretor de IA que remove frases: `none`, `mock` ou um provedor registrado (`gemini`, `openai`)",
+    )
+    director_model: Optional[str] = Field(default=None, description="Modelo do Diretor (padrão: o do provedor)")
+    director_fallback: Optional[str] = Field(
+        default=None,
+        description="Modelos de reserva `provedor:modelo,...`; `none` desliga; vazio usa a reserva padrão do provedor",
+    )
     director_thinking: DirectorThinking = Field(
-        default="low", description="Nível de raciocínio do Diretor Gemini (off/low/high)"
+        default="low", description="Nível de raciocínio do Diretor (off/low/high)"
     )
     director_timeout_sec: float = Field(default=120.0, gt=5.0, description="Tempo limite da chamada ao Diretor")
     api_retries: int = Field(
@@ -54,6 +62,17 @@ class EditPipelineParams(BaseModel):
     brief: UserBrief = Field(default_factory=UserBrief)
     subtitles: bool = Field(default=True, description="Gera o .srt quando há transcrição")
     subtitle: SubtitleParams = Field(default_factory=SubtitleParams)
+
+
+    @model_validator(mode="after")
+    def _check_director(self) -> "EditPipelineParams":
+        if self.director not in ("none", "mock"):
+            self.director_chain()  # valida provedor e reservas
+        return self
+
+    def director_chain(self) -> list[ModelSpec]:
+        """Cadeia pedida do Diretor: o modelo principal seguido das reservas."""
+        return resolve_chain(self.director, self.director_model, self.director_fallback)
 
 
 class StageRecord(BaseModel):

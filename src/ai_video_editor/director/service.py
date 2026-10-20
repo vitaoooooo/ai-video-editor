@@ -71,6 +71,14 @@ def validate_decision(
         )
 
 
+def record_effective_model(run, stage) -> None:
+    """Copia para o registro da execução o modelo que respondeu e as trocas de modelo."""
+    if stage.effective_model_id:
+        run.effective_provider = stage.effective_provider
+        run.effective_model_id = stage.effective_model_id
+    run.model_switches = list(stage.model_switches)
+
+
 def run_director(
     director: EditDirector,
     sentences: list[Sentence],
@@ -85,7 +93,8 @@ def run_director(
     """
     run = DirectorRun(
         provider=director.provider_name, model_id=director.model_id,
-        thinking=director.thinking_label, brief=brief, sentences=sentences
+        thinking=director.thinking_label, brief=brief, sentences=sentences,
+        model_chain=list(director.model_chain),
     )
     if not sentences:
         run.decision = DirectorDecision(summary="Transcrição sem frases; nada a decidir.")
@@ -105,10 +114,11 @@ def run_director(
             error = exc
         if director.effective_thinking_label:
             run.thinking = director.effective_thinking_label
+        record_effective_model(run, director)
         run.attempts.append(
             AIRunMetrics(
-                provider=director.provider_name,
-                model_id=director.model_id,
+                provider=run.effective_provider or director.provider_name,
+                model_id=run.effective_model_id or director.model_id,
                 frames_sent=0,
                 latency_sec=round(time.perf_counter() - started, 3),
                 input_tokens=director.last_input_tokens,

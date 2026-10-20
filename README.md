@@ -66,7 +66,10 @@ Interpreta os frames extraídos com IA multimodal e gera um relatório Markdown 
 Defina a chave via variável de ambiente (nunca passada em argumentos de linha de comando ou versionada no Git):
 ```powershell
 $env:GEMINI_API_KEY = "sua_chave_do_google_ai_studio"
+# Opcional, para o Diretor/revisor na OpenAI (pip install -e ".[openai]"):
+$env:OPENAI_API_KEY = "sua_chave_da_openai"
 ```
+As duas também podem ficar num `.env` local (ignorado pelo Git).
 
 #### 2. Executando com o Google Gemini
 ```bash
@@ -120,7 +123,11 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 
 # Com o Diretor de IA removendo frases repetidas, recomeçadas e enrolação (requer GEMINI_API_KEY)
 .\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4" `
-  --transcribe --language pt --director gemini --intensity light
+  --transcribe --language pt --director-provider gemini --intensity light
+
+# Diretor na OpenAI (pip install -e ".[openai]" e OPENAI_API_KEY), com o Gemini de reserva
+.\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4" `
+  --transcribe --language pt --director-provider openai --director-fallback "gemini:gemini-3.8-flash"
 ```
 
 | Opção | Padrão | Efeito |
@@ -131,11 +138,12 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 | `--min-gap` | 0.30 | Pausas menores que isso (após o padding) não são cortadas, inclusive no início/fim |
 | `--min-keep` | 0.10 | Falas mais curtas que isso são tratadas como ruído |
 | `--transcribe` | desligado | Gera `transcript.json` (necessário para o Diretor) |
-| `--director` | `none` | Diretor de IA: `none`, `mock` (remove frases repetidas, sem rede) ou `gemini`. Só roda com `--transcribe` |
-| `--director-model` | `gemini-3.8-flash` | Modelo do Diretor Gemini |
-| `--director-thinking` | `low` | Raciocínio ("thinking") do Diretor Gemini: `off` (mínimo; nem todo modelo aceita), `low` ou `high`. Se a API recusar o nível, sobe sozinho (off → low → high); o nível pedido e o efetivo aparecem no relatório e no `director_decision.json` |
+| `--director-provider` (ou `--director`) | `none` | Diretor de IA: `none`, `mock` (remove frases repetidas, sem rede), `gemini` (`GEMINI_API_KEY`) ou `openai` (`OPENAI_API_KEY`, extra `.[openai]`). Só roda com `--transcribe` |
+| `--director-model` | o do provedor | Modelo principal: `gemini-3.8-flash` no Gemini, `gpt-6-luna` na OpenAI |
+| `--director-fallback` | no Gemini: `gemini-3.6-flash`, `gemini-3.5-flash-lite` | Modelos de reserva, em ordem: `"provedor:modelo,..."` (pode misturar provedores; sem `provedor:` usa o do Diretor). `none` desliga. Veja "Troca automática de modelo" abaixo |
+| `--director-thinking` | `low` | Raciocínio do Diretor: `off`, `low` ou `high`. Cada provedor traduz (Gemini: `thinking_level` MINIMAL/LOW/HIGH, ou `thinking_budget` na família 2.5; OpenAI: `reasoning.effort` none/low/high; modelos sem raciocínio ignoram e o relatório diz isso). Se a API recusar o nível, sobe sozinho (off → low → high); o nível pedido e o efetivo aparecem no relatório e no `director_decision.json` |
 | `--director-timeout` | 120 | Tempo limite (s) da chamada ao Diretor |
-| `--api-retries` | 4 | Novas tentativas da API do Gemini em falhas temporárias (503, 504, 429 por minuto, conexão), com espera de 2s, 4s, 8s, 16s + jitter (respeita `Retry-After`); `0` desliga. Erros permanentes (autenticação, 400, 404) nunca são repetidos. Cada tentativa aparece no terminal (`[4/8] Diretor: Gemini indisponível (503), nova tentativa em 4s (2/5)`), o erro final traz o detalhe original da API e o relatório registra as chamadas à API de cada tentativa. Vale também para `revise` e `report-ai` |
+| `--api-retries` | 4 | Novas tentativas da API de IA em falhas temporárias (503, 504, 429 por minuto, conexão), com espera de 2s, 4s, 8s, 16s + jitter (respeita `Retry-After`); `0` desliga. Erros permanentes (autenticação, 400, 404) nunca são repetidos. Cada tentativa aparece no terminal (`[4/8] Diretor: Gemini indisponível (503), nova tentativa em 4s (2/5)`), o erro final traz o detalhe original da API e o relatório registra as chamadas à API de cada tentativa. Vale também para `revise` e `report-ai` |
 | `--intensity` | `light` | Quanto o Diretor corta: `light`, `medium` ou `aggressive` |
 | `--target-duration` | — | Duração final desejada em segundos |
 | `--instructions` | — | Pedido livre ao Diretor (ex: `"corte as piadas"`) |
@@ -158,6 +166,8 @@ Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 
 **Limite de silêncio automático:** com `--threshold-db auto` (padrão), o áudio é medido em janelas de 50 ms (FFmpeg `astats`, pico por janela). O **piso de ruído** é o percentil 10 dos níveis e o **nível de fala** o percentil 90; o limite é `piso + 35% da distância até a fala`, nunca acima de `fala - 6 dB` e dentro de `[-60, -20] dB`. Isso faz gravações com ruído de fundo (plateia, sala) detectarem pausas que o `-35 dB` fixo nunca via. Modo, piso, fala e limite escolhido ficam no `audio_analysis.json` e no relatório. Quando o ruído está muito próximo da fala, o áudio não tem pausas ou é quase todo silêncio, o relatório traz um aviso de detecção pouco confiável (nesses casos o limite fica abaixo do ruído e poucos cortes são feitos, ou todo o áudio vira silêncio, respectivamente).
 
+**Troca automática de modelo:** o Diretor (e o revisor) usa uma cadeia ordenada `provedor:modelo`; o padrão é `gemini:gemini-3.8-flash` → `gemini:gemini-3.6-flash` → `gemini:gemini-3.5-flash-lite`. Se o modelo atual continuar falhando depois das novas tentativas com erro temporário (503, 504, 429 por minuto, conexão) ou com a cota diária/de cobrança esgotada, a etapa passa para o próximo da cadeia e avisa no terminal (`[4/8] Diretor: gemini-3.8-flash indisponível (503) após 5 tentativas → trocando para gemini-3.6-flash`). Erros de autenticação ou de requisição inválida (400/404) não trocam de modelo. Provedores sem chave configurada são pulados com um aviso. Depois de uma troca, as chamadas seguintes da mesma execução continuam no modelo que funcionou. O relatório ("Cadeia de modelos", "Modelo usado", "Troca de modelo") e o `director_decision.json` (`model_chain`, `effective_provider`, `effective_model_id`, `model_switches`) registram o pedido, o usado e cada troca com o motivo. O cache do Diretor usa a cadeia **pedida**: uma troca de modelo durante a execução não muda o fingerprint.
+
 **Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` (ou alternar entre `auto` e um número) refaz silêncios, plano, render e relatório; mudar só um padding refaz a partir do plano; sem Diretor, a transcrição nunca força novo render. As legendas dependem do plano, da transcrição e de `--subtitle-max-chars`: mudar só esse limite refaz apenas legendas e relatório, sem novo render. O Diretor é refeito quando mudam a transcrição, o briefing ou o modelo. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
 
 
@@ -174,8 +184,8 @@ Depois do `edit`, peça ajustes sem refazer as etapas caras (probe, silêncios e
 | Opção do `revise` | Padrão | Efeito |
 | --- | --- | --- |
 | `--from vN` | versão atual | Versão em que a revisão se baseia (as frases removidas/mantidas partem dela) |
-| `--reviser` | `gemini` | `gemini` (requer `GEMINI_API_KEY`) ou `mock` (determinístico, sem rede) |
-| `--reviser-model` / `--reviser-thinking` / `--reviser-timeout` | os do Diretor do projeto | Mesma configuração do Diretor: modelo, raciocínio (com subida automática de nível se a API recusar) e timeout |
+| `--reviser-provider` (ou `--reviser`) | o do Diretor do projeto (ou `gemini`) | `gemini`, `openai` ou `mock` (determinístico, sem rede) |
+| `--reviser-model` / `--reviser-fallback` / `--reviser-thinking` / `--reviser-timeout` | os do Diretor do projeto | Mesma configuração do Diretor: modelo, cadeia de reserva com troca automática, raciocínio (com subida automática de nível se a API recusar) e timeout. Trocando o provedor, o modelo e a reserva passam a ser os padrões dele |
 | `--api-retries` | 4 | Novas tentativas em falhas temporárias da API (`0` desliga); mesma regra do `edit` |
 
 * O revisor usa as frases gravadas na versão base (`director_decision.json`), não uma remontagem: projetos criados antes do limite de tamanho continuam abrindo e revisando com os mesmos IDs.
@@ -249,14 +259,23 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 * [`src/ai_video_editor/director/sentences.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/sentences.py): `build_sentences` (transcrição → frases) e `split_by_removal` (frases → intervalos a cortar e a proteger).
 * [`src/ai_video_editor/director/provider.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/provider.py): Interface `EditDirector` (`decide(sentences, brief, context)`).
 * [`src/ai_video_editor/director/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/service.py): `validate_decision` e `run_director` (nova tentativa com o erro, fallback e métricas `AIRunMetrics`).
-* [`src/ai_video_editor/director/providers/gemini.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/providers/gemini.py): `GeminiDirector` (texto, `response_schema=DirectorDecision`) e `build_director_prompt`.
+* [`src/ai_video_editor/director/prompt.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/prompt.py): `build_director_prompt` (independente do provedor).
+* [`src/ai_video_editor/director/providers/llm.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/providers/llm.py): `LLMDirector` (pede `DirectorDecision` a uma `ModelChain`); `providers/gemini.py` tem o atalho `GeminiDirector` (um único modelo Gemini).
 * [`src/ai_video_editor/director/providers/mock.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/providers/mock.py): `MockDirector` determinístico (remoções fixas, sequência de respostas ou frases repetidas).
 
 ### Módulo Revision (Revisor de IA)
 * [`src/ai_video_editor/revision/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/schema.py): `SentenceState`, `RevisionContext`, `RevisionDecision` (conjunto completo de remoções, restaurações com motivo, ritmo, `feasible`/`problem`) e `RevisionRun`.
 * [`src/ai_video_editor/revision/provider.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/provider.py): Interface `EditReviser` (`revise(states, brief, context)`).
 * [`src/ai_video_editor/revision/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/service.py): `validate_revision` (regras do Diretor + restaurações) e `run_reviser` (nova tentativa; sem versão se falhar).
-* [`src/ai_video_editor/revision/providers/`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/providers): `GeminiReviser` (reaproveita `generate_structured` do Diretor) e `MockReviser` determinístico.
+* [`src/ai_video_editor/revision/prompt.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/prompt.py): `build_reviser_prompt`.
+* [`src/ai_video_editor/revision/providers/`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/providers): `LLMReviser` (cadeia de modelos, como o Diretor), o atalho `GeminiReviser` e `MockReviser` determinístico.
+
+### Módulo LLM (provedores de IA com saída estruturada)
+* [`src/ai_video_editor/llm/client.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/client.py): interface `StructuredLLMClient` (`generate(prompt, schema, config, retry)` → objeto validado + `LLMCallMetrics`), com novas tentativas, subida do nível de raciocínio e métricas já implementadas.
+* [`src/ai_video_editor/llm/registry.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/registry.py): `register_provider`/`create_client` (`gemini`, `openai`, `mock`, com import tardio).
+* [`src/ai_video_editor/llm/chain.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/chain.py): `ModelChain` (troca automática de modelo) e `resolve_chain`/`parse_chain` (`provedor:modelo,...`).
+* [`src/ai_video_editor/llm/providers/`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/providers): `GeminiLLMClient` (`google-genai`, `response_schema`), `OpenAILLMClient` (SDK `openai`, Responses API com `text_format` / JSON schema estrito; as novas tentativas do SDK ficam desligadas) e `MockLLMClient`.
+* [`src/ai_video_editor/llm/keys.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/keys.py) e [`errors.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/errors.py): chaves por variável de ambiente/`.env` e utilitários de erro (remove chaves `AIza…`/`sk-…` das mensagens).
 
 ### Módulo Pipeline (comandos `edit` e `revise`)
 * [`src/ai_video_editor/pipeline/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que orquestra as etapas com cache por fingerprint e callback de progresso; `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis.

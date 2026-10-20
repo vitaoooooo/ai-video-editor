@@ -54,6 +54,7 @@ from ai_video_editor.pipeline.schema import (
 )
 from ai_video_editor.planning import build_edit_plan, removed_ranges
 from ai_video_editor.intelligence.retry import RetryPolicy
+from ai_video_editor.llm.chain import ModelChain
 from ai_video_editor.planning.schema import TimeRange
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
@@ -61,7 +62,8 @@ from ai_video_editor.subtitles import build_subtitle_blocks, write_srt
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
 
-# (etapa, evento, detalhe). Eventos: "start", "done", "cached", "skipped", "failed", "retry".
+# (etapa, evento, detalhe). Eventos: "start", "done", "cached", "skipped", "failed", "retry" e
+# "notice" (aviso, ex: troca automática de modelo).
 ProgressCallback = Callable[[StageName, str, str], None]
 
 # Resultado de uma etapa: métricas gravadas no manifesto e uma linha de resumo para o terminal.
@@ -139,16 +141,19 @@ class EditPipeline:
             from ai_video_editor.director.providers.mock import MockDirector
 
             return MockDirector()
-        from ai_video_editor.director.providers.gemini import GeminiDirector
+        from ai_video_editor.director.providers.llm import LLMDirector
 
-        return GeminiDirector(
-            model_id=params.director_model,
-            thinking=params.director_thinking,
-            timeout_sec=params.director_timeout_sec,
-            retry=RetryPolicy(
-                max_retries=params.api_retries,
-                on_retry=lambda event: self._emit("director", "retry", event.message),
-            ),
+        return LLMDirector(
+            ModelChain(
+                params.director_chain(),
+                thinking=params.director_thinking,
+                timeout_sec=params.director_timeout_sec,
+                retry=RetryPolicy(
+                    max_retries=params.api_retries,
+                    on_retry=lambda event: self._emit("director", "retry", event.message),
+                ),
+                on_event=lambda message: self._emit("director", "notice", message),
+            )
         )
 
     @property
@@ -283,7 +288,7 @@ class EditPipeline:
             director = self.director_for(params)
             fp_director = fingerprint(
                 "director", fp_transcript, director.provider_name, director.model_id,
-                director.thinking_label, params.brief, params.sentences
+                director.thinking_label, params.brief, params.sentences, list(director.model_chain)
             )
 
             def do_director() -> tuple[dict, str]:
@@ -303,6 +308,8 @@ class EditPipeline:
                 metrics = {
                     "provider": director.provider_name,
                     "model": director.model_id,
+                    "effective_model": result.effective_model_id or director.model_id,
+                    "model_switches": len(result.model_switches),
                     "sentences": len(sentences),
                     "removed": len(removed),
                     "removed_sec": round(removed_sec, 3),
@@ -311,7 +318,10 @@ class EditPipeline:
                 }
                 if result.decision is None:
                     return metrics, "resposta inválida; seguindo só com o corte de silêncio"
-                return metrics, f"{len(removed)} de {len(sentences)} frases removidas ({removed_sec:.2f}s)"
+                summary = f"{len(removed)} de {len(sentences)} frases removidas ({removed_sec:.2f}s)"
+                if result.model_switches:
+                    summary += f" com {result.effective_provider}:{result.effective_model_id}"
+                return metrics, summary
 
             outcomes["director"] = run.stage("director", fp_director, DIRECTOR_DECISION_FILE, do_director)
             director_run = DirectorRun.model_validate_json(

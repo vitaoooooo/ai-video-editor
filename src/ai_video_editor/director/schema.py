@@ -5,6 +5,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 from ai_video_editor.intelligence.schema import AIRunMetrics
+from ai_video_editor.llm.schema import ModelSwitch, ThinkingLevel
 
 Intensity = Literal["light", "medium", "aggressive"]
 RemovalCategory = Literal["repetition", "false_start", "filler", "off_topic", "other"]
@@ -81,7 +82,7 @@ class DirectorDecision(BaseModel):
     summary: str = Field(..., description="Resumo das decisões, em português")
 
 
-DirectorThinking = Literal["off", "low", "high"]
+DirectorThinking = ThinkingLevel
 
 
 class DirectorRun(BaseModel):
@@ -99,6 +100,14 @@ class DirectorRun(BaseModel):
     )
     attempts: list[AIRunMetrics] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    model_chain: list[str] = Field(
+        default_factory=list, description="Cadeia de modelos pedida (`provedor:modelo`), em ordem"
+    )
+    effective_provider: Optional[str] = Field(default=None, description="Provedor que respondeu")
+    effective_model_id: Optional[str] = Field(default=None, description="Modelo que respondeu")
+    model_switches: list[ModelSwitch] = Field(
+        default_factory=list, description="Trocas automáticas de modelo, com o motivo"
+    )
 
     @property
     def removed_sentences(self) -> list[tuple[Sentence, SentenceRemoval]]:

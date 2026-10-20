@@ -3,7 +3,7 @@
 import time
 
 from ai_video_editor.director.schema import DirectorDecision, UserBrief
-from ai_video_editor.director.service import validate_decision
+from ai_video_editor.director.service import record_effective_model, validate_decision
 from ai_video_editor.intelligence.exceptions import AIResponseValidationError
 from ai_video_editor.intelligence.schema import AIRunMetrics
 from ai_video_editor.revision.exceptions import RevisionRejectedError
@@ -57,7 +57,10 @@ def run_reviser(
             inválida nas duas tentativas. Nenhuma versão deve ser criada.
         AIProviderError: erros de comunicação (autenticação, cota, timeout) sobem direto.
     """
-    run = RevisionRun(provider=reviser.provider_name, model_id=reviser.model_id, thinking=reviser.thinking_label)
+    run = RevisionRun(
+        provider=reviser.provider_name, model_id=reviser.model_id, thinking=reviser.thinking_label,
+        model_chain=list(reviser.model_chain),
+    )
     errors: list[str] = []
     for _ in range(MAX_ATTEMPTS):
         reviser.last_input_tokens = None
@@ -74,10 +77,11 @@ def run_reviser(
             error = exc
         if reviser.effective_thinking_label:
             run.thinking = reviser.effective_thinking_label
+        record_effective_model(run, reviser)
         run.attempts.append(
             AIRunMetrics(
-                provider=reviser.provider_name,
-                model_id=reviser.model_id,
+                provider=run.effective_provider or reviser.provider_name,
+                model_id=run.effective_model_id or reviser.model_id,
                 frames_sent=0,
                 latency_sec=round(time.perf_counter() - started, 3),
                 input_tokens=reviser.last_input_tokens,

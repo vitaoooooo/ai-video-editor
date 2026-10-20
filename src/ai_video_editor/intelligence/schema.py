@@ -92,7 +92,7 @@ class AIRunMetrics(BaseModel):
     """Métricas de execução de uma chamada de análise de IA."""
 
     provider: str = Field(..., description="Provedor de IA utilizado")
-    model_id: str = Field(..., description="Identificador do modelo solicitado")
+    model_id: str = Field(..., description="Identificador do modelo usado na chamada")
     frames_sent: int = Field(..., ge=0, description="Quantidade de frames enviados ao provedor")
     latency_sec: float = Field(..., ge=0.0, description="Latência da chamada analyze_frames em segundos")
     input_tokens: Optional[int] = Field(default=None, description="Tokens de entrada, se informados pelo provedor")

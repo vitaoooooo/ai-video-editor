@@ -12,6 +12,12 @@ T = TypeVar("T")
 DEFAULT_API_RETRIES = 4
 # Teto para o Retry-After informado pela API, para não travar o terminal por minutos.
 MAX_RETRY_AFTER_SEC = 120.0
+# Nome de exibição dos provedores nas mensagens (o padrão é o nome com inicial maiúscula).
+PROVIDER_DISPLAY_NAMES = {"openai": "OpenAI"}
+
+
+def provider_display_name(provider: str) -> str:
+    return PROVIDER_DISPLAY_NAMES.get(provider, (provider or "provedor").capitalize())
 
 
 @dataclass
@@ -27,7 +33,7 @@ class RetryEvent:
     def message(self) -> str:
         """Ex: `Gemini indisponível (503), nova tentativa em 4s (2/5)`."""
         code = f" ({self.error.status_code})" if self.error.status_code else ""
-        provider = (self.error.provider or "provedor").capitalize()
+        provider = provider_display_name(self.error.provider)
         if self.error.status_code == 429:
             reason = f"{provider} com limite de requisições{code}"
         elif self.error.status_code is None:

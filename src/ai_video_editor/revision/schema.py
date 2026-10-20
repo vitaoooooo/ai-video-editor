@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from ai_video_editor.director.schema import Sentence, SentenceRemoval
 from ai_video_editor.intelligence.schema import AIRunMetrics
+from ai_video_editor.llm.schema import ModelSwitch
 from ai_video_editor.planning.schema import PausePreset
 
 
@@ -80,3 +81,11 @@ class RevisionRun(BaseModel):
     thinking: Optional[str] = None
     decision: Optional[RevisionDecision] = None
     attempts: list[AIRunMetrics] = Field(default_factory=list)
+    model_chain: list[str] = Field(
+        default_factory=list, description="Cadeia de modelos pedida (`provedor:modelo`), em ordem"
+    )
+    effective_provider: Optional[str] = Field(default=None, description="Provedor que respondeu")
+    effective_model_id: Optional[str] = Field(default=None, description="Modelo que respondeu")
+    model_switches: list[ModelSwitch] = Field(
+        default_factory=list, description="Trocas automáticas de modelo, com o motivo"
+    )

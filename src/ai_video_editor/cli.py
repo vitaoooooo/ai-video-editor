@@ -12,6 +12,8 @@ from ai_video_editor.core.schema import ClipSegment, EditPlan
 from ai_video_editor.director.schema import UserBrief
 from ai_video_editor.intelligence.retry import DEFAULT_API_RETRIES, RetryPolicy
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
+from ai_video_editor.llm.chain import ModelChain, resolve_chain
+from ai_video_editor.llm.registry import provider_names
 from ai_video_editor.intelligence.service import MultimodalAnalysisService
 from ai_video_editor.pipeline import (
     STAGES,
@@ -190,13 +192,18 @@ def _print_progress(stage: str, event: str, detail: str) -> None:
         print(f"{step}: pulada ({detail})", flush=True)
     elif event == "failed":
         print(f"{step}: FALHOU", flush=True)
-    elif event == "retry":
+    elif event in ("retry", "notice"):
         print(f"{step}: {detail}", flush=True)
 
 
 def _print_api_retry(event) -> None:
     """Mostra uma nova tentativa da API fora do pipeline (ex: `report-ai`)."""
     print(f"IA: {event.message}", flush=True)
+
+
+def _llm_providers() -> list[str]:
+    """Provedores reais registrados (o `mock` da camada `llm` não é oferecido na CLI)."""
+    return [name for name in provider_names() if name != "mock"]
 
 
 def _threshold_arg(value: str):
@@ -235,6 +242,7 @@ def handle_edit(args: argparse.Namespace) -> int:
             ),
             director=args.director,
             director_model=args.director_model,
+            director_fallback=args.director_fallback,
             director_thinking=args.director_thinking,
             director_timeout_sec=args.director_timeout,
             api_retries=args.api_retries,
@@ -294,6 +302,33 @@ def _print_revision_progress(step: str, detail: str) -> None:
     print(f"[revisão] {step}: {detail}", flush=True)
 
 
+def _build_reviser(args: argparse.Namespace, params: EditPipelineParams):
+    """Revisor pedido na CLI; sem opções, herda provedor, modelo e reservas do Diretor do projeto."""
+    provider = args.reviser or (params.director if params.director not in ("none", "mock") else "gemini")
+    if provider == "mock":
+        from ai_video_editor.revision.providers.mock import MockReviser
+
+        return MockReviser()
+    from ai_video_editor.revision.providers.llm import LLMReviser
+
+    same_as_director = provider == params.director and args.reviser_model is None
+    model = args.reviser_model or (params.director_model if same_as_director else None)
+    fallback = args.reviser_fallback
+    if fallback is None and same_as_director:
+        fallback = params.director_fallback
+    chain = ModelChain(
+        resolve_chain(provider, model, fallback),
+        thinking=args.reviser_thinking or params.director_thinking,
+        timeout_sec=args.reviser_timeout or params.director_timeout_sec,
+        retry=RetryPolicy(
+            max_retries=args.api_retries,
+            on_retry=lambda event: _print_revision_progress("revisor", event.message),
+        ),
+        on_event=lambda message: _print_revision_progress("revisor", message),
+    )
+    return LLMReviser(chain)
+
+
 def handle_revise(args: argparse.Namespace) -> int:
     """Gera uma nova versão do projeto a partir de um pedido em linguagem natural."""
     project_dir = Path(args.project)
@@ -304,22 +339,7 @@ def handle_revise(args: argparse.Namespace) -> int:
             print(f"Erro: {project_dir} não é uma pasta de projeto (falta {MANIFEST_FILE}).", file=sys.stderr)
             return 1
         params = ProjectManifest.load(manifest_path).params
-        if args.reviser == "mock":
-            from ai_video_editor.revision.providers.mock import MockReviser
-
-            reviser = MockReviser()
-        else:
-            from ai_video_editor.revision.providers.gemini import GeminiReviser
-
-            reviser = GeminiReviser(
-                model_id=args.reviser_model or params.director_model,
-                thinking=args.reviser_thinking or params.director_thinking,
-                timeout_sec=args.reviser_timeout or params.director_timeout_sec,
-                retry=RetryPolicy(
-                    max_retries=args.api_retries,
-                    on_retry=lambda event: _print_revision_progress("revisor", event.message),
-                ),
-            )
+        reviser = _build_reviser(args, params)
         result = ProjectReviser(reviser, on_progress=_print_revision_progress).revise(
             project_dir, args.request, from_version
         )
@@ -542,15 +562,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Precisão do faster-whisper: auto = float16 na GPU e int8 na CPU (padrão: auto)",
     )
     edit_parser.add_argument(
+        "--director-provider",
         "--director",
-        choices=["none", "mock", "gemini"],
+        dest="director",
+        choices=["none", "mock", *_llm_providers()],
         default="none",
-        help="Diretor de IA que remove frases repetidas/recomeçadas (requer --transcribe; padrão: none)",
+        help=(
+            "Provedor do Diretor de IA que remove frases repetidas/recomeçadas (requer --transcribe; "
+            "mock = simulado, sem IA; padrão: none)"
+        ),
     )
     edit_parser.add_argument(
         "--director-model",
-        default="gemini-3.8-flash",
-        help="Modelo do Diretor Gemini (padrão: gemini-3.8-flash)",
+        default=None,
+        help="Modelo do Diretor (padrão: o do provedor; gemini-3.8-flash no Gemini, gpt-6-luna na OpenAI)",
+    )
+    edit_parser.add_argument(
+        "--director-fallback",
+        default=None,
+        metavar="LISTA",
+        help=(
+            "Modelos de reserva se o principal ficar indisponível, ex: "
+            "\"gemini:gemini-3.6-flash,openai:gpt-6-luna\"; \"none\" desliga "
+            "(padrão no Gemini: gemini-3.6-flash, gemini-3.5-flash-lite)"
+        ),
     )
     edit_parser.add_argument(
         "--director-thinking",
@@ -615,11 +650,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Versão em que a revisão se baseia (padrão: a atual)",
     )
     revise_parser.add_argument(
-        "--reviser", choices=["gemini", "mock"], default="gemini",
-        help="Revisor de IA (padrão: gemini; requer GEMINI_API_KEY)",
+        "--reviser-provider", "--reviser", dest="reviser", choices=["mock", *_llm_providers()], default=None,
+        help="Provedor do revisor (padrão: o do Diretor do projeto, ou gemini)",
     )
     revise_parser.add_argument(
         "--reviser-model", default=None, help="Modelo do revisor (padrão: o do Diretor do projeto)"
+    )
+    revise_parser.add_argument(
+        "--reviser-fallback", default=None, metavar="LISTA",
+        help="Modelos de reserva \"provedor:modelo,...\"; \"none\" desliga (padrão: as do Diretor do projeto)",
     )
     revise_parser.add_argument(
         "--reviser-thinking", choices=["off", "low", "high"], default=None,
@@ -637,7 +676,7 @@ def build_parser() -> argparse.ArgumentParser:
             default=DEFAULT_API_RETRIES,
             metavar="N",
             help=(
-                "Novas tentativas da API do Gemini em falhas temporárias (503, 504, 429, conexão), "
+                "Novas tentativas da API de IA em falhas temporárias (503, 504, 429, conexão), "
                 f"com espera crescente; 0 desliga (padrão: {DEFAULT_API_RETRIES})"
             ),
         )

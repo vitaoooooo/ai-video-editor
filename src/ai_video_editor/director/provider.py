@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from ai_video_editor.director.schema import DirectorContext, DirectorDecision, Sentence, UserBrief
+from ai_video_editor.llm.schema import ModelSwitch
 
 
 class EditDirector(ABC):
@@ -22,6 +23,11 @@ class EditDirector(ABC):
     thinking_label: Optional[str] = None
     # Nível efetivamente usado na última chamada (difere do pedido se a API recusou o nível).
     effective_thinking_label: Optional[str] = None
+    # Cadeia pedida (`provedor:modelo`), modelo que respondeu e trocas automáticas de modelo.
+    model_chain: list[str] = []
+    effective_provider: Optional[str] = None
+    effective_model_id: Optional[str] = None
+    model_switches: list[ModelSwitch] = []
 
     @property
     @abstractmethod

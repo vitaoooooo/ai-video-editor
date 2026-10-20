@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from ai_video_editor.director.schema import UserBrief
+from ai_video_editor.llm.schema import ModelSwitch
 from ai_video_editor.revision.schema import RevisionContext, RevisionDecision, SentenceState
 
 
@@ -20,6 +21,11 @@ class EditReviser(ABC):
     last_api_attempts: int = 1
     thinking_label: Optional[str] = None
     effective_thinking_label: Optional[str] = None
+    # Cadeia pedida (`provedor:modelo`), modelo que respondeu e trocas automáticas de modelo.
+    model_chain: list[str] = []
+    effective_provider: Optional[str] = None
+    effective_model_id: Optional[str] = None
+    model_switches: list[ModelSwitch] = []
 
     @property
     @abstractmethod
