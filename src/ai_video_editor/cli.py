@@ -503,7 +503,7 @@ def handle_benchmark_transcription(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     run = run_benchmark(name, configs, items, on_progress=print, out_dir=out_dir)
     markdown = save_run(run, out_dir)
-    print(f"\n{markdown}")
+    _print_markdown(f"\n{markdown}")
     print(f"Resultados em: {out_dir}")
     return 0 if any(config_run.status == "ok" for config_run in run.configs) else 1
 
