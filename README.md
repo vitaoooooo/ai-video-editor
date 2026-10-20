@@ -125,7 +125,7 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 
 | Opção | Padrão | Efeito |
 | --- | --- | --- |
-| `--threshold-db` | -35 | Volume abaixo do qual o áudio é considerado silêncio |
+| `--threshold-db` | auto | `auto` mede o ruído de cada vídeo e escolhe o limite; um número (ex: `-40`) usa esse limite fixo em dB |
 | `--min-silence-sec` | 0.5 | Duração mínima de um silêncio detectado |
 | `--padding-before` / `--padding-after` | 0.15 / 0.20 | Folga mantida antes/depois de cada fala |
 | `--min-gap` | 0.30 | Pausas menores que isso (após o padding) não são cortadas, inclusive no início/fim |
@@ -155,7 +155,9 @@ Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 
 **Diretor de IA:** a transcrição é agrupada em frases (segmentos unidos até `.`, `?`, `!` ou uma pausa maior que 1s). O Diretor recebe as frases numeradas e o briefing e devolve só os IDs das frases a remover, com categoria (`repetition`, `false_start`, `filler`, `off_topic`, `other`) e motivo em português; nunca timestamps. A decisão é validada (IDs existentes e únicos; no máximo 40% do tempo de fala, ou mais se `--target-duration` exigir). Se for inválida, o modelo recebe o erro e tenta mais uma vez; se falhar de novo, o vídeo sai só com o corte de silêncio e o relatório traz um aviso. Os limites de cada corte vão para dentro do silêncio detectado mais próximo (até 0,5s); sem silêncio por perto, usa-se o limite da frase sem invadir o padding das frases mantidas.
 
-**Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` refaz silêncios, plano, render e relatório; mudar só um padding refaz a partir do plano; sem Diretor, a transcrição nunca força novo render. As legendas dependem do plano, da transcrição e de `--subtitle-max-chars`: mudar só esse limite refaz apenas legendas e relatório, sem novo render. O Diretor é refeito quando mudam a transcrição, o briefing ou o modelo. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
+**Limite de silêncio automático:** com `--threshold-db auto` (padrão), o áudio é medido em janelas de 50 ms (FFmpeg `astats`, pico por janela). O **piso de ruído** é o percentil 10 dos níveis e o **nível de fala** o percentil 90; o limite é `piso + 35% da distância até a fala`, nunca acima de `fala - 6 dB` e dentro de `[-60, -20] dB`. Isso faz gravações com ruído de fundo (plateia, sala) detectarem pausas que o `-35 dB` fixo nunca via. Modo, piso, fala e limite escolhido ficam no `audio_analysis.json` e no relatório. Quando o ruído está muito próximo da fala, o áudio não tem pausas ou é quase todo silêncio, o relatório traz um aviso de detecção pouco confiável (nesses casos o limite fica abaixo do ruído e poucos cortes são feitos, ou todo o áudio vira silêncio, respectivamente).
+
+**Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` (ou alternar entre `auto` e um número) refaz silêncios, plano, render e relatório; mudar só um padding refaz a partir do plano; sem Diretor, a transcrição nunca força novo render. As legendas dependem do plano, da transcrição e de `--subtitle-max-chars`: mudar só esse limite refaz apenas legendas e relatório, sem novo render. O Diretor é refeito quando mudam a transcrição, o briefing ou o modelo. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
 
 
 ### Opção F: Revisar uma edição com pedidos em linguagem natural (`revise` e `versions`)

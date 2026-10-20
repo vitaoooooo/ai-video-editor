@@ -34,7 +34,9 @@ DirectorName = Literal["none", "mock", "gemini"]
 class EditPipelineParams(BaseModel):
     """Todos os parâmetros que influenciam o resultado do comando `edit`."""
 
-    threshold_db: float = Field(default=-35.0, description="Limiar de silêncio em dB")
+    threshold_db: Union[Literal["auto"], float] = Field(
+        default="auto", description="Limiar de silêncio em dB, ou `auto` para medir o ruído de cada vídeo"
+    )
     min_silence_sec: float = Field(default=0.5, gt=0.0, description="Duração mínima do silêncio")
     cut: SilenceCutParams = Field(default_factory=SilenceCutParams)
     transcribe: bool = Field(default=False, description="Gera transcript.json (necessário para o Diretor)")

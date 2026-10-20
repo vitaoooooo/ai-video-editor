@@ -16,6 +16,7 @@ from ai_video_editor.analyzer.exceptions import VideoNotFoundError
 from ai_video_editor.analyzer.probe import VideoProbe
 from ai_video_editor.analyzer.schema import VideoMetadata
 from ai_video_editor.audio import AudioAnalysisResult, detect_silences
+from ai_video_editor.audio.levels import AUTO_RULE_VERSION
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.director import (
     DirectorContext,
@@ -211,14 +212,31 @@ class EditPipeline:
         source_fps = float(probe_metrics["fps"])
 
         # 2. silêncios
-        fp_silences = fingerprint("silences", video_hash, params.threshold_db, params.min_silence_sec)
+        # No modo auto o limite efetivo é função determinística do áudio; ele entra no fingerprint do
+        # plano (abaixo) depois de medido. Aqui vale o modo + a versão da regra.
+        threshold_key = (
+            ("auto", AUTO_RULE_VERSION) if params.threshold_db == "auto" else ("fixed", params.threshold_db)
+        )
+        fp_silences = fingerprint("silences", video_hash, threshold_key, params.min_silence_sec)
 
         def do_silences() -> tuple[dict, str]:
             result = detect_silences(video_path, params.threshold_db, params.min_silence_sec)
             result.save_json(project_dir / AUDIO_ANALYSIS_FILE)
             total = sum(s.duration for s in result.silences)
-            metrics = {"silences": len(result.silences), "silence_total_sec": round(total, 3)}
-            return metrics, f"{len(result.silences)} silêncios ({total:.2f}s)"
+            metrics: dict = {
+                "silences": len(result.silences),
+                "silence_total_sec": round(total, 3),
+                "threshold_mode": result.params.threshold_mode,
+                "threshold_db": result.params.threshold_db,
+            }
+            detail = f"{len(result.silences)} silêncios ({total:.2f}s)"
+            if result.levels is not None:
+                metrics["noise_floor_db"] = result.levels.noise_floor_db
+                metrics["speech_level_db"] = result.levels.speech_level_db
+                detail += f", limite {result.params.threshold_db} dB (auto)"
+                if not result.levels.reliable:
+                    detail += " — detecção pouco confiável"
+            return metrics, detail
 
         outcomes["silences"] = run.stage("silences", fp_silences, AUDIO_ANALYSIS_FILE, do_silences)
 
@@ -293,8 +311,11 @@ class EditPipeline:
             )
 
         # 5. plano
+        effective_threshold = AudioAnalysisResult.load_json(
+            project_dir / AUDIO_ANALYSIS_FILE
+        ).params.threshold_db
         fp_plan = fingerprint(
-            "plan", fp_silences, fp_director, params.cut, video_path, resolution, source_fps
+            "plan", fp_silences, effective_threshold, fp_director, params.cut, video_path, resolution, source_fps
         )
 
         def do_plan() -> tuple[dict, str]:
@@ -382,6 +403,7 @@ class EditPipeline:
                 params,
                 output_path,
                 director=director_run,
+                audio=AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE),
                 subtitles_path=srt_path if subtitle_blocks is not None else None,
                 subtitle_blocks=subtitle_blocks,
                 timings=recorder.snapshot(in_progress=("report", report_started)),

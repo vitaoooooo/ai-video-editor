@@ -11,6 +11,7 @@ from ai_video_editor.audio.extractor import extract_audio
 from ai_video_editor.audio.schema import (
     AudioAnalysisParams,
     AudioAnalysisResult,
+    AudioLevelStats,
     SilenceInterval,
 )
 from ai_video_editor.audio.silence import compute_speech, detect_silences, parse_silencedetect
@@ -20,6 +21,7 @@ __all__ = [
     "AudioAnalysisParams",
     "AudioAnalysisResult",
     "AudioExtractionError",
+    "AudioLevelStats",
     "MediaNotFoundError",
     "NoAudioStreamError",
     "SilenceDetectionError",

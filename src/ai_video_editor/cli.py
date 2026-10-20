@@ -184,6 +184,16 @@ def _print_progress(stage: str, event: str, detail: str) -> None:
         print(f"{step}: FALHOU", flush=True)
 
 
+def _threshold_arg(value: str):
+    """`auto` ou um número em dB."""
+    if value.strip().lower() == "auto":
+        return "auto"
+    try:
+        return float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"esperado `auto` ou um número em dB, recebido {value!r}")
+
+
 def handle_edit(args: argparse.Namespace) -> int:
     """Corta as pausas de um vídeo falado, com pasta de projeto e cache por etapa."""
     video_path = Path(args.video)
@@ -450,7 +460,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     edit_parser.add_argument("video", help="Caminho do vídeo a editar")
     edit_parser.add_argument(
-        "--threshold-db", type=float, default=-35.0, help="Limiar de silêncio em dB (padrão: -35)"
+        "--threshold-db",
+        type=_threshold_arg,
+        default="auto",
+        help="Limiar de silêncio em dB, ou `auto` para medir o ruído do vídeo (padrão: auto)",
     )
     edit_parser.add_argument(
         "--min-silence-sec",

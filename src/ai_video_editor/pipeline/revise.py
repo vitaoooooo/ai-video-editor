@@ -332,6 +332,7 @@ class ProjectReviser:
             removed,
             params.model_copy(update={"cut": cut}),
             output_path,
+            audio=audio,
             subtitles_path=target / subtitles_name if subtitles_name else None,
             subtitle_blocks=blocks if subtitles_name else None,
         ) + build_revision_section(
