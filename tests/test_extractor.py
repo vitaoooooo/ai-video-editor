@@ -49,6 +49,7 @@ def test_calculate_target_timestamps_fixed_count():
     assert ts[-1] <= 10.0
 
 
+@pytest.mark.slow
 def test_extract_frames_short_video_integration(short_video: Path, tmp_path: Path):
     """Extracts frames from 1.2s video with 0.5s interval; verifies files on disk."""
     probe = VideoProbe()
@@ -71,6 +72,7 @@ def test_extract_frames_short_video_integration(short_video: Path, tmp_path: Pat
         assert f.target_timestamp_sec in (0.0, 0.5, 1.0)
 
 
+@pytest.mark.slow
 def test_extract_frames_long_video_integration(long_video: Path, tmp_path: Path):
     """Extracts frames from 8.5s video with 3.0s interval (uneven division: 0, 3, 6)."""
     probe = VideoProbe()
@@ -90,6 +92,7 @@ def test_extract_frames_long_video_integration(long_video: Path, tmp_path: Path)
         assert f.size_bytes > 500
 
 
+@pytest.mark.slow
 def test_extract_frames_fixed_count_png(short_video: Path, tmp_path: Path):
     """Extracts exactly target_count frames in PNG format."""
     probe = VideoProbe()
@@ -107,6 +110,7 @@ def test_extract_frames_fixed_count_png(short_video: Path, tmp_path: Path):
         assert f.image_path.is_file()
 
 
+@pytest.mark.slow
 def test_directory_isolation_no_collisions(short_video: Path, tmp_path: Path):
     """Separate extraction runs into isolated directories do not collide."""
     probe = VideoProbe()

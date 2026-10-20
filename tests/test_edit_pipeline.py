@@ -56,6 +56,7 @@ def short_video(tmp_path_factory):
     return create_tone_silence_video(path, [("tone", 2.0), ("silence", 1.5)] * 3 + [("tone", 2.0)])
 
 
+@pytest.mark.slow
 def test_end_to_end_silence_cut(tmp_path, talking_video):
     events = []
     pipeline = EditPipeline(
@@ -108,6 +109,7 @@ def test_end_to_end_silence_cut(tmp_path, talking_video):
     assert ("render", "done") in events and ("report", "done") in events
 
 
+@pytest.mark.slow
 def test_cache_skips_unchanged_stages_and_threshold_invalidates(
     tmp_path, short_video, count_silence_calls
 ):
@@ -164,6 +166,7 @@ def test_cache_skips_unchanged_stages_and_threshold_invalidates(
     assert count_silence_calls["n"] == 3 and executor.calls == 4
 
 
+@pytest.mark.slow
 def test_transcription_cached_and_redone_on_language_change(tmp_path, short_video):
     calls = {"n": 0}
 
@@ -188,6 +191,7 @@ def test_transcription_cached_and_redone_on_language_change(tmp_path, short_vide
     assert Transcript.load(result.project_dir / "transcript.json").language == "en"
 
 
+@pytest.mark.slow
 def test_all_silent_video_fails_clearly(tmp_path):
     video = create_tone_silence_video(tmp_path / "mudo.mp4", [("silence", 3.0)])
     pipeline = EditPipeline(projects_root=tmp_path / "projects")
@@ -202,6 +206,7 @@ def test_all_silent_video_fails_clearly(tmp_path):
     assert "Nenhum trecho de fala" in manifest.stages["plan"].error
 
 
+@pytest.mark.slow
 def test_cli_edit(tmp_path, short_video, capsys):
     args = build_parser().parse_args(
         ["edit", str(short_video), "--projects-dir", str(tmp_path / "projects"), "--padding-after", "0.25"]
@@ -226,6 +231,7 @@ def test_cli_edit_missing_video(tmp_path, capsys):
     assert "não encontrado" in capsys.readouterr().err
 
 
+@pytest.mark.slow
 def test_stage_error_details_reach_cli_and_manifest(tmp_path, short_video, capsys, monkeypatch):
     class BrokenModel:
         def transcribe(self, audio, **kwargs):
@@ -273,6 +279,7 @@ def _lesson_transcript(video) -> Transcript:
     )
 
 
+@pytest.mark.slow
 def test_end_to_end_director_removes_sentences(tmp_path, lesson_video):
     pipeline = EditPipeline(
         projects_root=tmp_path / "projects",
@@ -314,6 +321,7 @@ def test_end_to_end_director_removes_sentences(tmp_path, lesson_video):
     assert changed.outcomes["director"] == "ran"
 
 
+@pytest.mark.slow
 def test_director_fallback_keeps_silence_cut_and_warns(tmp_path, lesson_video):
     invalid = DirectorDecision(removals=[SentenceRemoval(sentence_id=99, category="other", reason="x")], summary="x")
     pipeline = EditPipeline(
@@ -330,6 +338,7 @@ def test_director_fallback_keeps_silence_cut_and_warns(tmp_path, lesson_video):
     assert "inválida (AIResponseValidationError)" in report
 
 
+@pytest.mark.slow
 def test_director_requires_transcription(tmp_path, short_video):
     pipeline = EditPipeline(projects_root=tmp_path / "projects")
     result = pipeline.run(short_video, EditPipelineParams(director="mock"))
@@ -401,6 +410,7 @@ def _srt_blocks(path):
     return [b for b in path.read_text(encoding="utf-8").strip().split("\n\n") if b]
 
 
+@pytest.mark.slow
 def test_end_to_end_subtitles_follow_director_cuts(tmp_path, lesson_video):
     pipeline = EditPipeline(
         projects_root=tmp_path / "projects",
@@ -439,6 +449,7 @@ def _to_sec(stamp: str) -> float:
     return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
 
 
+@pytest.mark.slow
 def test_subtitles_cache_and_max_chars_invalidation(tmp_path, lesson_video):
     executor = CountingExecutor()
     pipeline = EditPipeline(
@@ -467,6 +478,7 @@ def test_subtitles_cache_and_max_chars_invalidation(tmp_path, lesson_video):
                if line and " --> " not in line and not line.isdigit()) <= 10
 
 
+@pytest.mark.slow
 def test_subtitles_skipped_without_transcript_or_when_disabled(tmp_path, lesson_video):
     pipeline = EditPipeline(
         projects_root=tmp_path / "projects",

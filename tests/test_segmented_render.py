@@ -31,6 +31,7 @@ def _stream_durations(path: Path) -> dict[str, float]:
     return {s["codec_type"]: float(s["duration"]) for s in data["streams"]}
 
 
+@pytest.mark.slow
 def test_render_200_segments_from_60s_video(tmp_path: Path):
     """Plano com 200 cortes do mesmo vídeo renderiza com duração final correta e A/V alinhados."""
     source = create_synthetic_video(tmp_path / "lecture_60s.mp4", duration_sec=60.0)
@@ -59,6 +60,7 @@ def test_render_200_segments_from_60s_video(tmp_path: Path):
     assert list(temp_root.iterdir()) == []
 
 
+@pytest.mark.slow
 def test_ffprobe_called_once_per_source(synthetic_video_pair, tmp_path: Path, monkeypatch):
     """Cada arquivo de origem é inspecionado com ffprobe uma única vez, mesmo com muitos cortes."""
     v1, v2 = synthetic_video_pair
@@ -87,6 +89,7 @@ def _audio_filter(cmd: list[str]) -> str:
     return cmd[cmd.index("-filter_complex") + 1]
 
 
+@pytest.mark.slow
 def test_audio_fade_configurable(synthetic_video_with_audio, tmp_path: Path):
     """Micro fade padrão de 20 ms em cada segmento; 0 desativa."""
     seg = ClipSegment(source_path=synthetic_video_with_audio, start_sec=0.5, end_sec=1.5)
@@ -125,6 +128,7 @@ def test_open_ended_segment_uses_probed_duration(synthetic_video_with_audio, tmp
     assert job.expected_duration_sec == pytest.approx(2.0, abs=0.05)
 
 
+@pytest.mark.slow
 def test_render_mixed_sources_without_audio(
     synthetic_video_with_audio, synthetic_video_without_audio, tmp_path: Path
 ):
