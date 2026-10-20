@@ -150,6 +150,7 @@ class MarkdownReportGenerator:
                 f"* **Provedor / Modelo:** `{metrics.provider}` / `{metrics.model_id}`",
                 f"* **Frames enviados:** {metrics.frames_sent}",
                 f"* **Latência:** {metrics.latency_sec:.2f}s",
+                f"* **Tentativas de API:** {metrics.api_attempts}",
                 f"* **Tokens (entrada / saída):** {tokens_in} / {tokens_out}",
                 "",
             ])

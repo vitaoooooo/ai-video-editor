@@ -13,6 +13,8 @@ class MultimodalAIProvider(ABC):
     # Uso de tokens da última chamada; provedores que não informam mantêm None.
     last_input_tokens: Optional[int] = None
     last_output_tokens: Optional[int] = None
+    # Chamadas à API na última análise (>1 se houve nova tentativa por falha temporária).
+    last_api_attempts: int = 1
 
     @property
     @abstractmethod

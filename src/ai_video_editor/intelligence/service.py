@@ -124,6 +124,7 @@ class MultimodalAnalysisService:
                 latency_sec=time.perf_counter() - start,
                 input_tokens=active_provider.last_input_tokens,
                 output_tokens=active_provider.last_output_tokens,
+                api_attempts=exc.api_attempts,
                 success=False,
                 error_type=type(exc).__name__,
             )
@@ -137,6 +138,7 @@ class MultimodalAnalysisService:
             latency_sec=time.perf_counter() - start,
             input_tokens=active_provider.last_input_tokens,
             output_tokens=active_provider.last_output_tokens,
+            api_attempts=active_provider.last_api_attempts,
             success=True,
         )
         metrics_path.write_text(metrics.model_dump_json(indent=2), encoding="utf-8")

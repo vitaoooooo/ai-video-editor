@@ -97,6 +97,9 @@ class AIRunMetrics(BaseModel):
     latency_sec: float = Field(..., ge=0.0, description="Latência da chamada analyze_frames em segundos")
     input_tokens: Optional[int] = Field(default=None, description="Tokens de entrada, se informados pelo provedor")
     output_tokens: Optional[int] = Field(default=None, description="Tokens de saída, se informados pelo provedor")
+    api_attempts: int = Field(
+        default=1, ge=1, description="Chamadas feitas à API (maior que 1 se houve nova tentativa por falha temporária)"
+    )
     success: bool = Field(..., description="Indica se a chamada foi concluída com sucesso")
     error_type: Optional[str] = Field(default=None, description="Nome da classe da exceção em caso de falha")
 
