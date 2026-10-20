@@ -4,14 +4,17 @@ import json
 import os
 import subprocess
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.renderer.compiler import FFmpegCompiler
 from ai_video_editor.renderer.ffmpeg_locator import get_ffmpeg_path, get_ffprobe_path
+
+# (trechos concluídos, total de trechos).
+RenderProgress = Callable[[int, int], None]
 
 
 @dataclass(frozen=True)
@@ -76,12 +79,13 @@ class RenderExecutor:
                 f"FFmpeg execution failed with code {proc.returncode}:\n{error_msg}"
             )
 
-    def execute(self, plan: EditPlan) -> RenderResult:
+    def execute(self, plan: EditPlan, on_progress: Optional[RenderProgress] = None) -> RenderResult:
         """Renders the edit plan to disk and validates output integrity.
 
         Cada segmento vira um arquivo intermediário (em paralelo, até `max_workers`),
         depois os intermediários são unidos pelo concat demuxer. Os temporários são
-        apagados ao final, mesmo em caso de erro.
+        apagados ao final, mesmo em caso de erro. `on_progress` recebe (trechos prontos, total)
+        no início e a cada trecho concluído.
         """
         # Ensure target directory exists
         plan.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -93,9 +97,14 @@ class RenderExecutor:
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
                 futures = [pool.submit(self._run_ffmpeg, cmd) for cmd in job.segment_commands]
+                total = len(futures)
+                if on_progress is not None:
+                    on_progress(0, total)
                 try:
-                    for future in futures:
+                    for done, future in enumerate(as_completed(futures), start=1):
                         future.result()
+                        if on_progress is not None:
+                            on_progress(done, total)
                 except BaseException:
                     for pending in futures:
                         pending.cancel()

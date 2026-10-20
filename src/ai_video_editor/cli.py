@@ -15,6 +15,7 @@ from ai_video_editor.intelligence.schema import AIAnalysisConfig
 from ai_video_editor.llm.chain import ModelChain, resolve_chain
 from ai_video_editor.llm.registry import provider_names
 from ai_video_editor.intelligence.service import MultimodalAnalysisService
+from ai_video_editor.live_status import LiveStatus
 from ai_video_editor.pipeline import (
     STAGES,
     EditPipeline,
@@ -24,7 +25,7 @@ from ai_video_editor.pipeline import (
 )
 from ai_video_editor.pipeline.project import MANIFEST_FILE
 from ai_video_editor.pipeline.report import format_timestamp
-from ai_video_editor.pipeline.schema import RunTimings
+from ai_video_editor.pipeline.schema import RunTimings, StageProgress
 from ai_video_editor.pipeline.timing import STAGE_LABELS, format_duration, summarize_run
 from ai_video_editor.pipeline.versions import ensure_versions, parse_version_ref
 from ai_video_editor.planning import SilenceCutParams
@@ -179,21 +180,34 @@ def handle_report_ai(args: argparse.Namespace) -> int:
     return 0
 
 
+class EditProgressPrinter:
+    """Mostra o andamento de cada etapa do comando `edit` (linha ao vivo em um terminal)."""
+
+    def __init__(self, status: LiveStatus):
+        self.status = status
+
+    def __call__(self, stage: str, event: str, detail: str) -> None:
+        step = f"[{STAGES.index(stage) + 1}/{len(STAGES)}] {STAGE_LABELS[stage]}"
+        if event == "start":
+            self.status.begin(step)
+        elif event == "done":
+            self.status.end(f"{step}: ok — {detail}")
+        elif event == "cached":
+            self.status.end(f"{step}: em cache")
+        elif event == "skipped":
+            self.status.end(f"{step}: pulada ({detail})")
+        elif event == "failed":
+            self.status.end(f"{step}: FALHOU")
+        elif event in ("retry", "notice"):
+            self.status.message(f"{step}: {detail}")
+
+    def progress(self, stage: str, progress: StageProgress) -> None:
+        self.status.apply(progress)
+
+
 def _print_progress(stage: str, event: str, detail: str) -> None:
-    """Mostra o andamento de cada etapa do comando `edit`."""
-    step = f"[{STAGES.index(stage) + 1}/{len(STAGES)}] {STAGE_LABELS[stage]}"
-    if event == "start":
-        print(f"{step}...", flush=True)
-    elif event == "done":
-        print(f"{step}: ok — {detail}", flush=True)
-    elif event == "cached":
-        print(f"{step}: em cache", flush=True)
-    elif event == "skipped":
-        print(f"{step}: pulada ({detail})", flush=True)
-    elif event == "failed":
-        print(f"{step}: FALHOU", flush=True)
-    elif event in ("retry", "notice"):
-        print(f"{step}: {detail}", flush=True)
+    """Uma linha por evento do `edit`, sem linha ao vivo."""
+    EditProgressPrinter(LiveStatus(live=False))(stage, event, detail)
 
 
 def _print_api_retry(event) -> None:
@@ -260,9 +274,14 @@ def handle_edit(args: argparse.Namespace) -> int:
         print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
         return 1
 
-    pipeline = EditPipeline(projects_root=Path(args.projects_dir), on_progress=_print_progress)
+    status = LiveStatus(live=False if args.no_live else None)
+    printer = EditProgressPrinter(status)
+    pipeline = EditPipeline(
+        projects_root=Path(args.projects_dir), on_progress=printer, on_stage_progress=printer.progress
+    )
     try:
-        result = pipeline.run(video_path, params, force=args.force)
+        with status:
+            result = pipeline.run(video_path, params, force=args.force)
     except Exception as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 1
@@ -301,12 +320,48 @@ def _short(text: str, limit: int = 70) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def _print_revision_progress(step: str, detail: str) -> None:
-    print(f"[revisão] {step}: {detail}", flush=True)
+class RevisionProgressPrinter:
+    """Mostra o andamento do `revise`: linha ao vivo por etapa e avisos do revisor acima dela."""
+
+    def __init__(self, status: LiveStatus):
+        self.status = status
+        # Modelo pedido ao revisor, mostrado enquanto ele responde.
+        self.model: Optional[str] = None
+
+    def __call__(self, step: str, detail: str) -> None:
+        """Resumo de uma etapa: fecha a linha ao vivo dela (ou vira linha avulsa)."""
+        line = f"[revisão] {step}: {detail}"
+        if self.status.active:
+            self.status.end(line)
+        else:
+            self.status.message(line)
+
+    def start(self, step: str) -> None:
+        self.status.begin(f"[revisão] {step}", announce=False)
+        if step == "revisor" and self.model:
+            self.status.update(note=self.model)
+
+    def progress(self, step: str, progress: StageProgress) -> None:
+        self.status.apply(progress)
+
+    def retry(self, chain: ModelChain, event) -> None:
+        self.status.message(f"[revisão] revisor: {event.message}")
+        self.status.update(note=f"{chain.current.label}, tentativa {event.next_attempt}/{event.total_attempts}")
+
+    def notice(self, chain: ModelChain, message: str) -> None:
+        self.status.message(f"[revisão] revisor: {message}")
+        if chain.switches:
+            # O aviso sai antes da troca; o próximo elo é o destino da última troca registrada.
+            self.status.update(note=f"{chain.switches[-1].to_model}, tentativa 1")
 
 
-def _build_reviser(args: argparse.Namespace, params: EditPipelineParams):
+def _build_reviser(
+    args: argparse.Namespace,
+    params: EditPipelineParams,
+    progress: Optional[RevisionProgressPrinter] = None,
+):
     """Revisor pedido na CLI; sem opções, herda provedor, modelo e reservas do Diretor do projeto."""
+    progress = progress or RevisionProgressPrinter(LiveStatus(live=False))
     provider = args.reviser or (params.director if params.director not in ("none", "mock") else "gemini")
     if provider == "mock":
         from ai_video_editor.revision.providers.mock import MockReviser
@@ -325,9 +380,9 @@ def _build_reviser(args: argparse.Namespace, params: EditPipelineParams):
         timeout_sec=args.reviser_timeout or params.director_timeout_sec,
         retry=RetryPolicy(
             max_retries=args.api_retries,
-            on_retry=lambda event: _print_revision_progress("revisor", event.message),
+            on_retry=lambda event: progress.retry(chain, event),
         ),
-        on_event=lambda message: _print_revision_progress("revisor", message),
+        on_event=lambda message: progress.notice(chain, message),
     )
     return LLMReviser(chain)
 
@@ -342,10 +397,17 @@ def handle_revise(args: argparse.Namespace) -> int:
             print(f"Erro: {project_dir} não é uma pasta de projeto (falta {MANIFEST_FILE}).", file=sys.stderr)
             return 1
         params = ProjectManifest.load(manifest_path).params
-        reviser = _build_reviser(args, params)
-        result = ProjectReviser(reviser, on_progress=_print_revision_progress).revise(
-            project_dir, args.request, from_version
-        )
+        status = LiveStatus(live=False if args.no_live else None)
+        printer = RevisionProgressPrinter(status)
+        reviser = _build_reviser(args, params, printer)
+        printer.model = reviser.model_chain[0] if reviser.model_chain else None
+        with status:
+            result = ProjectReviser(
+                reviser,
+                on_progress=printer,
+                on_step_start=printer.start,
+                on_stage_progress=printer.progress,
+            ).revise(project_dir, args.request, from_version)
     except RevisionError as e:
         print(f"Versão não criada: {e}", file=sys.stderr)
         return 1
@@ -690,6 +752,14 @@ def build_parser() -> argparse.ArgumentParser:
                 "Novas tentativas da API de IA em falhas temporárias (503, 504, 429, conexão), "
                 f"com espera crescente; 0 desliga (padrão: {DEFAULT_API_RETRIES})"
             ),
+        )
+
+    for live_parser in (edit_parser, revise_parser):
+        live_parser.add_argument(
+            "--no-live",
+            action="store_true",
+            help="Sem linha de andamento ao vivo; só as linhas finais de cada etapa "
+            "(automático quando a saída não é um terminal)",
         )
 
     # Subcomando: versions

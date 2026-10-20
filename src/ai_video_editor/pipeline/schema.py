@@ -102,6 +102,26 @@ class StageTiming(BaseModel):
     elapsed_sec: Optional[float] = Field(default=None, description="Só em etapas executadas")
 
 
+class StageProgress(BaseModel):
+    """Andamento de uma etapa em curso, para exibição ao vivo (não é gravado no projeto).
+
+    `done`/`total` em segundos de mídia (`unit="sec"`, transcrição) ou em itens
+    (`unit="items"`, trechos do render). `note` é um texto livre, ex: modelo e tentativa do Diretor.
+    """
+
+    done: Optional[float] = None
+    total: Optional[float] = None
+    unit: Literal["sec", "items"] = "sec"
+    note: str = ""
+
+    @property
+    def fraction(self) -> Optional[float]:
+        """Fração concluída (0–1) ou None sem progresso mensurável."""
+        if self.done is None or not self.total or self.total <= 0:
+            return None
+        return min(1.0, max(0.0, self.done / self.total))
+
+
 class RunTimings(BaseModel):
     """Tempos de uma execução do `edit` ou do `revise`."""
 

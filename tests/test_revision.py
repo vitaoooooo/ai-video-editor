@@ -323,7 +323,7 @@ def test_removing_everything_is_rejected(edited):
 @pytest.mark.slow
 def test_render_failure_leaves_no_half_version(edited):
     class FailingExecutor(RenderExecutor):
-        def execute(self, plan):
+        def execute(self, plan, on_progress=None):
             raise RuntimeError("ffmpeg quebrou")
 
     before = (edited.project / "project.json").read_text(encoding="utf-8")

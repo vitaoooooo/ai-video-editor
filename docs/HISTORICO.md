@@ -93,6 +93,10 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   - 🔁 **Regra do pedaço de palavra:** se o corte deixaria uma sobra da frase menor que 0,25s, ele é estendido até o limite da frase; se isso invadir uma frase mantida, o corte é desfeito. Nunca fica meia palavra no vídeo.
   - 📊 320 testes automatizados.
 
+- ✅ **Andamento ao vivo no terminal** (`live-progress`): no `edit` e no `revise`, a linha da etapa em curso é reescrita a cada segundo com o tempo decorrido; a transcrição mostra a fração do áudio já transcrita, o render os trechos prontos (`118/258 trechos`), e o Diretor/revisor o modelo atual e a tentativa. Tempo restante (`faltam ~3min`) só a partir de 10% concluídos. Avisos saem em linha própria acima da linha ao vivo. Fora de um terminal, ou com `--no-live`, a saída é a mesma de antes.
+  - **Por quê:** na palestra de 57 min, a transcrição e o render ficavam minutos sem nenhuma saída, e não dava para saber se o editor estava andando ou travado.
+  - 🔁 O progresso vem de callbacks injetáveis (`transcribe(..., on_progress)`, `RenderExecutor.execute(plan, on_progress)`, `on_stage_progress` no pipeline); só a CLI sabe desenhar a linha. Os avisos de GPU indisponível do faster-whisper passaram a sair pelo callback do pipeline (antes iam direto para o stderr e quebrariam a linha ao vivo).
+
 📊 **Palestra de 57 min, resultado atual:** 57:07 → 53:43, 259 cortes, processada em **8min48s** (0,15× o tempo real, com transcrição em cache).
 
 ---

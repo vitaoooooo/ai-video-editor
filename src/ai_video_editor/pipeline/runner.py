@@ -55,10 +55,11 @@ from ai_video_editor.pipeline.schema import (
     ProjectManifest,
     StageName,
     StageOutcome,
+    StageProgress,
     StageRecord,
 )
 from ai_video_editor.planning import build_edit_plan, removed_ranges
-from ai_video_editor.intelligence.retry import RetryPolicy
+from ai_video_editor.intelligence.retry import RetryEvent, RetryPolicy
 from ai_video_editor.llm.chain import ModelChain
 from ai_video_editor.planning.schema import TimeRange
 from ai_video_editor.renderer.executor import RenderExecutor
@@ -73,6 +74,9 @@ REPORT_FORMAT = "report-v2-comparison"
 # (etapa, evento, detalhe). Eventos: "start", "done", "cached", "skipped", "failed", "retry" e
 # "notice" (aviso, ex: troca automática de modelo).
 ProgressCallback = Callable[[StageName, str, str], None]
+
+# Andamento da etapa em curso (fração concluída, modelo e tentativa...), para exibição ao vivo.
+StageProgressCallback = Callable[[StageName, StageProgress], None]
 
 # Resultado de uma etapa: métricas gravadas no manifesto e uma linha de resumo para o terminal.
 StageWork = Callable[[], tuple[dict, str]]
@@ -126,19 +130,25 @@ class EditPipeline:
         render_executor: Optional[RenderExecutor] = None,
         on_progress: Optional[ProgressCallback] = None,
         edit_director: Optional[EditDirector] = None,
+        on_stage_progress: Optional[StageProgressCallback] = None,
     ):
         self.projects_root = Path(projects_root)
         self._transcription_provider = transcription_provider
         self._edit_director = edit_director
         self._render_executor = render_executor
         self.on_progress = on_progress
+        self.on_stage_progress = on_stage_progress
 
     @property
     def transcription_provider(self) -> TranscriptionProvider:
         if self._transcription_provider is None:
             from ai_video_editor.transcription.providers.faster_whisper import FasterWhisperProvider
 
-            self._transcription_provider = FasterWhisperProvider()
+            # Com quem acompanhe o progresso, avisos (ex: GPU indisponível) vão pelo callback.
+            on_warning = None
+            if self.on_progress is not None:
+                on_warning = lambda message: self._emit("transcription", "notice", message)  # noqa: E731
+            self._transcription_provider = FasterWhisperProvider(on_warning=on_warning)
         return self._transcription_provider
 
     def director_for(self, params: EditPipelineParams) -> EditDirector:
@@ -151,18 +161,30 @@ class EditPipeline:
             return MockDirector()
         from ai_video_editor.director.providers.llm import LLMDirector
 
-        return LLMDirector(
-            ModelChain(
-                params.director_chain(),
-                thinking=params.director_thinking,
-                timeout_sec=params.director_timeout_sec,
-                retry=RetryPolicy(
-                    max_retries=params.api_retries,
-                    on_retry=lambda event: self._emit("director", "retry", event.message),
-                ),
-                on_event=lambda message: self._emit("director", "notice", message),
-            )
+        chain = ModelChain(
+            params.director_chain(),
+            thinking=params.director_thinking,
+            timeout_sec=params.director_timeout_sec,
+            retry=RetryPolicy(
+                max_retries=params.api_retries,
+                on_retry=lambda event: self._director_retry(chain, event),
+            ),
+            on_event=lambda message: self._director_notice(chain, message),
         )
+        return LLMDirector(chain)
+
+    def _director_retry(self, chain: ModelChain, event: RetryEvent) -> None:
+        self._emit("director", "retry", event.message)
+        self._stage_progress(
+            "director",
+            StageProgress(note=f"{chain.current.label}, tentativa {event.next_attempt}/{event.total_attempts}"),
+        )
+
+    def _director_notice(self, chain: ModelChain, message: str) -> None:
+        self._emit("director", "notice", message)
+        if chain.switches:
+            # O aviso sai antes da troca; o próximo elo é o destino da última troca registrada.
+            self._stage_progress("director", StageProgress(note=f"{chain.switches[-1].to_model}, tentativa 1"))
 
     @property
     def render_executor(self) -> RenderExecutor:
@@ -173,6 +195,10 @@ class EditPipeline:
     def _emit(self, stage: StageName, event: str, detail: str = "") -> None:
         if self.on_progress is not None:
             self.on_progress(stage, event, detail)
+
+    def _stage_progress(self, stage: StageName, progress: StageProgress) -> None:
+        if self.on_stage_progress is not None:
+            self.on_stage_progress(stage, progress)
 
     def run(
         self,
@@ -270,7 +296,13 @@ class EditPipeline:
             )
 
             def do_transcription() -> tuple[dict, str]:
-                transcript = provider.transcribe(video_path, params.transcription)
+                transcript = provider.transcribe(
+                    video_path,
+                    params.transcription,
+                    on_progress=lambda done, total: self._stage_progress(
+                        "transcription", StageProgress(done=done, total=total, unit="sec")
+                    ),
+                )
                 transcript.save(project_dir / TRANSCRIPT_FILE)
                 metrics = {
                     "provider": provider.provider_name,
@@ -300,6 +332,8 @@ class EditPipeline:
             )
 
             def do_director() -> tuple[dict, str]:
+                model = director.model_chain[0] if director.model_chain else director.model_id
+                self._stage_progress("director", StageProgress(note=model))
                 transcript = Transcript.load(project_dir / TRANSCRIPT_FILE)
                 sentences = build_sentences(transcript, params.sentences)
                 context = DirectorContext(
@@ -376,7 +410,12 @@ class EditPipeline:
         fp_render = fingerprint("render", fp_plan)
 
         def do_render() -> tuple[dict, str]:
-            result = self.render_executor.execute(plan)
+            result = self.render_executor.execute(
+                plan,
+                on_progress=lambda done, total: self._stage_progress(
+                    "render", StageProgress(done=done, total=total, unit="items")
+                ),
+            )
             metrics = {
                 "duration_sec": round(result.duration_sec, 3),
                 "size_bytes": result.size_bytes,
