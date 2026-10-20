@@ -33,6 +33,7 @@ Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revi
 - Erros de IA usam as exceções de `intelligence/exceptions.py`; erros de mídia usam `analyzer/exceptions.py`.
 - FFmpeg sempre via lista de argumentos em `subprocess` (nunca `shell=True`).
 - Testes não fazem chamadas de rede: usam vídeos sintéticos gerados por FFmpeg (`tests/conftest.py`) e provedores mock.
+- Testes que renderizam vídeo ou rodam FFmpeg de forma pesada levam `@pytest.mark.slow`. Vídeos sintéticos reaproveitáveis são fixtures `scope="session"` (somente leitura); toda saída vai para `tmp_path`, porque a suíte roda em paralelo (pytest-xdist).
 - Revisor Gemini (`revise`): reaproveita a configuração do Diretor (`generate_structured`: modelo, raciocínio com fallback, timeout); como o Diretor, só referencia IDs de frases, nunca timestamps.
 - Diretor Gemini: raciocínio `low` por padrão (`--director-thinking low`; se a API recusar o nível, sobe automaticamente off → low → high e registra o nível efetivo) e timeout de 120s repassado ao SDK via `http_options`.
 - Chaves de API só por variável de ambiente (`GEMINI_API_KEY`) ou `.env` local. Nunca commitar, logar ou imprimir chaves.
@@ -41,7 +42,8 @@ Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revi
 
 ## Ao concluir uma tarefa
 
-1. Rodar `python -m pytest -q` e garantir que tudo passa.
+1. Durante o desenvolvimento, rodar só os testes rápidos e os arquivos afetados: `python -m pytest -q -m "not slow"` ou `python -m pytest -q tests/test_x.py`.
+   A suíte completa (`python -m pytest -q -n auto`, inclui os `slow`) roda **uma única vez, antes do commit**, e deve passar toda.
 2. Atualizar o `README.md` se mudou CLI, módulo ou fluxo.
 3. Resumir: arquivos alterados, decisões tomadas, o que ficou pendente.
 

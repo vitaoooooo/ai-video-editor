@@ -103,46 +103,49 @@ def create_corrupted_media_file(output_path: Path) -> Path:
     return output_path
 
 
-@pytest.fixture
-def synthetic_video_pair(tmp_path: Path) -> Tuple[Path, Path]:
+# Fixtures de sessão: vídeos sintéticos são gerados uma única vez (por worker do xdist)
+# e usados somente para leitura; as saídas dos testes vão sempre para tmp_path.
+@pytest.fixture(scope="session")
+def synthetic_video_pair(tmp_path_factory) -> Tuple[Path, Path]:
     """Provides two distinct synthetic test videos with audio."""
-    v1 = tmp_path / "synthetic_clip_1.mp4"
-    v2 = tmp_path / "synthetic_clip_2.mp4"
+    root = tmp_path_factory.mktemp("synthetic_pair")
+    v1 = root / "synthetic_clip_1.mp4"
+    v2 = root / "synthetic_clip_2.mp4"
     create_synthetic_video(v1, duration_sec=3.0, audio_freq=440)
     create_synthetic_video(v2, duration_sec=3.0, audio_freq=880)
     return v1, v2
 
 
-@pytest.fixture
-def synthetic_video_with_audio(tmp_path: Path) -> Path:
-    return create_synthetic_video(tmp_path / "clip_with_audio.mp4", duration_sec=3.0)
+@pytest.fixture(scope="session")
+def synthetic_video_with_audio(tmp_path_factory) -> Path:
+    return create_synthetic_video(tmp_path_factory.mktemp("with_audio") / "clip_with_audio.mp4", duration_sec=3.0)
 
 
-@pytest.fixture
-def synthetic_video_without_audio(tmp_path: Path) -> Path:
-    return create_synthetic_video_no_audio(tmp_path / "clip_no_audio.mp4", duration_sec=3.0)
+@pytest.fixture(scope="session")
+def synthetic_video_without_audio(tmp_path_factory) -> Path:
+    return create_synthetic_video_no_audio(tmp_path_factory.mktemp("no_audio") / "clip_no_audio.mp4", duration_sec=3.0)
 
 
-@pytest.fixture
-def synthetic_audio_only_file(tmp_path: Path) -> Path:
-    return create_synthetic_audio_only(tmp_path / "audio_only.m4a", duration_sec=3.0)
+@pytest.fixture(scope="session")
+def synthetic_audio_only_file(tmp_path_factory) -> Path:
+    return create_synthetic_audio_only(tmp_path_factory.mktemp("audio_only") / "audio_only.m4a", duration_sec=3.0)
 
 
-@pytest.fixture
-def corrupted_file(tmp_path: Path) -> Path:
-    return create_corrupted_media_file(tmp_path / "corrupted_media.mp4")
+@pytest.fixture(scope="session")
+def corrupted_file(tmp_path_factory) -> Path:
+    return create_corrupted_media_file(tmp_path_factory.mktemp("corrupted") / "corrupted_media.mp4")
 
 
-@pytest.fixture
-def short_video(tmp_path: Path) -> Path:
+@pytest.fixture(scope="session")
+def short_video(tmp_path_factory) -> Path:
     """1.2 second video for edge case testing (interval does not divide evenly)."""
-    return create_synthetic_video(tmp_path / "short_1_2s.mp4", duration_sec=1.2)
+    return create_synthetic_video(tmp_path_factory.mktemp("short") / "short_1_2s.mp4", duration_sec=1.2)
 
 
-@pytest.fixture
-def long_video(tmp_path: Path) -> Path:
+@pytest.fixture(scope="session")
+def long_video(tmp_path_factory) -> Path:
     """8.5 second video for multi-frame testing."""
-    return create_synthetic_video(tmp_path / "long_8_5s.mp4", duration_sec=8.5)
+    return create_synthetic_video(tmp_path_factory.mktemp("long") / "long_8_5s.mp4", duration_sec=8.5)
 
 
 def create_tone_silence_video(

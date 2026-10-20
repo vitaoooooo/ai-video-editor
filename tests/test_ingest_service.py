@@ -8,6 +8,7 @@ from ai_video_editor.analyzer.schema import FrameExtractionConfig
 from ai_video_editor.analyzer.service import VideoIngestService
 
 
+@pytest.mark.slow
 def test_analyze_single_video(synthetic_video_with_audio: Path, tmp_path: Path):
     """Analyzes a single video and verifies structure and directory creation."""
     service = VideoIngestService(default_base_dir=tmp_path)
@@ -25,6 +26,7 @@ def test_analyze_single_video(synthetic_video_with_audio: Path, tmp_path: Path):
         assert f.image_path.is_file()
 
 
+@pytest.mark.slow
 def test_analyze_batch_mixed_success_and_failures(
     synthetic_video_with_audio: Path,
     synthetic_video_without_audio: Path,

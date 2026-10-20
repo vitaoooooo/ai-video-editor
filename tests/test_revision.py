@@ -1,6 +1,7 @@
 """Testes do ciclo de revisão (versões, `revise`, `versions`) com vídeo sintético e provedores mock."""
 
 import json
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -48,17 +49,39 @@ _swap_1_for_3 = RevisionDecision(
 )
 
 
-@pytest.fixture
-def edited(tmp_path, lesson_video):
-    """Projeto com v1 pronto: o Diretor mock removeu a frase 1."""
+@pytest.fixture(scope="module")
+def _edited_template(tmp_path_factory, lesson_video):
+    """Roda o `edit` (v1) uma única vez por módulo; cada teste trabalha numa cópia."""
+    root = tmp_path_factory.mktemp("edited_template")
     pipeline = EditPipeline(
-        projects_root=tmp_path / "projects",
+        projects_root=root / "projects",
         transcription_provider=MockTranscriptionProvider(
             custom_transcript=_lesson_transcript_with_words(lesson_video)
         ),
         edit_director=MockDirector(removals=[_removal(1, "Repete.")]),
     )
     result = pipeline.run(lesson_video, EditPipelineParams(transcribe=True, director="mock"))
+    return root, result
+
+
+@pytest.fixture
+def edited(tmp_path, lesson_video, _edited_template):
+    """Projeto com v1 pronto: o Diretor mock removeu a frase 1 (cópia isolada em tmp_path)."""
+    root, template = _edited_template
+    shutil.copytree(root / "projects", tmp_path / "projects")
+
+    def relocate(path):
+        return tmp_path / path.relative_to(root) if path is not None else None
+
+    result = template.model_copy(
+        update={
+            "project_dir": relocate(template.project_dir),
+            "manifest_path": relocate(template.manifest_path),
+            "output_path": relocate(template.output_path),
+            "report_path": relocate(template.report_path),
+            "subtitles_path": relocate(template.subtitles_path),
+        }
+    )
     return SimpleNamespace(result=result, project=result.project_dir, video=lesson_video)
 
 
@@ -70,6 +93,7 @@ def _revise(project, reviser, request="pedido", from_version=None, executor=None
     return ProjectReviser(reviser, render_executor=executor).revise(project, request, from_version)
 
 
+@pytest.mark.slow
 def test_edit_creates_v1_with_all_artifacts(edited):
     manifest = ProjectManifest.load(edited.result.manifest_path)
     assert edited.result.version == 1
@@ -89,6 +113,7 @@ def test_edit_creates_v1_with_all_artifacts(edited):
     assert plan["output_path"].replace("\\", "/").endswith("versions/v1/" + v1.video)
 
 
+@pytest.mark.slow
 def test_edit_rerun_does_not_duplicate_but_changed_params_add_a_version(tmp_path, lesson_video):
     pipeline = EditPipeline(
         projects_root=tmp_path / "projects",
@@ -110,6 +135,7 @@ def test_edit_rerun_does_not_duplicate_but_changed_params_add_a_version(tmp_path
     assert manifest.current_version == 2 and manifest.versions[1].parent == 1
 
 
+@pytest.mark.slow
 def test_revise_restores_one_sentence_and_removes_another_keeping_v1_intact(edited):
     project = edited.project
     v1_dir = project / "versions" / "v1"
@@ -164,6 +190,7 @@ def test_revise_restores_one_sentence_and_removes_another_keeping_v1_intact(edit
     assert v2.kind == "revision" and v2.parent == 1 and v2.request.startswith("mantém")
 
 
+@pytest.mark.slow
 def test_revise_sends_states_brief_history_and_request_to_the_reviser(edited):
     reviser = MockReviser()
     _revise(edited.project, reviser, "restaura tudo")
@@ -179,6 +206,7 @@ def test_revise_sends_states_brief_history_and_request_to_the_reviser(edited):
     assert reviser2.calls[0][1].base_version == 2
 
 
+@pytest.mark.slow
 def test_revise_from_v1_after_v2_exists_and_v3_descends_from_v1(edited):
     project = edited.project
     _revise(project, MockReviser(_swap_1_for_3), "tira o final")
@@ -204,6 +232,7 @@ def test_revise_from_v1_after_v2_exists_and_v3_descends_from_v1(edited):
     assert "Frase repetida que sai do video." in _srt(result.subtitles_path)
 
 
+@pytest.mark.slow
 def test_revise_from_unknown_version_fails_without_creating_anything(edited):
     from ai_video_editor.revision import ProjectStateError
 
@@ -212,6 +241,7 @@ def test_revise_from_unknown_version_fails_without_creating_anything(edited):
     assert not (edited.project / "versions" / "v2").exists()
 
 
+@pytest.mark.slow
 def test_invalid_ids_after_retry_create_no_version(edited):
     manifest_before = (edited.project / "project.json").read_text(encoding="utf-8")
     bad = RevisionDecision(removals=[_removal(99)], summary="id inexistente")
@@ -228,6 +258,7 @@ def test_invalid_ids_after_retry_create_no_version(edited):
     assert (edited.project / "project.json").read_text(encoding="utf-8") == manifest_before
 
 
+@pytest.mark.slow
 def test_retry_succeeds_when_second_answer_is_valid(edited):
     bad = RevisionDecision(removals=[_removal(99)], summary="x")
     good = _swap_1_for_3
@@ -249,6 +280,7 @@ def test_restorations_must_match_the_diff():
         run_reviser(MockReviser(decision=forgot), states, UserBrief(), context)
 
 
+@pytest.mark.slow
 def test_infeasible_request_is_explained_and_creates_no_version(edited):
     reviser = MockReviser(
         RevisionDecision(feasible=False, problem="Ninguém fala do site neste vídeo.", summary="")
@@ -259,6 +291,7 @@ def test_infeasible_request_is_explained_and_creates_no_version(edited):
     assert not (edited.project / "versions" / "v2").exists()
 
 
+@pytest.mark.slow
 def test_request_that_changes_nothing_is_rejected(edited):
     reviser = MockReviser(RevisionDecision(removals=[_removal(1)], summary="Já está assim."))
     with pytest.raises(RevisionRejectedError, match="não muda nada"):
@@ -266,6 +299,7 @@ def test_request_that_changes_nothing_is_rejected(edited):
     assert not (edited.project / "versions" / "v2").exists()
 
 
+@pytest.mark.slow
 def test_removing_everything_is_rejected(edited):
     everything = RevisionDecision(removals=[_removal(i) for i in range(4)], summary="tudo")
     with pytest.raises(RevisionRejectedError):
@@ -273,6 +307,7 @@ def test_removing_everything_is_rejected(edited):
     assert not (edited.project / "versions" / "v2").exists()
 
 
+@pytest.mark.slow
 def test_render_failure_leaves_no_half_version(edited):
     class FailingExecutor(RenderExecutor):
         def execute(self, plan):
@@ -295,6 +330,7 @@ def test_pause_presets_scale_the_cut_params():
     assert natural.min_keep_sec == base.min_keep_sec == tight.min_keep_sec
 
 
+@pytest.mark.slow
 def test_pause_presets_change_the_plan_and_the_inherited_pacing(edited):
     project = edited.project
     keep = RevisionDecision(removals=[_removal(1)], summary="só o ritmo")
@@ -318,6 +354,7 @@ def test_pause_presets_change_the_plan_and_the_inherited_pacing(edited):
     assert inherited.version.pacing == "tight" and inherited.base_version == 3
 
 
+@pytest.mark.slow
 def test_legacy_project_without_versions_is_migrated_to_v1(edited):
     manifest_path = edited.result.manifest_path
     raw = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -352,6 +389,7 @@ def test_legacy_project_without_versions_is_migrated_to_v1(edited):
     assert [v.number for v in ProjectManifest.load(manifest_path).versions] == [1, 2]
 
 
+@pytest.mark.slow
 def test_legacy_project_with_silence_cut_only_can_be_revised(tmp_path, lesson_video):
     pipeline = EditPipeline(
         projects_root=tmp_path / "projects",
@@ -369,6 +407,7 @@ def test_legacy_project_with_silence_cut_only_can_be_revised(tmp_path, lesson_vi
     assert revised.duration_after_sec < revised.duration_before_sec
 
 
+@pytest.mark.slow
 def test_revise_requires_a_transcript(tmp_path, lesson_video):
     from ai_video_editor.revision import ProjectStateError
 
@@ -384,6 +423,7 @@ def test_revise_on_a_folder_that_is_not_a_project(tmp_path):
         _revise(tmp_path, MockReviser(), "x")
 
 
+@pytest.mark.slow
 def test_cli_versions_and_revise(edited, capsys):
     parser = build_parser()
     args = parser.parse_args(["revise", str(edited.project), "restaura tudo", "--reviser", "mock", "--from", "v1"])
@@ -407,6 +447,7 @@ def test_cli_versions_and_revise(edited, capsys):
     assert cli  # módulo importado acima
 
 
+@pytest.mark.slow
 def test_cli_revise_rejection_exits_1_and_explains(edited, capsys):
     parser = build_parser()
     args = parser.parse_args(["revise", str(edited.project), "deixa", "--reviser", "mock"])

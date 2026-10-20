@@ -2,10 +2,13 @@
 
 from pathlib import Path
 
+import pytest
+
 from ai_video_editor.core.schema import ClipSegment, EditPlan
 from ai_video_editor.renderer.executor import RenderExecutor
 
 
+@pytest.mark.slow
 def test_render_two_synthetic_videos_integration(synthetic_video_pair, tmp_path: Path):
     """Cuts two distinct synthetic clips and renders them into a single valid MP4."""
     v1, v2 = synthetic_video_pair

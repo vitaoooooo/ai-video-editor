@@ -20,6 +20,7 @@ def test_compiler_missing_source_file(tmp_path: Path):
         compiler.compile(plan)
 
 
+@pytest.mark.slow
 def test_compiler_structure_with_synthetic_pair(synthetic_video_pair, tmp_path: Path):
     """Compiler produces correct flag arguments and filter graph."""
     v1, v2 = synthetic_video_pair
