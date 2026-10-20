@@ -23,3 +23,8 @@ output/
 # Benchmarks: mídia baixada localmente (não versionada)
 benchmark/data/*
 !benchmark/data/*_reference.txt
+
+# Skills de agentes (ficam na pasta de usuário, fora do repositório)
+.claude/
+.agents/
+skills-lock.json

@@ -131,6 +131,13 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
 📊 **Palestra de 57 min, resultado atual:** 57:07 → 53:43, 259 cortes, processada em **8min48s** (0,15× o tempo real, com transcrição em cache).
 
+## Skills fora do repositório
+
+- ❌ As pastas `.claude/` e `.agents/` e o `skills-lock.json` saíram do repositório (continuam no disco, ignorados pelo `.gitignore`).
+- 🔁 As skills do Claude Code foram para a pasta de usuário (`C:\Users\vitor\.claude\skills\`).
+  - **Por quê:** na pasta de usuário elas valem para todos os worktrees sem cópia por pasta, e deixam de poluir o repositório.
+- ❌ O Antigravity deixou de ser usado no projeto, então a cópia `.agents/skills/` e a regra das "duas cópias" perderam o sentido.
+
 ---
 
 ## 🔄 Em andamento

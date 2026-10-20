@@ -59,9 +59,4 @@ Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revi
 
 ## Skills
 
-As skills do projeto existem em duas cópias idênticas:
-
-- `.agents/skills/` — usada pelo Antigravity (registrada em `skills-lock.json`).
-- `.claude/skills/` — usada pelo Claude Code.
-
-Uma alteração em uma das cópias deve ser replicada na outra.
+As skills do Claude Code ficam na pasta de usuário (`~/.claude/skills/`; no Windows, `C:\Users\vitor\.claude\skills\`), fora do repositório. Por isso valem para todos os worktrees. Para alterar uma skill, edite lá.
