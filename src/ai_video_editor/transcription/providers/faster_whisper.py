@@ -87,6 +87,8 @@ class FasterWhisperProvider(TranscriptionProvider):
         self._effective: Optional[tuple[str, str]] = None
         # Callback e duração do áudio da transcrição em curso.
         self._progress: Optional[tuple[TranscriptionProgress, float]] = None
+        # Modelo carregado com `preload`: (chave da configuração, modelo, (dispositivo, compute_type)).
+        self._preloaded: Optional[tuple[tuple[str, str, str], object, tuple[str, str]]] = None
 
     @staticmethod
     def _resolve(device: str, compute_type: str) -> tuple[str, str]:
@@ -135,6 +137,19 @@ class FasterWhisperProvider(TranscriptionProvider):
         self._effective = (device, compute_type)
         return model
 
+    @staticmethod
+    def _model_key(config: TranscriptionConfig) -> tuple[str, str, str]:
+        return config.model_size, config.device, config.compute_type
+
+    def preload(self, config: TranscriptionConfig) -> None:
+        """Carrega o modelo agora; o `transcribe` seguinte com a mesma configuração o reaproveita.
+
+        Permite medir o tempo de carga separado do tempo de transcrição (benchmark).
+        """
+        self._effective = None
+        model = self._load_model(config)
+        self._preloaded = (self._model_key(config), model, self._effective or self._cpu_settings(config.compute_type))
+
     def _decode_audio(self, media_path: Path):
         """Decodifica o áudio com FFmpeg para um array float32 mono 16 kHz (sem usar o PyAV)."""
         import numpy as np
@@ -179,8 +194,11 @@ class FasterWhisperProvider(TranscriptionProvider):
         if not media_path.is_file():
             raise TranscriptionMediaError(self.provider_name, media_path, "Arquivo inexistente.")
 
-        self._effective = None
-        model = self._load_model(config)
+        if self._preloaded is not None and self._preloaded[0] == self._model_key(config):
+            _, model, self._effective = self._preloaded
+        else:
+            self._effective = None
+            model = self._load_model(config)
         device, compute_type = self._effective or self._cpu_settings(config.compute_type)
         audio = self._decode_audio(media_path)
         duration = len(audio) / _SAMPLE_RATE

@@ -443,6 +443,68 @@ def handle_revise(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_benchmark_transcription(args: argparse.Namespace) -> int:
+    """Mede velocidade e WER de configurações de transcrição em um ou mais áudios."""
+    from datetime import date
+
+    from ai_video_editor.benchmark import (
+        BenchmarkConfig,
+        BenchmarkItem,
+        BenchmarkManifest,
+        format_markdown,
+        run_benchmark,
+    )
+
+    if bool(args.manifest) == bool(args.audio):
+        print("Erro: informe --audio (um item) ou --manifest (vários itens), não os dois.", file=sys.stderr)
+        return 1
+    try:
+        configs = [
+            BenchmarkConfig.parse(spec)
+            for chunk in args.configs
+            for spec in chunk.split(",")
+            if spec.strip()
+        ]
+        if not configs:
+            raise ValueError("--configs não pode ser vazio")
+        if args.manifest:
+            manifest_path = Path(args.manifest)
+            items = BenchmarkManifest.load(manifest_path).items
+            default_name = manifest_path.stem
+        else:
+            audio = Path(args.audio)
+            items = [
+                BenchmarkItem(
+                    name=audio.stem,
+                    audio=audio,
+                    reference=Path(args.reference) if args.reference else None,
+                    language=args.language,
+                )
+            ]
+            default_name = audio.stem
+    except Exception as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    for item in items:
+        for label, path in (("áudio", item.audio), ("referência", item.reference)):
+            if path is not None and not path.is_file():
+                print(f"Erro: {label} do item '{item.name}' não encontrado: {path}", file=sys.stderr)
+                return 1
+
+    name = args.name or default_name
+    out_dir = Path(args.results_dir) / f"{date.today().isoformat()}-{name}"
+    print(f"Benchmark '{name}': {len(configs)} configuração(ões) × {len(items)} item(ns)")
+    run = run_benchmark(name, configs, items, on_progress=print)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "results.json").write_text(run.model_dump_json(indent=2), encoding="utf-8")
+    markdown = format_markdown(run)
+    (out_dir / "results.md").write_text(markdown + "\n", encoding="utf-8")
+    print(f"\n{markdown}")
+    print(f"Resultados em: {out_dir}")
+    return 0 if any(config_run.status == "ok" for config_run in run.configs) else 1
+
+
 def handle_versions(args: argparse.Namespace) -> int:
     """Lista as versões de um projeto (migra projetos antigos para v1)."""
     project_dir = Path(args.project)
@@ -782,6 +844,37 @@ def build_parser() -> argparse.ArgumentParser:
             "(automático quando a saída não é um terminal)",
         )
 
+    # Subcomando: benchmark
+    benchmark_parser = subparsers.add_parser("benchmark", help="Benchmarks reproduzíveis")
+    benchmark_sub = benchmark_parser.add_subparsers(dest="benchmark_command", required=True)
+    bench_tr = benchmark_sub.add_parser(
+        "transcription", help="Velocidade e WER de configurações de transcrição"
+    )
+    bench_tr.add_argument("--audio", help="Áudio a transcrever (um item)")
+    bench_tr.add_argument(
+        "--reference",
+        help="Transcrição de referência (.txt; linhas com # são ignoradas). Sem ela, só mede velocidade",
+    )
+    bench_tr.add_argument("--language", help="Idioma do áudio (ex: en); padrão: detecção automática")
+    bench_tr.add_argument(
+        "--manifest",
+        help="JSON com vários itens (name, audio, reference opcional, language opcional); "
+        "alternativa a --audio/--reference",
+    )
+    bench_tr.add_argument(
+        "--configs",
+        nargs="+",
+        required=True,
+        help="Configurações modelo:dispositivo:compute_type, separadas por espaço ou vírgula "
+        "(ex: small:cpu:int8 small:cuda:float16)",
+    )
+    bench_tr.add_argument("--name", help="Nome da execução (padrão: nome do áudio ou do manifesto)")
+    bench_tr.add_argument(
+        "--results-dir",
+        default="benchmark/results",
+        help="Pasta base dos resultados; cria <data>-<nome>/ dentro dela (padrão: benchmark/results)",
+    )
+
     # Subcomando: versions
     versions_parser = subparsers.add_parser("versions", help="Lista as versões de um projeto")
     versions_parser.add_argument("project", help="Pasta do projeto")
@@ -807,6 +900,8 @@ def main() -> None:
         sys.exit(handle_revise(args))
     elif args.command == "versions":
         sys.exit(handle_versions(args))
+    elif args.command == "benchmark":
+        sys.exit(handle_benchmark_transcription(args))
     else:
         parser.print_help()
         sys.exit(1)

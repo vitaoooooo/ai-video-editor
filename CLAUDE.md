@@ -24,7 +24,7 @@ python -m pytest -q              # testes (devem passar todos antes de concluir)
 python -m ai_video_editor.cli --help
 ```
 
-Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revise`, `versions`.
+Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revise`, `versions`, `benchmark transcription` (WER e velocidade; ver README, opção G).
 
 ## Convenções
 

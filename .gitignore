@@ -19,3 +19,7 @@ htmlcov/
 # Local output artifacts
 output/
 *.mp4
+
+# Benchmarks: mídia baixada localmente (não versionada)
+benchmark/data/*
+!benchmark/data/*_reference.txt
