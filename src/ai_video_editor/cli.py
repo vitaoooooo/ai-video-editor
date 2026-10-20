@@ -4,11 +4,11 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, get_args
 
 from ai_video_editor.analyzer.schema import FrameExtractionConfig
 from ai_video_editor.analyzer.service import VideoIngestService
-from ai_video_editor.core.schema import ClipSegment, EditPlan
+from ai_video_editor.core.schema import ClipSegment, EditPlan, LoudnessPreset
 from ai_video_editor.director.schema import UserBrief
 from ai_video_editor.intelligence.retry import DEFAULT_API_RETRIES, RetryPolicy
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
@@ -33,6 +33,8 @@ from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.revision import RevisionError
 from ai_video_editor.subtitles import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
+
+LOUDNESS_CHOICES = list(get_args(LoudnessPreset))
 
 
 def handle_plan_render(args: argparse.Namespace) -> int:
@@ -269,6 +271,7 @@ def handle_edit(args: argparse.Namespace) -> int:
             subtitles=not args.no_subtitles,
             subtitle=SubtitleParams(max_chars_per_line=args.subtitle_max_chars),
             transcript_min_pause_sec=args.transcript_min_pause,
+            loudness=args.loudness,
         )
     except ValueError as e:
         print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
@@ -407,7 +410,7 @@ def handle_revise(args: argparse.Namespace) -> int:
                 on_progress=printer,
                 on_step_start=printer.start,
                 on_stage_progress=printer.progress,
-            ).revise(project_dir, args.request, from_version)
+            ).revise(project_dir, args.request, from_version, loudness=args.loudness)
     except RevisionError as e:
         print(f"Versão não criada: {e}", file=sys.stderr)
         return 1
@@ -415,6 +418,8 @@ def handle_revise(args: argparse.Namespace) -> int:
         print(f"Erro: {e}", file=sys.stderr)
         return 1
 
+    for warning in result.warnings:
+        print(f"Aviso: {warning}", file=sys.stderr)
     print(f"\nVersão v{result.version.number} criada (a partir da v{result.base_version}).")
     print(f"Resumo: {result.summary.strip() or '—'}")
     for label, items in (("Removidas", result.removed), ("Restauradas", result.restored)):
@@ -704,6 +709,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pausas removidas a partir desta duração (s) aparecem na transcrição comparativa (padrão: 1.0)",
     )
     edit_parser.add_argument(
+        "--loudness",
+        choices=LOUDNESS_CHOICES,
+        default="voz",
+        help=(
+            "Normaliza o volume do vídeo final (EBU R128, loudnorm em duas passadas): "
+            "voz = -16 LUFS (padrão), youtube = -14, broadcast = -23, off = volume original"
+        ),
+    )
+    edit_parser.add_argument(
         "--force", action="store_true", help="Refaz todas as etapas, ignorando o cache"
     )
     edit_parser.add_argument(
@@ -736,6 +750,12 @@ def build_parser() -> argparse.ArgumentParser:
     revise_parser.add_argument(
         "--reviser-thinking", choices=["off", "low", "high"], default=None,
         help="Raciocínio do revisor (padrão: o do Diretor do projeto)",
+    )
+    revise_parser.add_argument(
+        "--loudness",
+        choices=LOUDNESS_CHOICES,
+        default=None,
+        help="Normalização de volume da versão nova: voz/youtube/broadcast/off (padrão: a da versão base)",
     )
     revise_parser.add_argument(
         "--reviser-timeout", type=float, default=None,

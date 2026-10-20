@@ -11,6 +11,7 @@ from ai_video_editor.pipeline.project import EDIT_DIFF_FILE, EDIT_TRANSCRIPT_FIL
 from ai_video_editor.pipeline.schema import EditDiff, EditPipelineParams, RunTimings
 from ai_video_editor.pipeline.timing import build_timings_section
 from ai_video_editor.planning.schema import TimeRange
+from ai_video_editor.renderer.loudness import LoudnessResult
 
 
 def format_timestamp(seconds: float) -> str:
@@ -45,6 +46,35 @@ def _audio_warnings(audio: Optional[AudioAnalysisResult]) -> list[str]:
     return ["", *(f"> ⚠️ **Atenção:** {w}" for w in audio.levels.warnings)]
 
 
+def _loudness_section(params: EditPipelineParams, loudness: Optional[LoudnessResult]) -> list[str]:
+    """Seção "Volume": preset, loudness medido do áudio editado e alvo aplicado (ou por que não foi)."""
+    lines = ["## Volume", "", "| Item | Valor |", "| --- | --- |"]
+    if loudness is None:
+        state = "desligada (--loudness off)" if params.loudness == "off" else "—"
+        return [*lines, f"| Normalização | {state} |", ""]
+    target = loudness.target
+    if loudness.status == "skipped":
+        lines.append(f"| Normalização | pulada: {_cell(loudness.note or '')} |")
+    else:
+        lines.append(f"| Normalização | loudnorm em duas passadas, preset {target.preset} |")
+    measured = loudness.measured
+    if measured is not None:
+        lines += [
+            f"| Loudness medido (I) | {measured.input_i:.1f} LUFS |",
+            f"| True peak medido (TP) | {measured.input_tp:.1f} dBTP |",
+            f"| Faixa de loudness medida (LRA) | {measured.input_lra:.1f} LU |",
+        ]
+    if loudness.status == "applied":
+        lines.append(
+            f"| Alvo aplicado | {target.integrated_lufs:g} LUFS, TP {target.true_peak_dbtp:g} dBTP, "
+            f"LRA {target.lra:g} LU |"
+        )
+    if loudness.measure_sec is not None:
+        lines.append(f"| Passada de medição | {loudness.measure_sec:.2f}s |")
+    lines += ["", *(f"> ⚠️ **Atenção:** {w}" for w in loudness.warnings)]
+    return lines if not loudness.warnings else [*lines, ""]
+
+
 def build_edit_report(
     video_path: Path,
     original_duration_sec: float,
@@ -61,6 +91,7 @@ def build_edit_report(
     timings: Optional[RunTimings] = None,
     comparison: Optional[EditDiff] = None,
     removal_label: Optional[str] = None,
+    loudness: Optional[LoudnessResult] = None,
 ) -> str:
     """Monta o Markdown com resumo, parâmetros, trechos removidos, decisões do Diretor e tempos.
 
@@ -116,6 +147,7 @@ def build_edit_report(
         *([f"| subtitle_max_chars | {params.subtitle.max_chars_per_line} |"] if subtitle_rows else []),
         *_audio_warnings(audio),
         "",
+        *_loudness_section(params, loudness),
         "## Trechos removidos",
         "",
     ]

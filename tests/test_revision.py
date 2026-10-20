@@ -610,3 +610,28 @@ def test_legacy_project_keeps_the_sentences_of_the_base_version(edited):
     assert result.version.number == 2
     v2 = json.loads((edited.project / "versions" / "v2" / "director_decision.json").read_text(encoding="utf-8"))
     assert v2["sentences"] == v1["sentences"]
+
+
+@pytest.mark.slow
+def test_revise_loudness_overrides_base_and_is_inherited(edited):
+    manifest = ProjectManifest.load(edited.result.manifest_path)
+    assert manifest.versions[0].loudness == "voz"
+
+    v2 = ProjectReviser(MockReviser(_swap_1_for_3)).revise(edited.project, "pedido", loudness="off")
+    assert v2.version.loudness == "off" and v2.warnings == []
+    assert "| Normalização | desligada (--loudness off) |" in v2.report_path.read_text(encoding="utf-8")
+    plan = json.loads((edited.project / "versions" / "v2" / "edit_plan.json").read_text(encoding="utf-8"))
+    assert plan["loudness"] is None
+
+    back = RevisionDecision(
+        removals=[_removal(1)],
+        restorations=[SentenceRestoration(sentence_id=3, reason="Volta.")],
+        summary="Desfiz a troca.",
+    )
+    v3 = ProjectReviser(MockReviser(back)).revise(edited.project, "desfaz")
+    assert v3.version.loudness == "off"  # herdado da versão base (v2)
+
+    v4 = ProjectReviser(MockReviser(_swap_1_for_3)).revise(edited.project, "de novo", from_version=1)
+    assert v4.version.loudness == "voz"
+    report = v4.report_path.read_text(encoding="utf-8")
+    assert "## Volume" in report and "preset voz" in report

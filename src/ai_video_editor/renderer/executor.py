@@ -4,13 +4,20 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 from ai_video_editor.core.schema import EditPlan
-from ai_video_editor.renderer.compiler import FFmpegCompiler
+from ai_video_editor.renderer.compiler import FFmpegCompiler, SegmentedRender
+from ai_video_editor.renderer.loudness import (
+    LoudnessResult,
+    apply_filter,
+    measure_command,
+    parse_loudnorm_output,
+)
 from ai_video_editor.renderer.ffmpeg_locator import get_ffmpeg_path, get_ffprobe_path
 
 # (trechos concluídos, total de trechos).
@@ -26,6 +33,7 @@ class RenderResult:
     resolution: Tuple[int, int]
     size_bytes: int
     command_executed: list[str]
+    loudness: Optional[LoudnessResult] = None  # só quando o plano pede normalização
 
 
 class RenderExecutor:
@@ -71,13 +79,49 @@ class RenderExecutor:
         return duration, (width, height)
 
     @staticmethod
-    def _run_ffmpeg(cmd_args: list[str]) -> None:
-        proc = subprocess.run(cmd_args, capture_output=True, text=True)
+    def _run_ffmpeg(cmd_args: list[str]) -> str:
+        """Roda o FFmpeg e devolve o stderr (onde ele imprime logs e medições)."""
+        proc = subprocess.run(cmd_args, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if proc.returncode != 0:
             error_msg = proc.stderr.strip() or proc.stdout.strip()
             raise RuntimeError(
                 f"FFmpeg execution failed with code {proc.returncode}:\n{error_msg}"
             )
+        return proc.stderr
+
+    def _normalize_loudness(
+        self, plan: EditPlan, job: SegmentedRender
+    ) -> tuple[list[str], Optional[LoudnessResult]]:
+        """Passada 1 do loudnorm sobre os trechos já gerados; devolve o concat final a usar.
+
+        Vídeo sem áudio ou áudio todo em silêncio: a normalização é pulada (com motivo), sem falhar.
+        """
+        target = plan.loudness
+        if target is None:
+            return job.concat_command, None
+        if not job.has_audio:
+            return job.concat_command, LoudnessResult(target=target, status="skipped", note="vídeo sem áudio")
+
+        started = time.perf_counter()
+        stderr = self._run_ffmpeg(measure_command(self.compiler.ffmpeg_bin, job.concat_list_path, target))
+        measure_sec = round(time.perf_counter() - started, 3)
+        try:
+            measured = parse_loudnorm_output(stderr)
+        except ValueError as exc:
+            return job.concat_command, LoudnessResult(
+                target=target, status="skipped", note=str(exc), measure_sec=measure_sec
+            )
+        if measured.is_silent:
+            return job.concat_command, LoudnessResult(
+                target=target,
+                status="skipped",
+                note=f"áudio sem conteúdo mensurável (loudness medido: {measured.input_i} LUFS)",
+                measure_sec=measure_sec,
+            )
+        command = self.compiler.concat_command(plan, job.concat_list_path, apply_filter(target, measured))
+        return command, LoudnessResult(
+            target=target, status="applied", measured=measured, measure_sec=measure_sec
+        )
 
     def execute(self, plan: EditPlan, on_progress: Optional[RenderProgress] = None) -> RenderResult:
         """Renders the edit plan to disk and validates output integrity.
@@ -85,7 +129,8 @@ class RenderExecutor:
         Cada segmento vira um arquivo intermediário (em paralelo, até `max_workers`),
         depois os intermediários são unidos pelo concat demuxer. Os temporários são
         apagados ao final, mesmo em caso de erro. `on_progress` recebe (trechos prontos, total)
-        no início e a cada trecho concluído.
+        no início e a cada trecho concluído. Com `plan.loudness`, uma passada de medição lê
+        o áudio concatenado antes do concat final, que aplica o loudnorm.
         """
         # Ensure target directory exists
         plan.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -111,7 +156,8 @@ class RenderExecutor:
                     raise
 
             job.concat_list_path.write_text(job.concat_list_content, encoding="utf-8")
-            self._run_ffmpeg(job.concat_command)
+            concat_command, loudness = self._normalize_loudness(plan, job)
+            self._run_ffmpeg(concat_command)
 
         # Validate output file
         if not plan.output_path.is_file():
@@ -131,5 +177,6 @@ class RenderExecutor:
             duration_sec=duration,
             resolution=resolution,
             size_bytes=file_size,
-            command_executed=job.concat_command,
+            command_executed=concat_command,
+            loudness=loudness,
         )
