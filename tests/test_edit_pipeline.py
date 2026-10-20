@@ -489,7 +489,7 @@ def test_subtitles_skipped_without_transcript_or_when_disabled(tmp_path, lesson_
     plain = pipeline.run(lesson_video, EditPipelineParams())
     assert plain.outcomes["subtitles"] == "skipped" and plain.subtitles_path is None
     assert not plain.subtitles_path and not list(plain.project_dir.glob("*.srt"))
-    assert "Legendas" not in plain.report_path.read_text(encoding="utf-8")
+    assert "| Legendas | `" not in plain.report_path.read_text(encoding="utf-8")
 
     with_srt = pipeline.run(lesson_video, EditPipelineParams(transcribe=True))
     assert with_srt.subtitles_path.is_file()
@@ -498,7 +498,7 @@ def test_subtitles_skipped_without_transcript_or_when_disabled(tmp_path, lesson_
     assert off.outcomes["subtitles"] == "skipped" and off.subtitles_path is None
     assert not list(off.project_dir.glob("*.srt"))
     assert ProjectManifest.load(off.manifest_path).stages["subtitles"].status == "skipped"
-    assert "Legendas" not in off.report_path.read_text(encoding="utf-8")
+    assert "| Legendas | `" not in off.report_path.read_text(encoding="utf-8")
 
 
 def test_cli_edit_subtitle_options(tmp_path, monkeypatch):

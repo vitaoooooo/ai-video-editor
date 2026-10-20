@@ -149,6 +149,7 @@ Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 * `project.json`: manifesto com caminho do vídeo, parâmetros e status/fingerprint/métricas de cada etapa.
 * `probe.json`, `audio_analysis.json`, `transcript.json` (se pedido), `director_decision.json` (se pedido), `edit_plan.json`.
 * `edit_report.md`: duração original e final, % removido, número de cortes, parâmetros, a lista dos trechos removidos e, com o Diretor, a seção "Decisões do Diretor" (tempo, texto, categoria e motivo de cada frase removida, latência e tokens).
+* **Tempo de processamento**: cada etapa mostra o tempo de relógio no terminal (`[3/8] Transcrição: ok — 49 frases (12min 34s)`; etapas em cache aparecem como `em cache`, sem tempo) e, ao final, `57min de vídeo processados em 21min (0,37× o tempo real)`. Os tempos ficam em `last_run` no `project.json`, em `timings` no `version.json` e na seção "Tempo de processamento" do `edit_report.md` (o `revise` também mede suas etapas; probe, silêncios e transcrição contam como cache).
 * `<nome-do-video>_edited.mp4`: o vídeo final.
 * `<nome-do-video>_edited.srt`: legenda sincronizada com o vídeo editado (só com `--transcribe`), ao lado do vídeo e com o mesmo nome base, então players como o VLC a carregam sozinhos. Usa as palavras da transcrição, os mesmos trechos e o FPS do plano final (já com os cortes do Diretor). Sem transcrição, ou com `--no-subtitles`, a etapa "Legendas" aparece como pulada e um `.srt` antigo é removido da pasta. O relatório cita o arquivo e o número de blocos.
 
@@ -240,8 +241,9 @@ O `edit_report.md` de uma revisão traz a seção "Revisão": pedido, ritmo das 
 
 ### Módulo Pipeline (comandos `edit` e `revise`)
 * [`src/ai_video_editor/pipeline/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que orquestra as etapas com cache por fingerprint e callback de progresso; `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis.
-* [`src/ai_video_editor/pipeline/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/schema.py): `EditPipelineParams`, `ProjectManifest` (`project.json`), `StageRecord`, `EditPipelineResult`.
+* [`src/ai_video_editor/pipeline/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/schema.py): `EditPipelineParams`, `ProjectManifest` (`project.json`), `StageRecord`, `RunTimings`/`StageTiming`, `EditPipelineResult`.
 * [`src/ai_video_editor/pipeline/project.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/project.py): Hash curto do vídeo, nome da pasta do projeto, nomes dos artefatos e fingerprints.
+* [`src/ai_video_editor/pipeline/timing.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/timing.py): `TimingRecorder` (medição com `time.perf_counter`), formatação (`8,4s`, `12min 34s`) e a seção "Tempo de processamento".
 * [`src/ai_video_editor/pipeline/report.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/report.py): Geração do `edit_report.md` (e da seção "Revisão").
 * [`src/ai_video_editor/pipeline/versions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/versions.py): versões em `versions/vN/`, registro após o `edit` e migração de projetos antigos.
 * [`src/ai_video_editor/pipeline/revise.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/revise.py): `ProjectReviser` (revisor → plano → render → legendas → relatório numa versão nova).
