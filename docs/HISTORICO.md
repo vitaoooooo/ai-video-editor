@@ -30,7 +30,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
 ---
 
-## 18/10 — Mudança de rumo: V1 focada em vídeos falados
+## Mudança de rumo: V1 focada em vídeos falados
 
 - 🔁 **Escopo da V1:** de "qualquer tipo de vídeo" para **tutorial, aula e pessoa falando**.
   - **Por quê:** cada tipo de vídeo depende de um sinal diferente. Em vídeo falado, o que importa está na **fala** (texto), que é o ponto forte dos modelos de linguagem. Gameplay e vlog dependem de imagem e "gosto", e são bem mais difíceis de editar bem.
@@ -39,7 +39,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - ✅ **Arquitetura preparada para "perfis de edição"** (V1 = TalkingHead; V2 = Gameplay, Vlog).
 - 🔁 **Ferramentas:** orquestração com **Orca** (agentes em paralelo, um *git worktree* por tarefa); agente principal passa de Antigravity para **Claude Code**. Criado o `CLAUDE.md` (contexto do projeto para os agentes) e as skills copiadas para `.claude/skills/`.
 
-## 18/10 — As peças da V1 (em paralelo)
+## As peças da V1 (em paralelo)
 
 - 🔁 **Renderer reescrito** (`renderer-refactor`): um FFmpeg por trecho, em paralelo, + concatenação final; micro *fades* de áudio em cada corte.
   - **Por quê:** o renderer antigo abria o arquivo uma vez **por trecho** — com centenas de cortes de uma aula, ficaria lentíssimo e estouraria o limite de linha de comando do Windows. Sem *fades*, cada corte gerava um "clique" audível.
@@ -51,7 +51,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 🔁 **Correção da transcrição** (`transcription-fix`): o áudio passou a ser decodificado pelo FFmpeg em vez do PyAV.
   - **Por quê:** incompatibilidade entre versões do faster-whisper e do PyAV no Windows quebrava a transcrição. Também foi ligado o filtro de voz (evita texto inventado em silêncios) e a CLI passou a mostrar o erro real.
 
-## 19/10 — O Diretor de IA e a revisão
+## O Diretor de IA e a revisão
 
 - ✅ **Diretor de IA** (`director`): lê a transcrição e decide quais **frases** remover (repetições, frases recomeçadas, enrolação), com categoria e motivo.
   - **Por quê dos IDs:** a IA aponta **frases pelo número**, nunca timestamps. Os tempos das palavras do Whisper não são confiáveis (ele "engole" pausas dentro das palavras); os cortes são ajustados para dentro dos silêncios medidos.
@@ -69,7 +69,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - ✅ **Ciclo de revisão** (`revision`): `revise <projeto> "pedido em português"` gera uma nova **versão** (v1, v2, v3…), sem refazer as etapas caras. Comando `versions` mostra o histórico.
   - 📊 "tira a parte em que ele fala do site do curso" → a IA achou sozinha as 2 frases certas (**4:11 → 3:45**). "corta menos, deixa o ritmo mais natural" → restaurou frases, mudou o ritmo das pausas e **manteve o pedido anterior** (o site continuou fora).
 
-## 20/10 — Teste com vídeo longo (palestra de 57 min) e o que ele revelou
+## Teste com vídeo longo (palestra de 57 min) e o que ele revelou
 
 - 🔁 **Testes 6× mais rápidos** (`test-speed`): marcador `slow`, fixtures reaproveitadas, execução paralela.
   - 📊 Suíte completa: **9min20s → 1min33s**; testes rápidos: 41s.
