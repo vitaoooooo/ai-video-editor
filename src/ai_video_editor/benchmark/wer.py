@@ -1,15 +1,20 @@
 """WER (Word Error Rate) por distância de edição entre palavras, sem dependências externas.
 
 Limitações conhecidas (a comparação é textual, não semântica):
-- Números: "2" (dígito) contra "two" (por extenso) contam como uma substituição, embora a fala seja a mesma.
-- Contrações e grafias: "gonna" × "going to", "okay" × "OK", "MatLab" × "matlab" (esta última o
-  lowercase resolve) contam como erro quando as grafias diferem.
+- Números: "2" (dígito) contra "two" (por extenso) contam como uma substituição no WER bruto; o WER
+  normalizado (`benchmark/normalize.py`) converte os dois lados para a mesma forma.
+- Contrações e grafias: "gonna" × "going to" contam como erro; "okay" × "OK" só são unificados no
+  WER normalizado ("MatLab" × "matlab" o lowercase já resolve).
 - Hesitações ("uh", "um") e repetições: a transcrição oficial costuma omiti-las e o Whisper pode
   registrá-las (ou o contrário); isso entra como inserção ou omissão.
 - Símbolos falados: "x" × "ex", "minus" × "-" e afins dependem de como cada texto os escreveu.
 - Hífens e travessões viram espaço ("right-hand" vira "right hand"); apóstrofos dentro da palavra
   são mantidos ("don't") e os das pontas, descartados.
 - A referência não é perfeita: erros e trechos faltando nela aparecem como erro do modelo.
+- Cauda depois do fim da referência: se a transcrição gerada continua além do último trecho que casa com
+  a referência (a referência pode terminar antes da fala), as palavras sobrando no final são contadas à
+  parte (`tail_words`) e NÃO entram em inserções nem no WER. Só vale a partir de `MIN_TAIL_WORDS` palavras
+  seguidas; menos que isso continuam sendo inserções comuns.
 """
 
 import re
@@ -26,6 +31,12 @@ _NON_WORD = re.compile(r"[^\w'\s]|_", re.UNICODE)
 
 # Quantas substituições mais frequentes entram no resultado.
 TOP_SUBSTITUTIONS = 10
+
+# Menor cauda (inserções seguidas no fim do alinhamento) tratada como "depois do fim da referência".
+MIN_TAIL_WORDS = 5
+
+# Quantas palavras da cauda aparecem em `tail_preview`.
+TAIL_PREVIEW_WORDS = 12
 
 # Códigos das operações do alinhamento.
 _MATCH, _SUB, _DEL, _INS = 0, 1, 2, 3
@@ -45,7 +56,19 @@ def normalize_text(text: str) -> list[str]:
 def align_words(
     reference: list[str], hypothesis: list[str]
 ) -> tuple[int, int, int, Counter]:
-    """Alinha as palavras e devolve (substituições, omissões, inserções, pares trocados).
+    """Alinha as palavras e devolve (substituições, omissões, inserções, pares trocados)."""
+    substitutions, deletions, insertions, pairs, _ = align_with_tail(reference, hypothesis)
+    return substitutions, deletions, insertions, pairs
+
+
+def align_with_tail(
+    reference: list[str], hypothesis: list[str]
+) -> tuple[int, int, int, Counter, int]:
+    """Como `align_words`, com o 5º valor: a cauda, quantas palavras a hipótese tem a mais depois do
+    último trecho que casa com a referência (inserções menos omissões desse trecho final).
+
+    A cauda também está contada nas inserções; quem decide se ela vale como "depois do fim da
+    referência" (`MIN_TAIL_WORDS`) é `compute_wer_words`.
 
     Programação dinâmica clássica (Levenshtein por palavra); no empate, prefere casar/substituir,
     depois omitir, depois inserir. Os pares trocados são (palavra da referência, palavra do modelo).
@@ -96,8 +119,18 @@ def align_words(
     substitutions = deletions = insertions = 0
     pairs: Counter = Counter()
     i, j = n, m
+    # Depois do último trecho que casa: omissões e inserções (a cauda é o que a hipótese tem a mais).
+    after_deletions = after_insertions = 0
+    seen_match = False
+    # Com sufixo igual, o fim da hipótese casa com a referência: não há cauda.
+    has_tail_candidate = ref_end == len(reference) and hyp_end == len(hypothesis)
     while i > 0 or j > 0:
         op = ops[i * width + j]
+        if op == _MATCH:
+            seen_match = True
+        elif not seen_match:
+            after_deletions += op == _DEL
+            after_insertions += op == _INS
         if op == _MATCH:
             i, j = i - 1, j - 1
         elif op == _SUB:
@@ -110,14 +143,22 @@ def align_words(
         else:
             insertions += 1
             j -= 1
-    return substitutions, deletions, insertions, pairs
+    # Sem nenhum trecho casado (nem no prefixo) não há "último alinhamento" para medir a cauda.
+    if not (seen_match or start > 0) or not has_tail_candidate:
+        return substitutions, deletions, insertions, pairs, 0
+    return substitutions, deletions, insertions, pairs, max(0, after_insertions - after_deletions)
 
 
 def compute_wer(reference_text: str, hypothesis_text: str) -> WerResult:
-    """Calcula o WER de `hypothesis_text` em relação a `reference_text` (ambos normalizados)."""
-    reference = normalize_text(reference_text)
-    hypothesis = normalize_text(hypothesis_text)
-    substitutions, deletions, insertions, pairs = align_words(reference, hypothesis)
+    """WER bruto de `hypothesis_text` em relação a `reference_text` (normalização básica)."""
+    return compute_wer_words(normalize_text(reference_text), normalize_text(hypothesis_text))
+
+
+def compute_wer_words(reference: list[str], hypothesis: list[str]) -> WerResult:
+    """WER entre duas listas de palavras já normalizadas, separando a cauda após o fim da referência."""
+    substitutions, deletions, insertions, pairs, trailing = align_with_tail(reference, hypothesis)
+    tail = trailing if trailing >= MIN_TAIL_WORDS else 0
+    insertions -= tail
     errors = substitutions + deletions + insertions
     if reference:
         wer = errors / len(reference)
@@ -136,5 +177,7 @@ def compute_wer(reference_text: str, hypothesis_text: str) -> WerResult:
         insertions=insertions,
         reference_words=len(reference),
         hypothesis_words=len(hypothesis),
+        tail_words=tail,
+        tail_preview=" ".join(hypothesis[len(hypothesis) - tail :][:TAIL_PREVIEW_WORDS]) if tail else None,
         top_substitutions=top,
     )

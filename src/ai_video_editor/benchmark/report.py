@@ -20,15 +20,23 @@ def _rtf(value: Optional[float]) -> str:
 
 
 def _wer_cells(wer: Optional[WerResult]) -> list[str]:
+    """WER, S, D, I."""
     if wer is None:
-        return [_DASH] * 5
+        return [_DASH] * 4
     return [
         f"{wer.wer * 100:.1f}%",
         str(wer.substitutions),
         str(wer.deletions),
         str(wer.insertions),
-        str(wer.hypothesis_words),
     ]
+
+
+def _tail_cell(raw: Optional[WerResult]) -> str:
+    return _DASH if raw is None else str(raw.tail_words)
+
+
+def _words_cell(raw: Optional[WerResult]) -> str:
+    return _DASH if raw is None else str(raw.hypothesis_words)
 
 
 def _device(run: ConfigRun) -> str:
@@ -43,20 +51,25 @@ def _table(header: list[str], rows: list[list[str]]) -> list[str]:
     return lines
 
 
-_HEADER = ["Configuração", "Efetivo", "Carga", "Tempo", "Tempo real", "WER", "S", "D", "I", "Palavras"]
+_WER_HEADER = ["WER bruto", "S", "D", "I", "WER norm.", "S", "D", "I", "Após a ref.", "Palavras"]
+_HEADER = ["Configuração", "Efetivo", "Carga", "Tempo", "Tempo real", *_WER_HEADER]
+
+
+def _wer_block(raw: Optional[WerResult], normalized: Optional[WerResult]) -> list[str]:
+    return [*_wer_cells(raw), *_wer_cells(normalized), _tail_cell(raw), _words_cell(raw)]
 
 
 def _config_row(run: ConfigRun, result: Optional[ItemResult]) -> list[str]:
     label = f"`{run.config.label}`"
     if result is None or result.status == "error":
-        return [label, _device(run), _seconds(run.load_time_sec), "falhou", _DASH] + [_DASH] * 5
+        return [label, _device(run), _seconds(run.load_time_sec), "falhou", _DASH] + [_DASH] * len(_WER_HEADER)
     return [
         label,
         _device(run),
         _seconds(run.load_time_sec),
         _seconds(result.transcription_time_sec),
         _rtf(result.real_time_factor),
-        *_wer_cells(result.wer),
+        *_wer_block(result.wer, result.wer_normalized),
     ]
 
 
@@ -66,7 +79,12 @@ def format_markdown(run: BenchmarkRun) -> str:
     lines.append(f"- Data: {run.created_at.strftime('%Y-%m-%d %H:%M')}")
     lines.append(f"- Versão do projeto: {env.project_version} · Python {env.python} · faster-whisper {env.faster_whisper or _DASH}")
     lines.append(f"- CPU: {env.cpu} · GPU: {env.gpu or 'nenhuma detectada'}")
-    lines.append(f"- Normalização antes do WER: {run.normalization}")
+    lines.append(f"- WER bruto: {run.normalization}")
+    lines.append(f"- WER normalizado: o bruto mais, nos dois textos, {run.normalization_extra}")
+    lines.append(
+        "- *Após a ref.* = palavras do final da transcrição gerada sem correspondência na referência "
+        "(a referência pode terminar antes da fala); contadas à parte, fora das inserções e do WER."
+    )
     lines.append(
         "- *Tempo real* = tempo de transcrição ÷ duração do áudio (menor é mais rápido). O tempo inclui a "
         "decodificação do áudio com FFmpeg e não inclui a carga do modelo, medida à parte em *Carga*."
@@ -111,28 +129,43 @@ def format_markdown(run: BenchmarkRun) -> str:
                     _seconds(average.audio_duration_sec),
                     _seconds(average.transcription_time_sec),
                     _rtf(average.real_time_factor),
-                    *_wer_cells(average.wer),
+                    *_wer_block(average.wer, average.wer_normalized),
                 ]
             )
-        lines += _table(
-            ["Configuração", "Itens", "Áudio", "Tempo", "Tempo real", "WER", "S", "D", "I", "Palavras"], rows
-        )
+        lines += _table(["Configuração", "Itens", "Áudio", "Tempo", "Tempo real", *_WER_HEADER], rows)
         lines.append("")
 
     substitution_blocks: list[str] = []
     for config_run in run.configs:
         for result in config_run.items:
-            if result.wer is None or not result.wer.top_substitutions:
-                continue
-            substitution_blocks.append(f"### `{config_run.config.label}` · {result.item}")
-            substitution_blocks.append("")
-            substitution_blocks += _table(
-                ["Referência", "Modelo escreveu", "Vezes"],
-                [[s.reference, s.hypothesis, str(s.count)] for s in result.wer.top_substitutions],
-            )
-            substitution_blocks.append("")
+            for title, wer in (("bruto", result.wer), ("normalizado", result.wer_normalized)):
+                if wer is None or not wer.top_substitutions:
+                    continue
+                substitution_blocks.append(f"### `{config_run.config.label}` · {result.item} · WER {title}")
+                substitution_blocks.append("")
+                substitution_blocks += _table(
+                    ["Referência", "Modelo escreveu", "Vezes"],
+                    [[s.reference, s.hypothesis, str(s.count)] for s in wer.top_substitutions],
+                )
+                substitution_blocks.append("")
     if substitution_blocks:
         lines += ["## Substituições mais frequentes", ""] + substitution_blocks
+
+    tails = [
+        (config_run, result)
+        for config_run in run.configs
+        for result in config_run.items
+        if result.wer is not None and result.wer.tail_words
+    ]
+    if tails:
+        lines += ["## Palavras após o fim da referência", ""]
+        for config_run, result in tails:
+            assert result.wer is not None
+            lines.append(
+                f"- `{config_run.config.label}` · {result.item}: {result.wer.tail_words} palavras, "
+                f"começando em: “{result.wer.tail_preview}…”"
+            )
+        lines.append("")
 
     failures = [
         f"- `{config_run.config.label}`: {config_run.error}"

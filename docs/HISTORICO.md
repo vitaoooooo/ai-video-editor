@@ -114,6 +114,21 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
   - 📊 Boa parte do "erro" do `small` é de grafia, não de escuta: dígitos no lugar de números por extenso ("1" × "one", "2" × "two", "0" × "zero") e "ok" × "okay" respondem por mais de 130 substituições. O `large-v3-turbo` escreve mais por extenso (as substituições caem de ~220 para 118), mas insere mais palavras (254). A GPU é ~7x mais rápida que a CPU com o `small`, com WER parecido; o turbo é o mais rápido e o mais preciso. A referência termina no meio de uma frase, então parte das inserções pode ser o fim da aula que a referência não cobre (não verificado).
 
+- ✅ **WER normalizado, `benchmark rescore`, cauda da referência e modelo `auto`** (2026-10-20):
+  - ✅ **WER normalizado** (`benchmark/normalize.py`, sem dependência nova): nos dois textos, números por extenso → dígitos (0–999 e milhares simples), okay → ok, x's → xs. Só `en` por enquanto, com estrutura (`NORMALIZERS`) para `pt`. Tabela e `results.json` trazem WER bruto e normalizado, cada um com S/D/I. **Por quê:** mais de 130 "substituições" do `small` eram só grafia.
+  - ✅ **Transcrições salvas e `benchmark rescore <pasta>`**: cada configuração grava `hypotheses/<config>.txt`; o `rescore` recalcula as métricas a partir delas, sem transcrever, mantendo os tempos medidos. A execução anterior não tinha os textos, então foi rodada de novo (autorizado) com as mesmas três configurações.
+  - ✅ **Cauda após o fim da referência**: palavras que a transcrição tem a mais depois do último trecho casado (mínimo 5) saem das inserções e do WER e aparecem à parte ("Após a ref."). **Por quê:** a referência do MIT termina no meio de uma frase. Confirmado, mas pequeno: 14–19 palavras.
+  - 🔁 **`TranscriptionConfig.model_size` agora é `auto`** (CLI `--whisper-model auto|<modelo>`): `large-v3-turbo` na GPU, `small` na CPU; explícito é respeitado; se a GPU falhar e cair para a CPU, o `auto` usa `small`. O modelo efetivo entra no fingerprint e em `model_used`. **Por quê:** o turbo foi o mais rápido na GPU e o `small` é o razoável na CPU. Efeito: em máquinas com GPU os projetos existentes são transcritos de novo na próxima execução; na CPU o cache continua válido.
+  - 📊 Mesma aula, nova execução (WER bruto agora já sem a cauda nas inserções):
+
+    | Configuração | Tempo | WER bruto | WER norm. | Após a ref. |
+    |---|---|---|---|---|
+    | `small:cpu:int8` | 11min 40s | 8,9% | 5,6% | 14 |
+    | `small:cuda:float16` | 1min 36s | 9,9% | 6,8% | 18 |
+    | `large-v3-turbo:cuda:float16` | 1min 22s | 8,5% | 7,4% | 19 |
+
+  - 📊 Com a normalização o ranking inverte: o `small` na CPU é o menor WER (5,6%) e o turbo o maior (7,4%), porque o turbo escreve mais palavras que a referência omite (235 inserções; o `small` na CPU, 116). Não é a cauda. Fica a investigar se uma referência mais literal (com "uh") muda isso.
+
 📊 **Palestra de 57 min, resultado atual:** 57:07 → 53:43, 259 cortes, processada em **8min48s** (0,15× o tempo real, com transcrição em cache).
 
 ---
@@ -126,7 +141,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
 - **Ponto de corte de palavras curtas pela energia do áudio**: na palestra de 57 min, fillers como "Um" e "By" ficaram no vídeo. O tempo do Whisper para essas palavras inclui a pausa ao redor, e o corte só tirou o silêncio (nenhuma palavra foi cortada pela metade). Refinar o início/fim do corte pela energia do áudio dentro do intervalo da palavra.
 - **Status "não aplicada (só a pausa saiu)"**: quando a parte removida de uma frase for apenas silêncio, marcar assim em vez de "parcial" (caso do "By": 0,19s de 0,74s saiu, mas era só pausa).
-- **Benchmark de transcrição com Gemini**: incluir o provedor (e custo) na comparação; a estrutura aceita novos provedores (`register_benchmark_provider`). Também normalizar números/"ok" no WER, que hoje inflam o erro.
+- **Benchmark de transcrição com Gemini**: incluir o provedor (e custo) na comparação; a estrutura aceita novos provedores (`register_benchmark_provider`).
 - **Provedor de transcrição Gemini** (alternativa para quem não tem GPU).
 - **Render na GPU (NVENC)**: o render é hoje a etapa mais lenta em vídeos longos.
 - **Teste com vídeo em português** com mais enrolação.

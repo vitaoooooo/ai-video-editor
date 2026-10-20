@@ -274,3 +274,93 @@ def test_inference_failure_on_explicit_cuda_raises(monkeypatch, media):
     monkeypatch.setattr(FasterWhisperProvider, "_run", fake_run)
     with pytest.raises(TranscriptionGpuError):
         FasterWhisperProvider().transcribe(media, TranscriptionConfig(device="cuda"))
+
+
+# --- modelo "auto" -------------------------------------------------------------------------
+
+
+def _fake_whisper_with_models(monkeypatch, fail_on=()):
+    """faster_whisper falso que registra (modelo, dispositivo, compute_type)."""
+    calls = []
+
+    class FakeWhisperModel:
+        def __init__(self, size, device, compute_type):
+            calls.append((size, device, compute_type))
+            if device in fail_on:
+                raise RuntimeError("cublas64_12.dll missing")
+
+    module = types.ModuleType("faster_whisper")
+    module.WhisperModel = FakeWhisperModel
+    monkeypatch.setitem(sys.modules, "faster_whisper", module)
+    return calls
+
+
+def test_auto_model_is_turbo_on_cuda(monkeypatch):
+    calls = _fake_whisper_with_models(monkeypatch)
+    _gpu(monkeypatch, True)
+    provider = FasterWhisperProvider()
+    provider._load_model(TranscriptionConfig())
+    assert calls == [("large-v3-turbo", "cuda", "float16")]
+    assert provider.effective_model(TranscriptionConfig()) == "large-v3-turbo"
+
+
+def test_auto_model_is_small_on_cpu(monkeypatch):
+    calls = _fake_whisper_with_models(monkeypatch)
+    _gpu(monkeypatch, False)
+    provider = FasterWhisperProvider()
+    provider._load_model(TranscriptionConfig())
+    assert calls == [("small", "cpu", "int8")]
+    assert provider.effective_model(TranscriptionConfig()) == "small"
+    # CPU escolhida explicitamente, mesmo com GPU disponível
+    _gpu(monkeypatch, True)
+    assert provider.effective_model(TranscriptionConfig(device="cpu")) == "small"
+
+
+def test_explicit_model_is_respected(monkeypatch):
+    calls = _fake_whisper_with_models(monkeypatch)
+    _gpu(monkeypatch, True)
+    provider = FasterWhisperProvider()
+    provider._load_model(TranscriptionConfig(model_size="medium"))
+    assert calls == [("medium", "cuda", "float16")]
+    assert provider.effective_model(TranscriptionConfig(model_size="medium")) == "medium"
+    assert provider.effective_model(TranscriptionConfig(model_size="medium", device="cpu")) == "medium"
+
+
+def test_auto_model_falls_back_to_small_when_gpu_load_fails(monkeypatch):
+    calls = _fake_whisper_with_models(monkeypatch, fail_on=("cuda",))
+    _gpu(monkeypatch, True)
+    provider = FasterWhisperProvider(on_warning=lambda m: None)
+    provider._load_model(TranscriptionConfig())
+    assert calls == [("large-v3-turbo", "cuda", "float16"), ("small", "cpu", "int8")]
+    assert provider._effective_model == "small"
+
+
+def test_transcript_and_fingerprint_use_effective_model(monkeypatch, media):
+    _fake_whisper_with_models(monkeypatch)
+    _gpu(monkeypatch, True)
+    monkeypatch.setattr(FasterWhisperProvider, "_run", lambda self, model, audio, config: ([], "pt"))
+    result = FasterWhisperProvider().transcribe(media, TranscriptionConfig())
+    assert result.model_used == "faster-whisper:large-v3-turbo (cuda, float16)"
+
+
+def test_pipeline_fingerprint_changes_with_effective_model(monkeypatch):
+    from ai_video_editor.pipeline.project import fingerprint
+
+    _gpu(monkeypatch, True)
+    provider = FasterWhisperProvider()
+    config = TranscriptionConfig()
+
+    def key(cfg):
+        device, compute_type = provider.effective_settings(cfg)
+        return fingerprint(
+            "transcription",
+            cfg.model_copy(
+                update={"model_size": provider.effective_model(cfg), "device": device, "compute_type": compute_type}
+            ),
+        )
+
+    on_gpu = key(config)
+    _gpu(monkeypatch, False)
+    assert key(config) != on_gpu
+    # "auto" na CPU é idêntico a pedir "small" explicitamente (cache antigo de quem só tem CPU continua válido)
+    assert key(config) == key(TranscriptionConfig(model_size="small"))

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Callable, Optional
 
-from ai_video_editor.transcription.schema import Transcript, TranscriptionConfig
+from ai_video_editor.transcription.schema import Transcript, TranscriptionConfig, resolve_model_size
 
 # (segundos de áudio já transcritos, duração total do áudio em segundos).
 TranscriptionProgress = Callable[[float, float], None]
@@ -44,3 +44,10 @@ class TranscriptionProvider(ABC):
         Entra no fingerprint do cache da transcrição; provedores que resolvem "auto" sobrescrevem.
         """
         return config.device, config.compute_type
+
+    def effective_model(self, config: TranscriptionConfig) -> str:
+        """Modelo que `transcribe` usará (resolve "auto" pelo dispositivo efetivo).
+
+        Entra no fingerprint do cache da transcrição, junto com `effective_settings`.
+        """
+        return resolve_model_size(config.model_size, self.effective_settings(config)[0])
