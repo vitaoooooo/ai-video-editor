@@ -14,7 +14,7 @@ from ai_video_editor.transcription.exceptions import (
     TranscriptionGpuError,
     TranscriptionMediaError,
 )
-from ai_video_editor.transcription.provider import TranscriptionProvider
+from ai_video_editor.transcription.provider import TranscriptionProgress, TranscriptionProvider
 from ai_video_editor.transcription.schema import (
     Transcript,
     TranscriptSegment,
@@ -85,6 +85,8 @@ class FasterWhisperProvider(TranscriptionProvider):
         self._warn = on_warning or _print_warning
         # (dispositivo, compute_type) do último modelo carregado.
         self._effective: Optional[tuple[str, str]] = None
+        # Callback e duração do áudio da transcrição em curso.
+        self._progress: Optional[tuple[TranscriptionProgress, float]] = None
 
     @staticmethod
     def _resolve(device: str, compute_type: str) -> tuple[str, str]:
@@ -167,7 +169,12 @@ class FasterWhisperProvider(TranscriptionProvider):
             raise TranscriptionMediaError(self.provider_name, media_path, "A mídia não possui áudio.")
         return np.frombuffer(proc.stdout[:usable], dtype=np.float32)
 
-    def transcribe(self, media_path: Path, config: TranscriptionConfig) -> Transcript:
+    def transcribe(
+        self,
+        media_path: Path,
+        config: TranscriptionConfig,
+        on_progress: Optional[TranscriptionProgress] = None,
+    ) -> Transcript:
         media_path = Path(media_path)
         if not media_path.is_file():
             raise TranscriptionMediaError(self.provider_name, media_path, "Arquivo inexistente.")
@@ -177,6 +184,7 @@ class FasterWhisperProvider(TranscriptionProvider):
         device, compute_type = self._effective or self._cpu_settings(config.compute_type)
         audio = self._decode_audio(media_path)
         duration = len(audio) / _SAMPLE_RATE
+        self._progress = (on_progress, duration) if on_progress is not None else None
         try:
             segments, language = self._run(model, audio, config)
         except Exception as exc:
@@ -210,11 +218,17 @@ class FasterWhisperProvider(TranscriptionProvider):
             word_timestamps=True,
             vad_filter=config.vad_filter,
         )
-        return self._convert_segments(raw_segments), info.language
+        return self._convert_segments(raw_segments, self._progress), info.language
 
     @staticmethod
-    def _convert_segments(raw_segments) -> list[TranscriptSegment]:
-        """Converte os segmentos do faster-whisper (gerador) para o schema, com IDs 0..n-1."""
+    def _convert_segments(
+        raw_segments, progress: Optional[tuple[TranscriptionProgress, float]] = None
+    ) -> list[TranscriptSegment]:
+        """Converte os segmentos do faster-whisper (gerador) para o schema, com IDs 0..n-1.
+
+        O gerador transcreve sob demanda; com `progress`, cada segmento consumido informa o
+        fim dele em relação à duração do áudio.
+        """
         segments: list[TranscriptSegment] = []
         for raw in raw_segments:
             words = [
@@ -235,4 +249,7 @@ class FasterWhisperProvider(TranscriptionProvider):
                     words=words,
                 )
             )
+            if progress is not None:
+                on_progress, duration = progress
+                on_progress(min(raw.end, duration), duration)
         return segments

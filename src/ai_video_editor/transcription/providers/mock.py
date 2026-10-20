@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from ai_video_editor.transcription.exceptions import TranscriptionFailedError
-from ai_video_editor.transcription.provider import TranscriptionProvider
+from ai_video_editor.transcription.provider import TranscriptionProgress, TranscriptionProvider
 from ai_video_editor.transcription.schema import (
     Transcript,
     TranscriptSegment,
@@ -42,10 +42,19 @@ class MockTranscriptionProvider(TranscriptionProvider):
     def provider_name(self) -> str:
         return "mock"
 
-    def transcribe(self, media_path: Path, config: TranscriptionConfig) -> Transcript:
+    def transcribe(
+        self,
+        media_path: Path,
+        config: TranscriptionConfig,
+        on_progress: Optional[TranscriptionProgress] = None,
+    ) -> Transcript:
         if self.force_failure:
             raise TranscriptionFailedError(self.provider_name, details="Falha simulada.")
         if self.custom_transcript is not None:
+            if on_progress is not None:
+                total = self.custom_transcript.duration_sec
+                for segment in self.custom_transcript.segments:
+                    on_progress(min(segment.end_sec, total), total)
             return self.custom_transcript
 
         cursor = 0.0
@@ -71,6 +80,9 @@ class MockTranscriptionProvider(TranscriptionProvider):
             )
             cursor += self.gap_sec
 
+        if on_progress is not None:
+            for segment in segments:
+                on_progress(segment.end_sec, cursor)
         return Transcript(
             source_path=Path(media_path),
             language=config.language or self.language,

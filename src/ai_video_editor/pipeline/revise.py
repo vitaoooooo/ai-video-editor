@@ -34,6 +34,7 @@ from ai_video_editor.pipeline.schema import (
     ProjectManifest,
     RemovalOrigin,
     RunTimings,
+    StageProgress,
     VersionRecord,
 )
 from ai_video_editor.pipeline.timing import TimingRecorder, build_timings_section, format_duration
@@ -68,6 +69,12 @@ HISTORY_LIMIT = 5
 
 # (etapa, detalhe) para o terminal.
 RevisionProgress = Callable[[str, str], None]
+
+# Início de uma etapa ("revisor", "plano", "render", "legendas", "relatório").
+RevisionStepStart = Callable[[str], None]
+
+# Andamento da etapa em curso (ex: trechos renderizados), para exibição ao vivo.
+RevisionStageProgress = Callable[[str, StageProgress], None]
 
 
 class ChangedSentence(BaseModel):
@@ -104,10 +111,14 @@ class ProjectReviser:
         reviser: EditReviser,
         render_executor: Optional[RenderExecutor] = None,
         on_progress: Optional[RevisionProgress] = None,
+        on_step_start: Optional[RevisionStepStart] = None,
+        on_stage_progress: Optional[RevisionStageProgress] = None,
     ):
         self.reviser = reviser
         self._render_executor = render_executor
         self.on_progress = on_progress
+        self.on_step_start = on_step_start
+        self.on_stage_progress = on_stage_progress
 
     @property
     def render_executor(self) -> RenderExecutor:
@@ -120,6 +131,14 @@ class ProjectReviser:
             if elapsed is not None:
                 detail = f"{detail} ({format_duration(elapsed)})"
             self.on_progress(step, detail)
+
+    def _start(self, step: str) -> None:
+        if self.on_step_start is not None:
+            self.on_step_start(step)
+
+    def _stage_progress(self, step: str, progress: StageProgress) -> None:
+        if self.on_stage_progress is not None:
+            self.on_stage_progress(step, progress)
 
     def revise(
         self, project_dir: Path, request: str, from_version: Optional[int] = None
@@ -186,6 +205,7 @@ class ProjectReviser:
         )
 
         self._emit("revisor", f"v{base.number} + pedido")
+        self._start("revisor")
         reviser_started = time.perf_counter()
         run = run_reviser(self.reviser, states, brief, context)
         reviser_elapsed = time.perf_counter() - reviser_started
@@ -294,6 +314,7 @@ class ProjectReviser:
     ):
         probe = manifest.stages["probe"].metrics
         output_path = target / base.video
+        self._start("plano")
         plan_started = time.perf_counter()
         plan = build_edit_plan(
             manifest.video_path,
@@ -308,8 +329,14 @@ class ProjectReviser:
         recorder.record("plan", "ran", plan_elapsed)
         self._emit("plano", f"{len(keep)} trechos mantidos", plan_elapsed)
 
+        self._start("render")
         render_started = time.perf_counter()
-        rendered = self.render_executor.execute(plan)
+        rendered = self.render_executor.execute(
+            plan,
+            on_progress=lambda done, total: self._stage_progress(
+                "render", StageProgress(done=done, total=total, unit="items")
+            ),
+        )
         render_elapsed = time.perf_counter() - render_started
         recorder.record("render", "ran", render_elapsed)
         self._emit("render", f"{rendered.duration_sec:.2f}s", render_elapsed)
@@ -318,6 +345,7 @@ class ProjectReviser:
         subtitles_name: Optional[str] = None
         blocks = 0
         if params.subtitles:
+            self._start("legendas")
             subtitles_started = time.perf_counter()
             subtitles_name = subtitles_file_name(manifest.video_path)
             kept_ranges = [TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments]
@@ -345,6 +373,7 @@ class ProjectReviser:
         )
         (target / DIRECTOR_DECISION_FILE).write_text(director_run.model_dump_json(indent=2), encoding="utf-8")
 
+        self._start("relatório")
         report_started = time.perf_counter()
         duration = float(manifest.stages["probe"].metrics["duration_sec"])
         removed = removed_ranges(keep, duration)

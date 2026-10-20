@@ -26,9 +26,9 @@ class CountingExecutor(RenderExecutor):
         super().__init__()
         self.calls = 0
 
-    def execute(self, plan):
+    def execute(self, plan, on_progress=None):
         self.calls += 1
-        return super().execute(plan)
+        return super().execute(plan, on_progress)
 
 
 @pytest.fixture
@@ -182,9 +182,9 @@ def test_transcription_cached_and_redone_on_language_change(tmp_path, short_vide
     calls = {"n": 0}
 
     class CountingMock(MockTranscriptionProvider):
-        def transcribe(self, media_path, config):
+        def transcribe(self, media_path, config, on_progress=None):
             calls["n"] += 1
-            return super().transcribe(media_path, config)
+            return super().transcribe(media_path, config, on_progress)
 
     pipeline = EditPipeline(
         projects_root=tmp_path / "projects", transcription_provider=CountingMock()
