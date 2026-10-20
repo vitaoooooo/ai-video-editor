@@ -4,6 +4,8 @@
 
 Motor de edição, ingestão técnica e análise visual com IA multimodal para o **AI Video Editor**, baseado em schemas Pydantic, FFmpeg determinístico e arquitetura multi-provedor (Google Gemini, Mock).
 
+📜 [Histórico de decisões do projeto](docs/HISTORICO.md)
+
 ---
 
 ## 1. Requisitos de Sistema

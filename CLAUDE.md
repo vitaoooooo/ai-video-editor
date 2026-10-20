@@ -54,7 +54,8 @@ Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revi
 1. Durante o desenvolvimento, rodar só os testes rápidos e os arquivos afetados: `python -m pytest -q -m "not slow"` ou `python -m pytest -q tests/test_x.py`.
    A suíte completa (`python -m pytest -q -n auto`, inclui os `slow`) roda **uma única vez, antes do commit**, e deve passar toda.
 2. Atualizar o `README.md` se mudou CLI, módulo ou fluxo.
-3. Resumir: arquivos alterados, decisões tomadas, o que ficou pendente.
+3. Atualizar `docs/HISTORICO.md`: adicionar a entrada da tarefa na data de hoje (o que entrou, o que mudou/saiu e POR QUÊ, e resultados medidos, se houver), e mover o item de 'Em andamento'/'Próximos passos' se for o caso.
+4. Resumir: arquivos alterados, decisões tomadas, o que ficou pendente.
 
 ## Skills
 
