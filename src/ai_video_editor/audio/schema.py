@@ -1,6 +1,7 @@
 """Schemas Pydantic da análise de áudio."""
 
 from pathlib import Path
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -32,6 +33,19 @@ class AudioAnalysisParams(BaseModel):
 
     threshold_db: float = Field(..., description="Limiar de silêncio em dB")
     min_silence_sec: float = Field(..., gt=0.0, description="Duração mínima do silêncio")
+    threshold_mode: Literal["auto", "fixed"] = Field(
+        default="fixed", description="`auto` mede o ruído do vídeo; `fixed` usa o número informado"
+    )
+
+
+class AudioLevelStats(BaseModel):
+    """Medidas de nível (pico por janela de 50 ms) e limite escolhido no modo automático."""
+
+    noise_floor_db: float = Field(..., description="Piso de ruído (percentil baixo dos níveis)")
+    speech_level_db: float = Field(..., description="Nível típico da fala (percentil alto dos níveis)")
+    threshold_db: float = Field(..., description="Limite de silêncio escolhido")
+    reliable: bool = Field(default=True, description="False quando a detecção é pouco confiável")
+    warnings: list[str] = Field(default_factory=list)
 
 
 class AudioAnalysisResult(BaseModel):
@@ -40,6 +54,9 @@ class AudioAnalysisResult(BaseModel):
     source_path: Path = Field(..., description="Arquivo analisado")
     duration_sec: float = Field(..., ge=0.0, description="Duração total da mídia")
     params: AudioAnalysisParams
+    levels: Optional[AudioLevelStats] = Field(
+        default=None, description="Medidas do modo automático (ausente no modo fixo)"
+    )
     silences: list[SilenceInterval] = Field(default_factory=list)
     speech: list[SilenceInterval] = Field(
         default_factory=list, description="Intervalos de fala: complemento dos silêncios"

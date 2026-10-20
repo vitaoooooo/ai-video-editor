@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Optional
 
+from ai_video_editor.audio import AudioAnalysisResult
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.director.schema import DirectorRun
 from ai_video_editor.pipeline.schema import EditPipelineParams, RunTimings
@@ -21,6 +22,27 @@ def format_timestamp(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}.{ms:03d}"
 
 
+def _threshold_rows(params: EditPipelineParams, audio: Optional[AudioAnalysisResult]) -> list[str]:
+    """Linhas da tabela de parâmetros sobre o limite de silêncio (modo, medidas e limite efetivo)."""
+    if audio is None:
+        return [f"| threshold_db | {params.threshold_db} dB |"]
+    mode = "auto" if audio.params.threshold_mode == "auto" else "fixo"
+    rows = [f"| threshold_mode | {mode} |"]
+    if audio.levels is not None:
+        rows += [
+            f"| noise_floor_db (piso de ruído) | {audio.levels.noise_floor_db} dB |",
+            f"| speech_level_db (nível de fala) | {audio.levels.speech_level_db} dB |",
+        ]
+    rows.append(f"| threshold_db | {audio.params.threshold_db} dB |")
+    return rows
+
+
+def _audio_warnings(audio: Optional[AudioAnalysisResult]) -> list[str]:
+    if audio is None or audio.levels is None or not audio.levels.warnings:
+        return []
+    return ["", *(f"> ⚠️ **Atenção:** {w}" for w in audio.levels.warnings)]
+
+
 def build_edit_report(
     video_path: Path,
     original_duration_sec: float,
@@ -30,6 +52,7 @@ def build_edit_report(
     params: EditPipelineParams,
     output_path: Path,
     director: Optional[DirectorRun] = None,
+    audio: Optional[AudioAnalysisResult] = None,
     subtitles_path: Optional[Path] = None,
     subtitle_blocks: Optional[int] = None,
     timings: Optional[RunTimings] = None,
@@ -66,7 +89,7 @@ def build_edit_report(
         "",
         "| Parâmetro | Valor |",
         "| --- | --- |",
-        f"| threshold_db | {params.threshold_db} dB |",
+        *_threshold_rows(params, audio),
         f"| min_silence_sec | {params.min_silence_sec}s |",
         f"| padding_before_sec | {cut.padding_before_sec}s |",
         f"| padding_after_sec | {cut.padding_after_sec}s |",
@@ -74,6 +97,7 @@ def build_edit_report(
         f"| min_keep_sec | {cut.min_keep_sec}s |",
         f"| audio_fade_sec | {plan.audio_fade_sec}s |",
         *([f"| subtitle_max_chars | {params.subtitle.max_chars_per_line} |"] if subtitle_rows else []),
+        *_audio_warnings(audio),
         "",
         "## Trechos removidos",
         "",

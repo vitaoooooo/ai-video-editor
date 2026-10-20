@@ -3,10 +3,11 @@
 import re
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional, Union
 
 from ai_video_editor.audio.exceptions import NoAudioStreamError, SilenceDetectionError
 from ai_video_editor.audio.extractor import probe_audio
+from ai_video_editor.audio.levels import choose_threshold, measure_levels
 from ai_video_editor.audio.schema import (
     AudioAnalysisParams,
     AudioAnalysisResult,
@@ -68,17 +69,28 @@ def compute_speech(silences: list[SilenceInterval], duration_sec: float) -> list
 
 def detect_silences(
     media_path: Path,
-    threshold_db: float = -35.0,
+    threshold_db: Union[float, Literal["auto"]] = "auto",
     min_silence_sec: float = 0.5,
     ffmpeg_bin: Optional[Path] = None,
 ) -> AudioAnalysisResult:
-    """Detecta silêncios e calcula os intervalos de fala (complemento)."""
+    """Detecta silêncios e calcula os intervalos de fala (complemento).
+
+    `threshold_db="auto"` mede o áudio e escolhe o limite (ver `audio/levels.py`); um número
+    usa esse limite fixo.
+    """
     if min_silence_sec <= 0:
         raise SilenceDetectionError(media_path, "min_silence_sec deve ser maior que zero")
 
     has_audio, duration = probe_audio(media_path)
     if not has_audio:
         raise NoAudioStreamError(media_path.resolve())
+
+    levels = None
+    mode = "fixed"
+    if threshold_db == "auto":
+        mode = "auto"
+        levels = choose_threshold(measure_levels(media_path, ffmpeg_bin))
+        threshold_db = levels.threshold_db
 
     args = [
         str(ffmpeg_bin or get_ffmpeg_path()),
@@ -101,7 +113,10 @@ def detect_silences(
     return AudioAnalysisResult(
         source_path=media_path.resolve(),
         duration_sec=round(duration, 3),
-        params=AudioAnalysisParams(threshold_db=threshold_db, min_silence_sec=min_silence_sec),
+        params=AudioAnalysisParams(
+            threshold_db=threshold_db, min_silence_sec=min_silence_sec, threshold_mode=mode
+        ),
+        levels=levels,
         silences=silences,
         speech=compute_speech(silences, duration),
     )

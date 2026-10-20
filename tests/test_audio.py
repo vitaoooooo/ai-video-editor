@@ -44,7 +44,7 @@ def make_audio(path: Path, segments: list[tuple[str, float]]) -> Path:
 @pytest.mark.slow
 def test_silence_in_the_middle(tmp_path):
     f = make_audio(tmp_path / "a.wav", [("tone", 2.0), ("silence", 1.5), ("tone", 2.0)])
-    r = detect_silences(f)
+    r = detect_silences(f, threshold_db=-35.0)
     assert len(r.silences) == 1
     s = r.silences[0]
     assert s.start_sec == pytest.approx(2.0, abs=TOL)
@@ -54,7 +54,7 @@ def test_silence_in_the_middle(tmp_path):
     assert r.speech[0].start_sec == 0.0
     assert r.speech[0].end_sec == pytest.approx(2.0, abs=TOL)
     assert r.speech[1].end_sec == pytest.approx(r.duration_sec, abs=0.001)
-    assert r.params.threshold_db == -35.0
+    assert r.params.threshold_db == -35.0 and r.params.threshold_mode == "fixed"
     assert r.params.min_silence_sec == 0.5
 
 

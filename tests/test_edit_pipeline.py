@@ -83,7 +83,7 @@ def test_end_to_end_silence_cut(tmp_path, talking_video):
 
     manifest = ProjectManifest.load(project / "project.json")
     assert manifest.video_path == talking_video.resolve()
-    assert manifest.params.threshold_db == -35.0
+    assert manifest.params.threshold_db == "auto"
     assert manifest.params.cut == SilenceCutParams()
     assert manifest.params.transcribe is True
     assert manifest.stages["director"].status == "skipped"
@@ -101,7 +101,10 @@ def test_end_to_end_silence_cut(tmp_path, talking_video):
     assert f"({removed_pct:.1f}%)" in report
     assert "Número de cortes | 10 |" in report
     assert "| padding_before_sec | 0.15s |" in report
-    assert "| threshold_db | -35.0 dB |" in report
+    assert "| threshold_mode | auto |" in report
+    assert "| noise_floor_db (piso de ruído) |" in report
+    assert "| speech_level_db (nível de fala) |" in report
+    assert "| threshold_db |" in report
     # Primeiro corte: 4.20s → 5.85s
     assert "| 1 | 00:04.2" in report and "| 00:05.8" in report
     assert report.count("\n| ") >= 10 + 7 + 10  # resumo + parâmetros + linhas de cortes
@@ -157,13 +160,20 @@ def test_cache_skips_unchanged_stages_and_threshold_invalidates(
     assert fourth.outcomes["silences"] == "cached"
     assert fourth.outcomes["plan"] == "ran" and fourth.outcomes["render"] == "ran"
 
+    # Modo fixo e modo auto têm caches distintos
+    back_to_auto = pipeline.run(
+        short_video, EditPipelineParams(cut=SilenceCutParams(padding_after_sec=0.3))
+    )
+    assert back_to_auto.outcomes["silences"] == "ran"
+    assert ProjectManifest.load(back_to_auto.manifest_path).params.threshold_db == "auto"
+
     forced = pipeline.run(
         short_video,
         EditPipelineParams(threshold_db=-50.0, cut=SilenceCutParams(padding_after_sec=0.3)),
         force=True,
     )
     assert set(forced.outcomes.values()) == {"ran", "skipped"}
-    assert count_silence_calls["n"] == 3 and executor.calls == 4
+    assert count_silence_calls["n"] == 4 and executor.calls == 5
 
 
 @pytest.mark.slow
@@ -297,7 +307,8 @@ def test_end_to_end_director_removes_sentences(tmp_path, lesson_video):
 
     plan = EditPlan.model_validate_json((result.project_dir / "edit_plan.json").read_text(encoding="utf-8"))
     assert all(seg.end_sec <= 4.5 or seg.start_sec >= 7.5 for seg in plan.segments)
-    assert [(s.start_sec, s.end_sec) for s in plan.segments] == [(0.0, 3.2), (8.85, 12.2), (13.35, 16.5)]
+    bounds = [t for s in plan.segments for t in (s.start_sec, s.end_sec)]
+    assert bounds == pytest.approx([0.0, 3.2, 8.85, 12.2, 13.35, 16.5], abs=0.01)
 
     run = DirectorRun.model_validate_json(
         (result.project_dir / "director_decision.json").read_text(encoding="utf-8")
