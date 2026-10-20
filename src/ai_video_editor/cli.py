@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 
 from ai_video_editor.analyzer.schema import FrameExtractionConfig
 from ai_video_editor.analyzer.service import VideoIngestService
@@ -20,6 +21,8 @@ from ai_video_editor.pipeline import (
 )
 from ai_video_editor.pipeline.project import MANIFEST_FILE
 from ai_video_editor.pipeline.report import format_timestamp
+from ai_video_editor.pipeline.schema import RunTimings
+from ai_video_editor.pipeline.timing import STAGE_LABELS, format_duration, summarize_run
 from ai_video_editor.pipeline.versions import ensure_versions, parse_version_ref
 from ai_video_editor.planning import SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
@@ -166,21 +169,9 @@ def handle_report_ai(args: argparse.Namespace) -> int:
     return 0
 
 
-_STAGE_LABELS = {
-    "probe": "Metadados",
-    "silences": "Silêncios",
-    "transcription": "Transcrição",
-    "director": "Diretor",
-    "plan": "Plano de corte",
-    "render": "Renderização",
-    "subtitles": "Legendas",
-    "report": "Relatório",
-}
-
-
 def _print_progress(stage: str, event: str, detail: str) -> None:
     """Mostra o andamento de cada etapa do comando `edit`."""
-    step = f"[{STAGES.index(stage) + 1}/{len(STAGES)}] {_STAGE_LABELS[stage]}"
+    step = f"[{STAGES.index(stage) + 1}/{len(STAGES)}] {STAGE_LABELS[stage]}"
     if event == "start":
         print(f"{step}...", flush=True)
     elif event == "done":
@@ -252,7 +243,15 @@ def handle_edit(args: argparse.Namespace) -> int:
         f"Duração: {result.original_duration_sec:.2f}s -> {result.final_duration_sec:.2f}s "
         f"({pct:.1f}% removido)"
     )
+    _print_run_summary(result.timings)
     return 0
+
+
+def _print_run_summary(timings: Optional[RunTimings]) -> None:
+    """Tempo total da execução e razão em relação à duração do vídeo."""
+    if timings is None:
+        return
+    print(summarize_run(timings) or f"Tempo total: {format_duration(timings.total_sec)}")
 
 
 def _short(text: str, limit: int = 70) -> str:
@@ -313,6 +312,7 @@ def handle_revise(args: argparse.Namespace) -> int:
     print(f"Relatório: {result.report_path}")
     if result.subtitles_path is not None:
         print(f"Legendas: {result.subtitles_path}")
+    _print_run_summary(result.timings)
     return 0
 
 

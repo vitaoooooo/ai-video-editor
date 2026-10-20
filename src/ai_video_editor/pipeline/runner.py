@@ -41,6 +41,7 @@ from ai_video_editor.pipeline.project import (
 )
 from ai_video_editor.pipeline.cutting import plan_keep_ranges
 from ai_video_editor.pipeline.report import build_edit_report
+from ai_video_editor.pipeline.timing import TimingRecorder, format_duration
 from ai_video_editor.pipeline.versions import register_edit_version
 from ai_video_editor.pipeline.schema import (
     EditPipelineParams,
@@ -165,6 +166,7 @@ class EditPipeline:
         if not video_path.is_file():
             raise VideoNotFoundError(video_path)
         params = params or EditPipelineParams()
+        recorder = TimingRecorder()
 
         video_hash = file_hash(video_path)
         project_dir = project_dir_for(video_path, video_hash, self.projects_root).resolve()
@@ -177,7 +179,7 @@ class EditPipeline:
             manifest = ProjectManifest(video_path=video_path, video_hash=video_hash, params=params)
         manifest.save(manifest_path)
 
-        run = _Run(self, manifest, manifest_path, force)
+        run = _Run(self, manifest, manifest_path, force, recorder)
         outcomes: dict[StageName, StageOutcome] = {}
         output_path = project_dir / output_video_name(video_path)
 
@@ -204,6 +206,7 @@ class EditPipeline:
         outcomes["probe"] = run.stage("probe", fp_probe, PROBE_FILE, do_probe)
         metadata = VideoMetadata.model_validate_json((project_dir / PROBE_FILE).read_text(encoding="utf-8"))
         probe_metrics = manifest.stages["probe"].metrics
+        recorder.video_duration_sec = metadata.duration_sec
         resolution = (int(probe_metrics["width"]), int(probe_metrics["height"]))
         source_fps = float(probe_metrics["fps"])
 
@@ -369,6 +372,7 @@ class EditPipeline:
         )
 
         def do_report() -> tuple[dict, str]:
+            report_started = time.perf_counter()
             markdown = build_edit_report(
                 video_path,
                 metadata.duration_sec,
@@ -380,13 +384,17 @@ class EditPipeline:
                 director=director_run,
                 subtitles_path=srt_path if subtitle_blocks is not None else None,
                 subtitle_blocks=subtitle_blocks,
+                timings=recorder.snapshot(in_progress=("report", report_started)),
             )
             (project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
             return {"cuts": len(removed)}, f"{len(removed)} cortes"
 
         outcomes["report"] = run.stage("report", fp_report, EDIT_REPORT_FILE, do_report)
 
-        version = register_edit_version(project_dir, manifest, manifest_path)
+        timings = recorder.snapshot()
+        manifest.last_run = timings
+        manifest.save(manifest_path)
+        version = register_edit_version(project_dir, manifest, manifest_path, timings)
 
         return EditPipelineResult(
             project_dir=project_dir,
@@ -398,6 +406,7 @@ class EditPipeline:
             original_duration_sec=metadata.duration_sec,
             final_duration_sec=final_duration,
             outcomes=outcomes,
+            timings=timings,
             warnings=director_run.warnings if director_run is not None else [],
         )
 
@@ -406,13 +415,19 @@ class _Run:
     """Estado de uma execução: aplica a regra de cache e persiste o manifesto a cada etapa."""
 
     def __init__(
-        self, pipeline: EditPipeline, manifest: ProjectManifest, manifest_path: Path, force: bool
+        self,
+        pipeline: EditPipeline,
+        manifest: ProjectManifest,
+        manifest_path: Path,
+        force: bool,
+        recorder: TimingRecorder,
     ):
         self.pipeline = pipeline
         self.manifest = manifest
         self.manifest_path = manifest_path
         self.project_dir = manifest_path.parent
         self.force = force
+        self.recorder = recorder
 
     def _save(self) -> None:
         self.manifest.updated_at = _now()
@@ -426,6 +441,7 @@ class _Run:
             and record.fingerprint == fp
             and (self.project_dir / artifact).is_file()
         ):
+            self.recorder.record(name, "cached")
             self.pipeline._emit(name, "cached", "")
             return "cached"
 
@@ -441,16 +457,18 @@ class _Run:
             self.pipeline._emit(name, "failed", str(exc))
             raise
 
+        elapsed = time.perf_counter() - started
         self.manifest.stages[name] = StageRecord(
             status="done",
             fingerprint=fp,
             artifact=artifact,
             updated_at=_now(),
-            elapsed_sec=round(time.perf_counter() - started, 3),
+            elapsed_sec=round(elapsed, 3),
             metrics=metrics,
         )
         self._save()
-        self.pipeline._emit(name, "done", detail)
+        self.recorder.record(name, "ran", elapsed)
+        self.pipeline._emit(name, "done", f"{detail} ({format_duration(elapsed)})")
         return "ran"
 
     def skip(self, name: StageName, detail: str, artifact: Optional[str] = None) -> StageOutcome:
@@ -469,5 +487,6 @@ class _Run:
         elif self.manifest.stages[name].status != "done":
             self.manifest.stages[name] = StageRecord(status="skipped", updated_at=_now())
             self._save()
+        self.recorder.record(name, "skipped")
         self.pipeline._emit(name, "skipped", detail)
         return "skipped"

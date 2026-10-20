@@ -5,6 +5,7 @@ devolve só IDs de frases; plano, render, legendas e relatório são determinís
 """
 
 import shutil
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -25,7 +26,8 @@ from ai_video_editor.pipeline.project import (
     subtitles_file_name,
 )
 from ai_video_editor.pipeline.report import build_edit_report, build_revision_section
-from ai_video_editor.pipeline.schema import ProjectManifest, VersionRecord
+from ai_video_editor.pipeline.schema import ProjectManifest, RunTimings, VersionRecord
+from ai_video_editor.pipeline.timing import TimingRecorder, build_timings_section, format_duration
 from ai_video_editor.pipeline.versions import (
     VERSION_FILE,
     ensure_versions,
@@ -81,6 +83,7 @@ class RevisionResult(BaseModel):
     pacing_before: str
     pacing_after: str
     summary: str
+    timings: Optional[RunTimings] = None
 
 
 class ProjectReviser:
@@ -102,8 +105,10 @@ class ProjectReviser:
             self._render_executor = RenderExecutor()
         return self._render_executor
 
-    def _emit(self, step: str, detail: str = "") -> None:
+    def _emit(self, step: str, detail: str = "", elapsed: Optional[float] = None) -> None:
         if self.on_progress is not None:
+            if elapsed is not None:
+                detail = f"{detail} ({format_duration(elapsed)})"
             self.on_progress(step, detail)
 
     def revise(
@@ -116,6 +121,7 @@ class ProjectReviser:
             RevisionRejectedError: pedido vazio, impossível, ambíguo, sem efeito ou respondido de
                 forma inválida; nenhuma versão é criada.
         """
+        recorder = TimingRecorder()
         request = request.strip()
         if not request:
             raise RevisionRejectedError("o pedido está vazio")
@@ -130,6 +136,11 @@ class ProjectReviser:
             if not (project_dir / name).is_file():
                 hint = " (rode `edit --transcribe` antes)" if name == TRANSCRIPT_FILE else ""
                 raise ProjectStateError(f"falta {name} no projeto{hint}; a revisão não refaz etapas")
+
+        # Reaproveitados do cache: a revisão nunca refaz estas etapas.
+        for name in ("probe", "silences", "transcription"):
+            recorder.record(name, "cached")
+        recorder.video_duration_sec = float(manifest.stages["probe"].metrics["duration_sec"])
 
         transcript = Transcript.load(project_dir / TRANSCRIPT_FILE)
         audio = AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE)
@@ -163,7 +174,11 @@ class ProjectReviser:
         )
 
         self._emit("revisor", f"v{base.number} + pedido")
+        reviser_started = time.perf_counter()
         run = run_reviser(self.reviser, states, brief, context)
+        reviser_elapsed = time.perf_counter() - reviser_started
+        recorder.record("reviser", "ran", reviser_elapsed)
+        self._emit("revisor", "pedido analisado", reviser_elapsed)
         decision = run.decision
         assert decision is not None
 
@@ -191,6 +206,7 @@ class ProjectReviser:
             record = self._build_version(
                 project_dir, manifest, base, number, target, request, decision.summary, pacing,
                 cut, keep, sentences, transcript, audio, new_removals, run, decision, base_removals,
+                recorder,
             )
         except Exception:
             shutil.rmtree(target, ignore_errors=True)
@@ -198,6 +214,7 @@ class ProjectReviser:
 
         manifest.versions.append(record)
         manifest.current_version = number
+        manifest.last_run = record.timings
         manifest.save(manifest_path)
 
         restored_reasons = {r.sentence_id: r.reason for r in decision.restorations}
@@ -221,6 +238,7 @@ class ProjectReviser:
             pacing_before=base.pacing,
             pacing_after=pacing,
             summary=decision.summary,
+            timings=record.timings,
         )
 
     @staticmethod
@@ -239,9 +257,11 @@ class ProjectReviser:
     def _build_version(
         self, project_dir, manifest, base, number, target, request, summary, pacing,
         cut, keep, sentences, transcript, audio, new_removals, run, decision, base_removals,
+        recorder,
     ):
         probe = manifest.stages["probe"].metrics
         output_path = target / base.video
+        plan_started = time.perf_counter()
         plan = build_edit_plan(
             manifest.video_path,
             keep,
@@ -251,21 +271,31 @@ class ProjectReviser:
             title=f"Revisão v{number} — {manifest.video_path.name}",
         )
         (target / EDIT_PLAN_FILE).write_text(plan.model_dump_json(indent=2), encoding="utf-8")
-        self._emit("plano", f"{len(keep)} trechos mantidos")
+        plan_elapsed = time.perf_counter() - plan_started
+        recorder.record("plan", "ran", plan_elapsed)
+        self._emit("plano", f"{len(keep)} trechos mantidos", plan_elapsed)
 
+        render_started = time.perf_counter()
         rendered = self.render_executor.execute(plan)
-        self._emit("render", f"{rendered.duration_sec:.2f}s")
+        render_elapsed = time.perf_counter() - render_started
+        recorder.record("render", "ran", render_elapsed)
+        self._emit("render", f"{rendered.duration_sec:.2f}s", render_elapsed)
 
         params = manifest.params
         subtitles_name: Optional[str] = None
         blocks = 0
         if params.subtitles:
+            subtitles_started = time.perf_counter()
             subtitles_name = subtitles_file_name(manifest.video_path)
             kept_ranges = [TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments]
             built = build_subtitle_blocks(transcript, kept_ranges, plan.target_fps, params.subtitle)
             write_srt(built, target / subtitles_name)
             blocks = len(built)
-            self._emit("legendas", f"{blocks} blocos")
+            subtitles_elapsed = time.perf_counter() - subtitles_started
+            recorder.record("subtitles", "ran", subtitles_elapsed)
+            self._emit("legendas", f"{blocks} blocos", subtitles_elapsed)
+        else:
+            recorder.record("subtitles", "skipped")
 
         director_run = DirectorRun(
             provider=run.provider,
@@ -278,6 +308,7 @@ class ProjectReviser:
         )
         (target / DIRECTOR_DECISION_FILE).write_text(director_run.model_dump_json(indent=2), encoding="utf-8")
 
+        report_started = time.perf_counter()
         duration = float(manifest.stages["probe"].metrics["duration_sec"])
         removed = removed_ranges(keep, duration)
         by_id = {s.id: s for s in sentences}
@@ -306,8 +337,10 @@ class ProjectReviser:
         ) + build_revision_section(
             request, base.number, number, summary, base.pacing, pacing, changes
         )
+        timings = recorder.snapshot(in_progress=("report", report_started))
+        report += build_timings_section(timings)
         (target / EDIT_REPORT_FILE).write_text(report, encoding="utf-8")
-        self._emit("relatório", f"{len(removed)} cortes")
+        self._emit("relatório", f"{len(removed)} cortes", time.perf_counter() - report_started)
 
         record = VersionRecord(
             number=number,
@@ -323,6 +356,7 @@ class ProjectReviser:
             removed_sentences=len(new_removals),
             video=base.video,
             subtitles=subtitles_name,
+            timings=timings,
         )
         (target / VERSION_FILE).write_text(record.model_dump_json(indent=2), encoding="utf-8")
         return record

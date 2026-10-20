@@ -5,7 +5,8 @@ from typing import Optional
 
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.director.schema import DirectorRun
-from ai_video_editor.pipeline.schema import EditPipelineParams
+from ai_video_editor.pipeline.schema import EditPipelineParams, RunTimings
+from ai_video_editor.pipeline.timing import build_timings_section
 from ai_video_editor.planning.schema import TimeRange
 
 
@@ -31,8 +32,9 @@ def build_edit_report(
     director: Optional[DirectorRun] = None,
     subtitles_path: Optional[Path] = None,
     subtitle_blocks: Optional[int] = None,
+    timings: Optional[RunTimings] = None,
 ) -> str:
-    """Monta o Markdown com resumo, parâmetros, trechos removidos e decisões do Diretor."""
+    """Monta o Markdown com resumo, parâmetros, trechos removidos, decisões do Diretor e tempos."""
     removed_sec = max(0.0, original_duration_sec - final_duration_sec)
     pct = removed_sec / original_duration_sec * 100 if original_duration_sec > 0 else 0.0
     width, height = plan.target_resolution
@@ -86,7 +88,10 @@ def build_edit_report(
         lines.append("Nenhum trecho removido.")
     if director is not None:
         lines += ["", *_director_section(director)]
-    return "\n".join(lines) + "\n"
+    text = "\n".join(lines) + "\n"
+    if timings is not None:
+        text += build_timings_section(timings)
+    return text
 
 
 def _cell(text: str) -> str:

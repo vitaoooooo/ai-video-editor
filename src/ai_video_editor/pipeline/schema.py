@@ -64,6 +64,22 @@ class StageRecord(BaseModel):
     error: Optional[str] = None
 
 
+class StageTiming(BaseModel):
+    """Tempo de relógio de uma etapa em uma execução (sem tempo se veio do cache ou foi pulada)."""
+
+    name: str = Field(..., description="Nome da etapa (`probe`, `render`, `reviser`...)")
+    status: StageOutcome
+    elapsed_sec: Optional[float] = Field(default=None, description="Só em etapas executadas")
+
+
+class RunTimings(BaseModel):
+    """Tempos de uma execução do `edit` ou do `revise`."""
+
+    stages: list[StageTiming] = Field(default_factory=list)
+    total_sec: float = Field(..., description="Tempo de relógio da execução inteira")
+    video_duration_sec: Optional[float] = Field(default=None, description="Duração do vídeo original")
+
+
 class VersionRecord(BaseModel):
     """Uma versão do projeto (`versions/vN/`): o resultado do `edit` (v1) ou de uma revisão."""
 
@@ -86,6 +102,9 @@ class VersionRecord(BaseModel):
     edit_fp: Optional[str] = Field(
         default=None, description="Fingerprint do render/legendas do `edit` que gerou a versão"
     )
+    timings: Optional[RunTimings] = Field(
+        default=None, description="Tempos da execução que gerou a versão"
+    )
 
 
 class ProjectManifest(BaseModel):
@@ -101,6 +120,9 @@ class ProjectManifest(BaseModel):
     )
     versions: list[VersionRecord] = Field(default_factory=list)
     current_version: Optional[int] = Field(default=None, description="Número da versão atual")
+    last_run: Optional[RunTimings] = Field(
+        default=None, description="Tempos da última execução de `edit` ou `revise`"
+    )
 
     @field_validator("stages")
     @classmethod
@@ -132,4 +154,5 @@ class EditPipelineResult(BaseModel):
     original_duration_sec: float
     final_duration_sec: float
     outcomes: dict[StageName, StageOutcome]
+    timings: Optional[RunTimings] = None
     warnings: list[str] = Field(default_factory=list)

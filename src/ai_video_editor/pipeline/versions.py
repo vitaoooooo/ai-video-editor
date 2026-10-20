@@ -16,7 +16,7 @@ from ai_video_editor.pipeline.project import (
     EDIT_REPORT_FILE,
     fingerprint,
 )
-from ai_video_editor.pipeline.schema import ProjectManifest, VersionRecord
+from ai_video_editor.pipeline.schema import ProjectManifest, RunTimings, VersionRecord
 from ai_video_editor.revision.exceptions import ProjectStateError
 
 VERSIONS_DIR = "versions"
@@ -59,7 +59,10 @@ def edit_fingerprint(manifest: ProjectManifest) -> Optional[str]:
 
 
 def register_edit_version(
-    project_dir: Path, manifest: ProjectManifest, manifest_path: Path
+    project_dir: Path,
+    manifest: ProjectManifest,
+    manifest_path: Path,
+    timings: Optional[RunTimings] = None,
 ) -> Optional[VersionRecord]:
     """Copia o resultado atual do `edit` para uma versão nova, se nenhuma versão já o representa.
 
@@ -108,6 +111,7 @@ def register_edit_version(
             video=video_name,
             subtitles=subtitles,
             edit_fp=fp,
+            timings=timings,
         )
         (target / VERSION_FILE).write_text(record.model_dump_json(indent=2), encoding="utf-8")
     except Exception:
