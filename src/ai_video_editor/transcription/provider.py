@@ -27,3 +27,10 @@ class TranscriptionProvider(ABC):
             Transcript validado, com IDs de segmento sequenciais a partir de 0.
         """
         ...
+
+    def effective_settings(self, config: TranscriptionConfig) -> tuple[str, str]:
+        """(dispositivo, compute_type) que `transcribe` usará com essa configuração.
+
+        Entra no fingerprint do cache da transcrição; provedores que resolvem "auto" sobrescrevem.
+        """
+        return config.device, config.compute_type

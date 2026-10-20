@@ -196,6 +196,19 @@ Estrutura (o `project.json` guarda o histórico em `versions` e a versão em `cu
 
 O `edit_report.md` de uma revisão traz a seção "Revisão": pedido, ritmo das pausas, resumo e uma tabela de mudanças (frase, texto, antes, depois, motivo). Rodar o `edit` de novo com os mesmos parâmetros não cria versão; com parâmetros que mudam o resultado, cria uma nova versão atual.
 
+### Usando a GPU
+A transcrição usa a GPU NVIDIA automaticamente quando ela existe e as bibliotecas CUDA estão instaladas (`--whisper-device auto`, o padrão); senão, volta para a CPU com um aviso. Para instalar as bibliotecas (cuBLAS para CUDA 12 e cuDNN 9, compatíveis com o ctranslate2 4.x do faster-whisper) no Windows:
+
+```bash
+.\.venv\Scripts\python.exe -m pip install -e ".[gpu]"
+```
+
+Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são registradas pelo próprio programa (não precisa mexer no PATH).
+
+- `--whisper-device {auto,cpu,cuda}`: `cuda` falha com instruções se a GPU não puder ser usada; `cpu` ignora a GPU.
+- `--whisper-compute-type`: `auto` = `float16` na GPU e `int8` na CPU; aceita valores explícitos (ex.: `int8_float16`).
+- O dispositivo e o compute_type efetivos aparecem no `transcript.json` (`model_used`, ex.: `faster-whisper:small (cuda, float16)`), no relatório e entram no cache da transcrição.
+
 ---
 
 ## 5. Estrutura dos Módulos

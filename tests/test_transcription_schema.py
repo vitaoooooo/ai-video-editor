@@ -27,7 +27,7 @@ def _transcript(segments: list[TranscriptSegment]) -> Transcript:
 
 def test_config_defaults():
     cfg = TranscriptionConfig()
-    assert (cfg.model_size, cfg.language, cfg.device, cfg.compute_type) == ("small", None, "cpu", "int8")
+    assert (cfg.model_size, cfg.language, cfg.device, cfg.compute_type) == ("small", None, "auto", "auto")
     assert TranscriptionConfig(language="pt").language == "pt"
 
 

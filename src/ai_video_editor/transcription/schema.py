@@ -1,7 +1,7 @@
 """Schemas Pydantic da transcrição com timestamps por palavra."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -11,8 +11,13 @@ class TranscriptionConfig(BaseModel):
 
     model_size: str = Field(default="small", description="Tamanho/nome do modelo (ex: 'small', 'medium')")
     language: Optional[str] = Field(default=None, description="Código do idioma (ex: 'pt'); None = detecção automática")
-    device: str = Field(default="cpu", description="Dispositivo de inferência ('cpu', 'cuda')")
-    compute_type: str = Field(default="int8", description="Tipo de computação do modelo (ex: 'int8', 'float16')")
+    device: Literal["auto", "cpu", "cuda"] = Field(
+        default="auto", description="Dispositivo de inferência: 'auto' usa a GPU NVIDIA quando disponível"
+    )
+    compute_type: str = Field(
+        default="auto",
+        description="Tipo de computação: 'auto' = float16 na GPU e int8 na CPU; aceita valores explícitos (ex: 'int8')",
+    )
     vad_filter: bool = Field(default=True, description="Filtra trechos sem fala (VAD) para reduzir texto inventado em silêncio")
 
 

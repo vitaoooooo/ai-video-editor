@@ -43,3 +43,16 @@ class TranscriptionFailedError(TranscriptionError):
             provider=provider,
             details=details,
         )
+
+
+class TranscriptionGpuError(TranscriptionError):
+    """Lançada quando a GPU foi exigida (`--whisper-device cuda`) mas não pode ser usada."""
+
+    def __init__(self, provider: str, details: str = ""):
+        super().__init__(
+            "Não foi possível usar a GPU (CUDA). Instale as bibliotecas da NVIDIA com: "
+            'pip install -e ".[gpu]" (requer driver NVIDIA com suporte a CUDA 12) '
+            "ou use --whisper-device auto/cpu.",
+            provider=provider,
+            details=details,
+        )

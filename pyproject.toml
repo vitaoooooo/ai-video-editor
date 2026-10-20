@@ -24,6 +24,12 @@ dev = [
 transcription = [
     "faster-whisper>=1.0.0",
 ]
+# Bibliotecas CUDA 12 + cuDNN 9 exigidas pelo ctranslate2 4.x para rodar o Whisper na GPU NVIDIA.
+gpu = [
+    "faster-whisper>=1.0.0",
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12==9.*",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

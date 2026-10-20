@@ -227,7 +227,12 @@ def handle_edit(args: argparse.Namespace) -> int:
                 min_keep_sec=args.min_keep,
             ),
             transcribe=args.transcribe,
-            transcription=TranscriptionConfig(model_size=args.whisper_model, language=args.language),
+            transcription=TranscriptionConfig(
+                model_size=args.whisper_model,
+                language=args.language,
+                device=args.whisper_device,
+                compute_type=args.whisper_compute_type,
+            ),
             director=args.director,
             director_model=args.director_model,
             director_thinking=args.director_thinking,
@@ -524,6 +529,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     edit_parser.add_argument(
         "--whisper-model", default="small", help="Modelo do faster-whisper (padrão: small)"
+    )
+    edit_parser.add_argument(
+        "--whisper-device",
+        choices=["auto", "cpu", "cuda"],
+        default="auto",
+        help="Dispositivo do faster-whisper: auto usa a GPU NVIDIA se houver, senão CPU (padrão: auto)",
+    )
+    edit_parser.add_argument(
+        "--whisper-compute-type",
+        default="auto",
+        help="Precisão do faster-whisper: auto = float16 na GPU e int8 na CPU (padrão: auto)",
     )
     edit_parser.add_argument(
         "--director",

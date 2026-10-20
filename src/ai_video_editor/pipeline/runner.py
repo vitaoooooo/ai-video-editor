@@ -249,8 +249,11 @@ class EditPipeline:
         fp_transcript: Optional[str] = None
         if params.transcribe:
             provider = self.transcription_provider
+            # Dispositivo e compute_type efetivos (resolvidos de "auto") entram no cache.
+            effective = provider.effective_settings(params.transcription)
             fp_transcript = fingerprint(
-                "transcription", video_hash, provider.provider_name, params.transcription
+                "transcription", video_hash, provider.provider_name,
+                params.transcription.model_copy(update={"device": effective[0], "compute_type": effective[1]}),
             )
 
             def do_transcription() -> tuple[dict, str]:
@@ -391,7 +394,7 @@ class EditPipeline:
             subtitle_blocks = int(manifest.stages["subtitles"].metrics["blocks"])
 
         # 8. relatório
-        fp_report = fingerprint("report", fp_render, fp_director, fp_subtitles, params)
+        fp_report = fingerprint("report", fp_render, fp_director, fp_subtitles, fp_transcript, params)
         removed = removed_ranges(
             [TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments],
             metadata.duration_sec,
@@ -411,6 +414,9 @@ class EditPipeline:
                 audio=AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE),
                 subtitles_path=srt_path if subtitle_blocks is not None else None,
                 subtitle_blocks=subtitle_blocks,
+                transcription_model=(
+                    Transcript.load(project_dir / TRANSCRIPT_FILE).model_used if fp_transcript else None
+                ),
                 timings=recorder.snapshot(in_progress=("report", report_started)),
             )
             (project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")

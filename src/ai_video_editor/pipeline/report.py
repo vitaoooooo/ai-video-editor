@@ -55,6 +55,7 @@ def build_edit_report(
     audio: Optional[AudioAnalysisResult] = None,
     subtitles_path: Optional[Path] = None,
     subtitle_blocks: Optional[int] = None,
+    transcription_model: Optional[str] = None,
     timings: Optional[RunTimings] = None,
 ) -> str:
     """Monta o Markdown com resumo, parâmetros, trechos removidos, decisões do Diretor e tempos."""
@@ -84,6 +85,7 @@ def build_edit_report(
         f"| Trechos mantidos | {len(plan.segments)} |",
         f"| Saída | {width}x{height} @ {plan.target_fps}fps |",
         *subtitle_rows,
+        *([f"| Transcrição | `{transcription_model}` |"] if transcription_model else []),
         "",
         "## Parâmetros",
         "",
