@@ -74,6 +74,7 @@ class SegmentedRender:
     concat_list_content: str
     concat_command: list[str]
     expected_duration_sec: float
+    has_audio: bool = True  # alguma origem tem áudio (sem nenhuma, o áudio é só silêncio gerado)
 
 
 def _fmt(value: float) -> str:
@@ -241,7 +242,21 @@ class FFmpegCompiler:
             list_lines.append(f"duration {_fmt(timing.duration_sec)}")
 
         concat_list_path = work_dir / "concat.txt"
-        concat_command = [
+        return SegmentedRender(
+            segment_commands=segment_commands,
+            segment_paths=segment_paths,
+            concat_list_path=concat_list_path,
+            concat_list_content="\n".join(list_lines) + "\n",
+            concat_command=self.concat_command(plan, concat_list_path),
+            expected_duration_sec=sum(t.duration_sec for t in timings),
+            has_audio=any(info.has_audio for info in infos.values()),
+        )
+
+    def concat_command(
+        self, plan: EditPlan, concat_list_path: Path, audio_filter: Optional[str] = None
+    ) -> list[str]:
+        """Concat final: copia o vídeo e codifica o AAC uma única vez (com `audio_filter`, se houver)."""
+        return [
             str(self.ffmpeg_bin),
             "-y",
             "-nostdin",
@@ -260,20 +275,12 @@ class FFmpegCompiler:
             "0:a:0",
             "-c:v",
             "copy",
+            *(["-af", audio_filter] if audio_filter else []),
             *FINAL_AUDIO_ARGS,
             "-movflags",
             "+faststart",
             str(plan.output_path.resolve()),
         ]
-
-        return SegmentedRender(
-            segment_commands=segment_commands,
-            segment_paths=segment_paths,
-            concat_list_path=concat_list_path,
-            concat_list_content="\n".join(list_lines) + "\n",
-            concat_command=concat_command,
-            expected_duration_sec=sum(t.duration_sec for t in timings),
-        )
 
     def compile(self, plan: EditPlan) -> list[str]:
         """Gera um único comando com filtergraph completo (render em uma passada).

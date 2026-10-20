@@ -120,6 +120,7 @@ def register_edit_version(
             request=manifest.params.brief.instructions or DEFAULT_EDIT_REQUEST,
             parent=manifest.current_version,
             cut=manifest.params.cut,
+            loudness=manifest.params.loudness,
             duration_sec=float(manifest.stages["render"].metrics["duration_sec"]),
             cuts=int(manifest.stages["report"].metrics.get("cuts", 0)),
             segments=len(plan.segments),

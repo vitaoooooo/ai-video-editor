@@ -6,6 +6,7 @@ from typing import Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ai_video_editor.core.schema import LoudnessPreset
 from ai_video_editor.director.schema import DirectorThinking, SentenceParams, UserBrief
 from ai_video_editor.llm.chain import resolve_chain
 from ai_video_editor.llm.schema import ModelSpec
@@ -67,7 +68,9 @@ class EditPipelineParams(BaseModel):
         ge=0.0,
         description="Pausas removidas a partir desta duração ganham marcador na transcrição comparativa",
     )
-
+    loudness: LoudnessPreset = Field(
+        default="voz", description="Normalização de volume do vídeo final (EBU R128): voz/youtube/broadcast/off"
+    )
 
     @model_validator(mode="after")
     def _check_director(self) -> "EditPipelineParams":
@@ -123,6 +126,9 @@ class VersionRecord(BaseModel):
         default_factory=SilenceCutParams, description="Parâmetros de corte do `edit` (antes do preset)"
     )
     pacing: PausePreset = "normal"
+    loudness: Optional[LoudnessPreset] = Field(
+        default=None, description="Normalização de volume da versão (None: versão anterior à normalização)"
+    )
     duration_sec: float
     cuts: int = Field(..., description="Número de trechos removidos do vídeo original")
     segments: int

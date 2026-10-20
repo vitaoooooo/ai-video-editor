@@ -93,6 +93,11 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   - 🔁 **Regra do pedaço de palavra:** se o corte deixaria uma sobra da frase menor que 0,25s, ele é estendido até o limite da frase; se isso invadir uma frase mantida, o corte é desfeito. Nunca fica meia palavra no vídeo.
   - 📊 320 testes automatizados.
 
+- ✅ **Normalização de volume** (`loudnorm`): o áudio final sai num nível padrão (EBU R128) com o filtro `loudnorm` do FFmpeg em **duas passadas** no concat final: a primeira mede o áudio concatenado dos trechos e a segunda aplica o ganho com os valores medidos e `linear=true` (vídeo continua com `-c:v copy`). Presets `--loudness voz` (padrão, -16 LUFS), `youtube` (-14), `broadcast` (-23) e `off`, no `edit` e no `revise`. O `EditPlan` ganhou o campo opcional `loudness` (padrão: sem normalização), então `render` e `quick-cut` não mudam. O relatório ganhou a seção "Volume" (I, TP e LRA medidos, alvo aplicado) e avisa quando o original já chega a 0 dBTP de true peak. Áudio todo em silêncio ou vídeo sem áudio: pula com aviso.
+  - **Por quê:** na palestra o áudio estava "estourado" (picos em 0 dBFS); gravações caseiras costumam ter o problema oposto (volume baixo). Duas passadas porque a medição prévia permite um ganho único e previsível, em vez do modo dinâmico de uma passada, que muda o volume ao longo do vídeo.
+  - 📊 Tom a -34,8 LUFS → -16,0 LUFS; tom a -4,3 LUFS (pico -0,6 dBTP) → -16,1 LUFS. Custo da passada de medição: **17,7s para 8min20s de áudio** (trechos de um vídeo 720p de 10 min; o render inteiro foi de 95s para 108s). Quase todo o tempo é o próprio loudnorm (reamostra para 192 kHz para medir o true peak): decodificar o áudio leva 1,5s, o `ebur128` mediria em 3s, mas não calcula o `target_offset`. Na palestra de 57 min, a estimativa é de ~2 min a mais.
+  - 📊 338 testes automatizados.
+
 📊 **Palestra de 57 min, resultado atual:** 57:07 → 53:43, 259 cortes, processada em **8min48s** (0,15× o tempo real, com transcrição em cache).
 
 ---
@@ -103,7 +108,8 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
 ## 🔮 Próximos passos (V1)
 
-- **Normalização de volume** (`loudnorm`): áudio num nível padrão, como YouTube/Spotify fazem.
+- **Ponto de corte de palavras curtas pela energia do áudio**: na palestra de 57 min, fillers como "Um" e "By" ficaram no vídeo. O tempo do Whisper para essas palavras inclui a pausa ao redor, e o corte só tirou o silêncio (nenhuma palavra foi cortada pela metade). Refinar o início/fim do corte pela energia do áudio dentro do intervalo da palavra.
+- **Status "não aplicada (só a pausa saiu)"**: quando a parte removida de uma frase for apenas silêncio, marcar assim em vez de "parcial" (caso do "By": 0,19s de 0,74s saiu, mas era só pausa).
 - **Benchmark de transcrição**: CPU × GPU × Gemini, comparando com a **transcrição oficial do MIT** (taxa de erro de palavras, tempo e custo) → tabela no README.
 - **Provedor de transcrição Gemini** (alternativa para quem não tem GPU).
 - **Render na GPU (NVENC)**: o render é hoje a etapa mais lenta em vídeos longos.

@@ -1,8 +1,10 @@
 """Pydantic schemas for edit plans and video segments."""
 
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Literal, Optional, Tuple
 from pydantic import BaseModel, Field, model_validator
+
+LoudnessPreset = Literal["voz", "youtube", "broadcast", "off"]
 
 
 class ClipSegment(BaseModel):
@@ -29,6 +31,38 @@ class ClipSegment(BaseModel):
         return None
 
 
+class LoudnessTarget(BaseModel):
+    """Alvo de normalização de loudness (EBU R128) aplicado ao áudio final com o filtro loudnorm."""
+
+    preset: str = Field(default="custom", description="Nome do preset que originou o alvo")
+    integrated_lufs: float = Field(..., ge=-70.0, le=-5.0, description="Loudness integrado alvo (I), em LUFS")
+    true_peak_dbtp: float = Field(..., ge=-9.0, le=0.0, description="True peak máximo (TP), em dBTP")
+    lra: float = Field(..., ge=1.0, le=50.0, description="Faixa de loudness alvo (LRA), em LU")
+
+    @classmethod
+    def from_preset(cls, preset: LoudnessPreset) -> Optional["LoudnessTarget"]:
+        """Alvo do preset; None para `off` (sem normalização)."""
+        if preset == "off":
+            return None
+        return cls(preset=preset, **LOUDNESS_PRESETS[preset])
+
+    def describe(self) -> str:
+        """`voz (-16 LUFS, TP -1.5 dBTP, LRA 11)`."""
+        return (
+            f"{self.preset} ({self.integrated_lufs:g} LUFS, TP {self.true_peak_dbtp:g} dBTP, "
+            f"LRA {self.lra:g})"
+        )
+
+
+# voz: fala em plataformas online (padrão do `edit`); youtube: referência de -14 LUFS das
+# plataformas de streaming; broadcast: EBU R128 para TV.
+LOUDNESS_PRESETS: dict[str, dict[str, float]] = {
+    "voz": {"integrated_lufs": -16.0, "true_peak_dbtp": -1.5, "lra": 11.0},
+    "youtube": {"integrated_lufs": -14.0, "true_peak_dbtp": -1.5, "lra": 11.0},
+    "broadcast": {"integrated_lufs": -23.0, "true_peak_dbtp": -1.5, "lra": 11.0},
+}
+
+
 class EditPlan(BaseModel):
     """Declarative specification of a complete video edit."""
 
@@ -44,6 +78,10 @@ class EditPlan(BaseModel):
         ge=0.0,
         le=1.0,
         description="Micro fade de áudio (in e out) aplicado em cada segmento, em segundos (0 desativa)",
+    )
+    loudness: Optional[LoudnessTarget] = Field(
+        default=None,
+        description="Normalização de loudness do áudio final em duas passadas (None mantém o volume original)",
     )
     segments: list[ClipSegment] = Field(
         ..., min_length=1, description="Ordered list of video segments to trim and concatenate"

@@ -6,9 +6,10 @@ refinada depois) e `build_edit_plan` converte a lista final em `EditPlan`.
 """
 
 from pathlib import Path
+from typing import Optional
 
 from ai_video_editor.audio.schema import AudioAnalysisResult
-from ai_video_editor.core.schema import ClipSegment, EditPlan
+from ai_video_editor.core.schema import ClipSegment, EditPlan, LoudnessTarget
 from ai_video_editor.planning.exceptions import NoSpeechDetectedError
 from ai_video_editor.planning.schema import SilenceCutParams, TimeRange
 
@@ -81,6 +82,7 @@ def build_edit_plan(
     resolution: tuple[int, int],
     fps: float,
     title: str = "Corte de silêncio",
+    loudness: Optional[LoudnessTarget] = None,
 ) -> EditPlan:
     """Converte os trechos mantidos em `EditPlan` na resolução e FPS da origem.
 
@@ -93,6 +95,7 @@ def build_edit_plan(
         output_path=output_path,
         target_resolution=(max(2, width - width % 2), max(2, height - height % 2)),
         target_fps=max(1, round(fps)),
+        loudness=loudness,
         segments=[
             ClipSegment(source_path=source_path, start_sec=r.start_sec, end_sec=r.end_sec)
             for r in keep

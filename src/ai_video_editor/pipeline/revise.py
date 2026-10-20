@@ -12,6 +12,7 @@ from typing import Callable, Optional
 from pydantic import BaseModel, Field
 
 from ai_video_editor.audio import AudioAnalysisResult
+from ai_video_editor.core.schema import LoudnessPreset, LoudnessTarget
 from ai_video_editor.director import DirectorDecision, DirectorRun, Sentence, build_sentences
 from ai_video_editor.director.schema import SentenceRemoval
 from ai_video_editor.pipeline.cutting import plan_keep_ranges
@@ -94,6 +95,7 @@ class RevisionResult(BaseModel):
     pacing_after: str
     summary: str
     timings: Optional[RunTimings] = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ProjectReviser:
@@ -122,9 +124,15 @@ class ProjectReviser:
             self.on_progress(step, detail)
 
     def revise(
-        self, project_dir: Path, request: str, from_version: Optional[int] = None
+        self,
+        project_dir: Path,
+        request: str,
+        from_version: Optional[int] = None,
+        loudness: Optional[LoudnessPreset] = None,
     ) -> RevisionResult:
         """Cria a próxima versão. Qualquer falha antes do fim deixa o projeto como estava.
+
+        `loudness`: normalização de volume da versão nova (padrão: a da versão base).
 
         Raises:
             ProjectStateError: pasta sem projeto, sem edição concluída/transcrição, ou versão inexistente.
@@ -210,15 +218,16 @@ class ProjectReviser:
         except NoSpeechDetectedError as exc:
             raise RevisionRejectedError(f"o pedido removeria todo o conteúdo ({exc})") from exc
 
+        loudness = loudness or base.loudness or manifest.params.loudness
         number = max(v.number for v in manifest.versions) + 1
         target = version_dir(project_dir, number)
         shutil.rmtree(target, ignore_errors=True)
         target.mkdir(parents=True)
         try:
-            record = self._build_version(
+            record, warnings = self._build_version(
                 project_dir, manifest, base, number, target, request, decision.summary, pacing,
                 cut, keep, cut_results, sentences, transcript, audio, new_removals, run, decision,
-                base_removals, recorder,
+                base_removals, recorder, loudness,
             )
         except Exception:
             shutil.rmtree(target, ignore_errors=True)
@@ -252,6 +261,7 @@ class ProjectReviser:
             pacing_after=pacing,
             summary=decision.summary,
             timings=record.timings,
+            warnings=warnings,
         )
 
     @staticmethod
@@ -290,7 +300,7 @@ class ProjectReviser:
     def _build_version(
         self, project_dir, manifest, base, number, target, request, summary, pacing,
         cut, keep, cut_results, sentences, transcript, audio, new_removals, run, decision,
-        base_removals, recorder,
+        base_removals, recorder, loudness,
     ):
         probe = manifest.stages["probe"].metrics
         output_path = target / base.video
@@ -302,6 +312,7 @@ class ProjectReviser:
             (int(probe["width"]), int(probe["height"])),
             float(probe["fps"]),
             title=f"Revisão v{number} — {manifest.video_path.name}",
+            loudness=LoudnessTarget.from_preset(loudness),
         )
         (target / EDIT_PLAN_FILE).write_text(plan.model_dump_json(indent=2), encoding="utf-8")
         plan_elapsed = time.perf_counter() - plan_started
@@ -314,7 +325,7 @@ class ProjectReviser:
         recorder.record("render", "ran", render_elapsed)
         self._emit("render", f"{rendered.duration_sec:.2f}s", render_elapsed)
 
-        params = manifest.params
+        params = manifest.params.model_copy(update={"loudness": loudness})
         subtitles_name: Optional[str] = None
         blocks = 0
         if params.subtitles:
@@ -400,6 +411,7 @@ class ProjectReviser:
             subtitle_blocks=blocks if subtitles_name else None,
             comparison=comparison,
             removal_label=f"Revisão v{number}",
+            loudness=rendered.loudness,
         ) + build_revision_section(
             request, base.number, number, summary, base.pacing, pacing, changes, reviser=run
         )
@@ -416,6 +428,7 @@ class ProjectReviser:
             summary=summary,
             cut=base.cut,
             pacing=pacing,
+            loudness=loudness,
             duration_sec=round(rendered.duration_sec, 3),
             cuts=len(removed),
             segments=len(plan.segments),
@@ -425,4 +438,4 @@ class ProjectReviser:
             timings=timings,
         )
         (target / VERSION_FILE).write_text(record.model_dump_json(indent=2), encoding="utf-8")
-        return record
+        return record, rendered.loudness.warnings if rendered.loudness is not None else []

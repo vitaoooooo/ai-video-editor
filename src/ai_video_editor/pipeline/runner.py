@@ -19,7 +19,7 @@ from ai_video_editor.analyzer.probe import VideoProbe
 from ai_video_editor.analyzer.schema import VideoMetadata
 from ai_video_editor.audio import AudioAnalysisResult, detect_silences
 from ai_video_editor.audio.levels import AUTO_RULE_VERSION
-from ai_video_editor.core.schema import EditPlan
+from ai_video_editor.core.schema import EditPlan, LoudnessTarget
 from ai_video_editor.director import (
     DirectorContext,
     DirectorRun,
@@ -62,13 +62,14 @@ from ai_video_editor.intelligence.retry import RetryPolicy
 from ai_video_editor.llm.chain import ModelChain
 from ai_video_editor.planning.schema import TimeRange
 from ai_video_editor.renderer.executor import RenderExecutor
+from ai_video_editor.renderer.loudness import LoudnessResult
 from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
 from ai_video_editor.subtitles import build_subtitle_blocks, write_srt
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
 
 # Versão do formato do relatório; entra no fingerprint para refazer relatórios antigos.
-REPORT_FORMAT = "report-v2-comparison"
+REPORT_FORMAT = "report-v3-loudness"
 
 # (etapa, evento, detalhe). Eventos: "start", "done", "cached", "skipped", "failed", "retry" e
 # "notice" (aviso, ex: troca automática de modelo).
@@ -341,7 +342,8 @@ class EditPipeline:
             project_dir / AUDIO_ANALYSIS_FILE
         ).params.threshold_db
         fp_plan = fingerprint(
-            "plan", fp_silences, effective_threshold, fp_director, params.cut, video_path, resolution, source_fps
+            "plan", fp_silences, effective_threshold, fp_director, params.cut, video_path, resolution, source_fps,
+            params.loudness,
         )
 
         def do_plan() -> tuple[dict, str]:
@@ -359,6 +361,7 @@ class EditPipeline:
                 resolution,
                 source_fps,
                 title=f"Corte de silêncio — {video_path.name}",
+                loudness=LoudnessTarget.from_preset(params.loudness),
             )
             (project_dir / EDIT_PLAN_FILE).write_text(plan.model_dump_json(indent=2), encoding="utf-8")
             kept = sum(r.duration for r in keep)
@@ -373,7 +376,7 @@ class EditPipeline:
         plan = EditPlan.model_validate_json((project_dir / EDIT_PLAN_FILE).read_text(encoding="utf-8"))
 
         # 6. render
-        fp_render = fingerprint("render", fp_plan)
+        fp_render = fingerprint("render", fp_plan, params.loudness)
 
         def do_render() -> tuple[dict, str]:
             result = self.render_executor.execute(plan)
@@ -381,10 +384,13 @@ class EditPipeline:
                 "duration_sec": round(result.duration_sec, 3),
                 "size_bytes": result.size_bytes,
             }
+            if result.loudness is not None:
+                metrics.update(result.loudness.to_metrics())
             return metrics, f"{result.duration_sec:.2f}s, {result.size_bytes / 1_048_576:.1f} MB"
 
         outcomes["render"] = run.stage("render", fp_render, output_path.name, do_render)
         final_duration = float(manifest.stages["render"].metrics["duration_sec"])
+        loudness = LoudnessResult.from_metrics(manifest.stages["render"].metrics)
 
         # 7. legendas (só com transcrição); tempos mapeados pelos mesmos trechos do plano final
         srt_name = subtitles_file_name(video_path)
@@ -451,6 +457,7 @@ class EditPipeline:
                 timings=recorder.snapshot(in_progress=("report", report_started)),
                 comparison=comparison,
                 removal_label="Diretor" if has_decision else None,
+                loudness=loudness,
             )
             (project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
             metrics: dict = {"cuts": len(removed)}
@@ -484,7 +491,10 @@ class EditPipeline:
             final_duration_sec=final_duration,
             outcomes=outcomes,
             timings=timings,
-            warnings=director_run.warnings if director_run is not None else [],
+            warnings=[
+                *(director_run.warnings if director_run is not None else []),
+                *(loudness.warnings if loudness is not None else []),
+            ],
         )
 
 
