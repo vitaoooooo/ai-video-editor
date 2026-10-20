@@ -95,6 +95,7 @@ def run_director(
     for _ in range(MAX_ATTEMPTS):
         director.last_input_tokens = None
         director.last_output_tokens = None
+        director.last_api_attempts = 1
         started = time.perf_counter()
         error: AIResponseValidationError | None = None
         try:
@@ -112,6 +113,7 @@ def run_director(
                 latency_sec=round(time.perf_counter() - started, 3),
                 input_tokens=director.last_input_tokens,
                 output_tokens=director.last_output_tokens,
+                api_attempts=director.last_api_attempts,
                 success=error is None,
                 error_type=type(error).__name__ if error else None,
             )

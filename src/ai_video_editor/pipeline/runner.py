@@ -52,6 +52,7 @@ from ai_video_editor.pipeline.schema import (
     StageRecord,
 )
 from ai_video_editor.planning import build_edit_plan, removed_ranges
+from ai_video_editor.intelligence.retry import RetryPolicy
 from ai_video_editor.planning.schema import TimeRange
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
@@ -59,7 +60,7 @@ from ai_video_editor.subtitles import build_subtitle_blocks, write_srt
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
 
-# (etapa, evento, detalhe). Eventos: "start", "done", "cached", "skipped", "failed".
+# (etapa, evento, detalhe). Eventos: "start", "done", "cached", "skipped", "failed", "retry".
 ProgressCallback = Callable[[StageName, str, str], None]
 
 # Resultado de uma etapa: métricas gravadas no manifesto e uma linha de resumo para o terminal.
@@ -143,6 +144,10 @@ class EditPipeline:
             model_id=params.director_model,
             thinking=params.director_thinking,
             timeout_sec=params.director_timeout_sec,
+            retry=RetryPolicy(
+                max_retries=params.api_retries,
+                on_retry=lambda event: self._emit("director", "retry", event.message),
+            ),
         )
 
     @property

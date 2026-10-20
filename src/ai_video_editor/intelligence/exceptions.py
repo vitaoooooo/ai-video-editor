@@ -6,12 +6,25 @@ from typing import Optional
 class AIProviderError(Exception):
     """Exceção base para falhas de comunicação ou execução de IA multimodal."""
 
+    # Preenchidos por `map_gemini_error` / `call_with_retry`; o padrão é "erro permanente".
+    transient: bool = False
+    status_code: Optional[int] = None
+    retry_after_sec: Optional[float] = None
+    api_attempts: int = 1
+
     def __init__(self, message: str, provider: str = "", details: str = ""):
         # Sanitiza a mensagem para garantir que nenhuma chave acidental seja exibida
         sanitized_msg = message
         super().__init__(f"[{provider.upper()}] {sanitized_msg}" if provider else sanitized_msg)
         self.provider = provider
         self.details = details
+
+    def with_attempts(self, attempts: int) -> "AIProviderError":
+        """Registra quantas chamadas à API foram feitas e avisa isso na mensagem."""
+        self.api_attempts = attempts
+        if attempts > 1:
+            self.args = (f"{self.args[0]} (após {attempts} tentativas)",) + self.args[1:]
+        return self
 
 
 class AIAuthenticationError(AIProviderError):

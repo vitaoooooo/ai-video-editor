@@ -17,6 +17,7 @@ from ai_video_editor.intelligence.providers.gemini import (
     GeminiMultimodalProvider,
     resolve_gemini_api_key,
 )
+from ai_video_editor.intelligence.retry import RetryPolicy
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
 
 
@@ -110,7 +111,7 @@ def test_gemini_provider_error_mapping(tmp_path: Path):
         size_bytes=10,
     )
 
-    provider = GeminiMultimodalProvider(api_key="chave_fake")
+    provider = GeminiMultimodalProvider(api_key="chave_fake", retry=RetryPolicy(max_retries=0))
     cfg = AIAnalysisConfig()
 
     # 1. Simula erro 403 / permissão

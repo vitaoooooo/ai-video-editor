@@ -62,6 +62,7 @@ def run_reviser(
     for _ in range(MAX_ATTEMPTS):
         reviser.last_input_tokens = None
         reviser.last_output_tokens = None
+        reviser.last_api_attempts = 1
         started = time.perf_counter()
         error: AIResponseValidationError | None = None
         decision = None
@@ -81,6 +82,7 @@ def run_reviser(
                 latency_sec=round(time.perf_counter() - started, 3),
                 input_tokens=reviser.last_input_tokens,
                 output_tokens=reviser.last_output_tokens,
+                api_attempts=reviser.last_api_attempts,
                 success=error is None,
                 error_type=type(error).__name__ if error else None,
             )

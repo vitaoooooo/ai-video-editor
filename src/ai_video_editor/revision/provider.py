@@ -16,6 +16,8 @@ class EditReviser(ABC):
 
     last_input_tokens: Optional[int] = None
     last_output_tokens: Optional[int] = None
+    # Chamadas à API na última revisão (>1 se houve nova tentativa por falha temporária).
+    last_api_attempts: int = 1
     thinking_label: Optional[str] = None
     effective_thinking_label: Optional[str] = None
 

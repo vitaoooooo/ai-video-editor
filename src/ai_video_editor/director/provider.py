@@ -16,6 +16,8 @@ class EditDirector(ABC):
     # Uso de tokens da última chamada; provedores que não informam mantêm None.
     last_input_tokens: Optional[int] = None
     last_output_tokens: Optional[int] = None
+    # Chamadas à API na última decisão (>1 se houve nova tentativa por falha temporária).
+    last_api_attempts: int = 1
     # Descrição da configuração de raciocínio usada (vai para o relatório); None se não se aplica.
     thinking_label: Optional[str] = None
     # Nível efetivamente usado na última chamada (difere do pedido se a API recusou o nível).

@@ -122,7 +122,7 @@ def _director_section(director: DirectorRun) -> list[str]:
             else "não informado"
         )
         status = "ok" if attempt.success else f"inválida ({attempt.error_type})"
-        lines.append(f"| Tentativa {i} | {status}, {attempt.latency_sec:.2f}s, tokens: {tokens} |")
+        lines.append(f"| Tentativa {i} | {status}, {attempt.latency_sec:.2f}s, chamadas à API: {attempt.api_attempts}, tokens: {tokens} |")
     lines.append("")
 
     for warning in director.warnings:

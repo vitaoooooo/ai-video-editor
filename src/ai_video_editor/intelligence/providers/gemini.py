@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Optional
 from PIL import Image
@@ -16,6 +17,7 @@ from ai_video_editor.intelligence.exceptions import (
     AIUnavailableError,
 )
 from ai_video_editor.intelligence.provider import MultimodalAIProvider
+from ai_video_editor.intelligence.retry import RetryPolicy, call_with_retry
 from ai_video_editor.intelligence.schema import (
     AIAnalysisConfig,
     VisualAnalysisResponse,
@@ -57,18 +59,84 @@ def build_http_options(timeout_sec: float):
     return types.HttpOptions(timeout=int(timeout_sec * 1000))
 
 
+_KEY_PATTERN = re.compile(r"AIza[0-9A-Za-z_\-]{20,}|(?i:key=)[^&\s'\"]+")
+_STATUS_PATTERN = re.compile(r"\b([45]\d\d)\b")
+_RETRY_AFTER_PATTERN = re.compile(r"retry(?:delay)?\W{1,6}(?:in\s+)?(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
+_CONNECTION_TYPES = ("connecterror", "connecttimeout", "remoteprotocolerror", "readerror", "networkerror")
+_CONNECTION_HINTS = (
+    "connection", "server disconnected", "reset by peer", "temporary failure in name resolution",
+    "name or service not known", "getaddrinfo", "eof occurred", "broken pipe",
+)
+
+
+def _redact(text: str, limit: int = 600) -> str:
+    """Detalhe original da API, sem chaves e em uma linha curta."""
+    text = _KEY_PATTERN.sub("[chave omitida]", " ".join(text.split()))
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _status_code(error: Exception) -> Optional[int]:
+    code = getattr(error, "code", None)
+    if isinstance(code, int) and not isinstance(code, bool) and 100 <= code < 600:
+        return code
+    match = _STATUS_PATTERN.search(str(error))
+    return int(match.group(1)) if match else None
+
+
+def _retry_after_sec(error: Exception) -> Optional[float]:
+    """Retry-After do cabeçalho HTTP ou o `retryDelay` que o Gemini embute no corpo do 429."""
+    headers = getattr(getattr(error, "response", None), "headers", None)
+    if headers is not None:
+        try:
+            value = headers.get("retry-after") or headers.get("Retry-After")
+            if value is not None:
+                return max(0.0, float(value))
+        except (TypeError, ValueError, AttributeError):
+            pass
+    match = _RETRY_AFTER_PATTERN.search(str(error))
+    return float(match.group(1)) if match else None
+
+
 def map_gemini_error(error: Exception, timeout_sec: float) -> AIProviderError:
-    """Converte uma exceção do SDK em exceção de domínio, sem expor credenciais."""
-    err_str = str(error).lower()
-    if "401" in err_str or "403" in err_str or "unauthorized" in err_str or "permission" in err_str or "api_key" in err_str:
-        return AIAuthenticationError("gemini", details="Credencial inválida ou sem permissão de acesso.")
-    if "429" in err_str or "quota" in err_str or "rate limit" in err_str:
-        return AIRateLimitError("gemini", details="Cota de requisições excedida.")
-    if "timeout" in err_str or "timed out" in err_str:
-        return AITimeoutError("gemini", timeout_sec=timeout_sec)
-    if "500" in err_str or "503" in err_str or "unavailable" in err_str:
-        return AIUnavailableError("gemini", details="Serviço do Google Gemini temporariamente indisponível.")
-    return AIProviderError(f"Erro na chamada do Gemini: {error}", provider="gemini")
+    """Converte uma exceção do SDK em exceção de domínio, sem expor credenciais.
+
+    A mensagem inclui o detalhe original da API; `transient` indica se vale repetir
+    (503/500/504, 429 por minuto, conexão e timeout) ou não (autenticação, 400, 404).
+    """
+    text = str(error)
+    lower = text.lower()
+    detail = _redact(text)
+    code = _status_code(error)
+
+    def build(exc: AIProviderError, transient: bool) -> AIProviderError:
+        exc.args = (f"{exc.args[0]} Detalhe da API: {detail}",)
+        exc.details = detail
+        exc.transient = transient
+        exc.status_code = code
+        exc.retry_after_sec = _retry_after_sec(error) if transient else None
+        return exc
+
+    if code in (401, 403) or "unauthorized" in lower or "permission" in lower or "api_key" in lower:
+        return build(AIAuthenticationError("gemini"), False)
+    if code in (400, 404):
+        return build(AIProviderError("Pedido recusado pelo Gemini.", provider="gemini"), False)
+    if code == 429 or "quota" in lower or "rate limit" in lower or "resource_exhausted" in lower:
+        # Cota diária esgotada não volta em segundos: repetir só atrasaria o erro.
+        daily = "perday" in lower.replace(" ", "").replace("_", "")
+        return build(AIRateLimitError("gemini"), not daily)
+    if code in (500, 502, 503, 504) or "unavailable" in lower or "deadline" in lower or "overloaded" in lower:
+        return build(AIUnavailableError("gemini"), True)
+    if "timeout" in lower or "timed out" in lower:
+        return build(AITimeoutError("gemini", timeout_sec=timeout_sec), True)
+    if (
+        type(error).__name__.lower() in _CONNECTION_TYPES
+        or isinstance(error, (ConnectionError, TimeoutError))
+        or any(hint in lower for hint in _CONNECTION_HINTS)
+    ):
+        err = AIUnavailableError("gemini")
+        err.args = ("[GEMINI] Falha de conexão com o serviço 'gemini'.",)
+        return build(err, True)
+    return build(AIProviderError("Erro na chamada do Gemini.", provider="gemini"), False)
 
 
 def _as_int(value) -> Optional[int]:
@@ -79,9 +147,10 @@ def _as_int(value) -> Optional[int]:
 class GeminiMultimodalProvider(MultimodalAIProvider):
     """Adaptador de IA multimodal conectando ao Google Gemini via SDK oficial."""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, retry: Optional[RetryPolicy] = None):
         # A chave é resolvida sob demanda para permitir mockar o ambiente facilmente
         self._api_key = api_key
+        self.retry = retry if retry is not None else RetryPolicy()
 
     @property
     def provider_name(self) -> str:
@@ -106,6 +175,7 @@ class GeminiMultimodalProvider(MultimodalAIProvider):
 
         self.last_input_tokens = None
         self.last_output_tokens = None
+        self.last_api_attempts = 1
         client = self._get_client()
 
         # Constrói instruções anti-alucinação estritas
@@ -136,19 +206,24 @@ class GeminiMultimodalProvider(MultimodalAIProvider):
             contents.append(f"\n[Imagem do Frame {f.frame_index} em {f.target_timestamp_sec:.2f}s]:")
             contents.append(img)
 
+        self.retry.reset()
         try:
-            response = client.models.generate_content(
-                model=config.model_id,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=VisualAnalysisResponse,
-                    temperature=config.temperature,
-                    http_options=build_http_options(config.timeout_sec),
+            response = call_with_retry(
+                lambda: client.models.generate_content(
+                    model=config.model_id,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=VisualAnalysisResponse,
+                        temperature=config.temperature,
+                        http_options=build_http_options(config.timeout_sec),
+                    ),
                 ),
+                self.retry,
+                lambda e: map_gemini_error(e, config.timeout_sec),
             )
-        except Exception as e:
-            raise map_gemini_error(e, config.timeout_sec) from e
+        finally:
+            self.last_api_attempts = max(1, self.retry.attempts_made)
 
         usage = getattr(response, "usage_metadata", None)
         self.last_input_tokens = _as_int(getattr(usage, "prompt_token_count", None))

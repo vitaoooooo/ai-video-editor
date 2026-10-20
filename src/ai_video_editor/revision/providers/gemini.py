@@ -15,6 +15,7 @@ from ai_video_editor.director.schema import DirectorThinking, UserBrief
 from ai_video_editor.director.service import allowed_removal_ratio, speech_duration
 from ai_video_editor.intelligence.exceptions import AIResponseValidationError
 from ai_video_editor.intelligence.providers.gemini import _as_int, resolve_gemini_api_key
+from ai_video_editor.intelligence.retry import RetryPolicy
 from ai_video_editor.revision.provider import EditReviser
 from ai_video_editor.revision.schema import RevisionContext, RevisionDecision, SentenceState
 
@@ -101,6 +102,7 @@ class GeminiReviser(EditReviser):
         timeout_sec: float = 120.0,
         thinking: DirectorThinking = "low",
         client=None,
+        retry: Optional[RetryPolicy] = None,
     ):
         self._model_id = model_id
         self._api_key = api_key
@@ -108,6 +110,7 @@ class GeminiReviser(EditReviser):
         self.timeout_sec = timeout_sec
         self.thinking = thinking
         self._client = client
+        self.retry = retry if retry is not None else RetryPolicy()
         self.thinking_label = thinking_label(model_id, thinking)
         self.effective_thinking_label = self.thinking_label
 
@@ -135,10 +138,13 @@ class GeminiReviser(EditReviser):
         client = self._get_client()
         prompt = build_reviser_prompt(states, brief, context)
 
-        response, effective = generate_structured(
-            client, self._model_id, self.thinking, prompt, RevisionDecision,
-            self.temperature, self.timeout_sec,
-        )
+        try:
+            response, effective = generate_structured(
+                client, self._model_id, self.thinking, prompt, RevisionDecision,
+                self.temperature, self.timeout_sec, self.retry,
+            )
+        finally:
+            self.last_api_attempts = max(1, self.retry.attempts_made)
         if effective:
             self.effective_thinking_label = effective
 

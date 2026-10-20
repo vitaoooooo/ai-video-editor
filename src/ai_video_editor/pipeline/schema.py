@@ -45,6 +45,9 @@ class EditPipelineParams(BaseModel):
         default="low", description="Nível de raciocínio do Diretor Gemini (off/low/high)"
     )
     director_timeout_sec: float = Field(default=120.0, gt=5.0, description="Tempo limite da chamada ao Diretor")
+    api_retries: int = Field(
+        default=4, ge=0, description="Novas tentativas da API em falhas temporárias (0 desliga)"
+    )
     brief: UserBrief = Field(default_factory=UserBrief)
     subtitles: bool = Field(default=True, description="Gera o .srt quando há transcrição")
     subtitle: SubtitleParams = Field(default_factory=SubtitleParams)

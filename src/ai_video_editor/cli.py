@@ -10,6 +10,7 @@ from ai_video_editor.analyzer.schema import FrameExtractionConfig
 from ai_video_editor.analyzer.service import VideoIngestService
 from ai_video_editor.core.schema import ClipSegment, EditPlan
 from ai_video_editor.director.schema import UserBrief
+from ai_video_editor.intelligence.retry import DEFAULT_API_RETRIES, RetryPolicy
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
 from ai_video_editor.intelligence.service import MultimodalAnalysisService
 from ai_video_editor.pipeline import (
@@ -155,7 +156,14 @@ def handle_report_ai(args: argparse.Namespace) -> int:
     print(f"Carregando dados de: {report_file.name}")
 
     try:
-        reports = MultimodalAnalysisService.from_report_file(report_file, config=ai_config)
+        provider = None
+        if ai_config.provider.lower().strip() == "gemini":
+            from ai_video_editor.intelligence.providers.gemini import GeminiMultimodalProvider
+
+            provider = GeminiMultimodalProvider(
+                retry=RetryPolicy(max_retries=args.api_retries, on_retry=_print_api_retry)
+            )
+        reports = MultimodalAnalysisService.from_report_file(report_file, config=ai_config, provider=provider)
     except Exception as e:
         print(f"Erro durante a execução da análise multimodal: {e}", file=sys.stderr)
         return 1
@@ -182,6 +190,13 @@ def _print_progress(stage: str, event: str, detail: str) -> None:
         print(f"{step}: pulada ({detail})", flush=True)
     elif event == "failed":
         print(f"{step}: FALHOU", flush=True)
+    elif event == "retry":
+        print(f"{step}: {detail}", flush=True)
+
+
+def _print_api_retry(event) -> None:
+    """Mostra uma nova tentativa da API fora do pipeline (ex: `report-ai`)."""
+    print(f"IA: {event.message}", flush=True)
 
 
 def handle_edit(args: argparse.Namespace) -> int:
@@ -207,6 +222,7 @@ def handle_edit(args: argparse.Namespace) -> int:
             director_model=args.director_model,
             director_thinking=args.director_thinking,
             director_timeout_sec=args.director_timeout,
+            api_retries=args.api_retries,
             brief=UserBrief(
                 intensity=args.intensity,
                 target_duration_sec=args.target_duration,
@@ -284,6 +300,10 @@ def handle_revise(args: argparse.Namespace) -> int:
                 model_id=args.reviser_model or params.director_model,
                 thinking=args.reviser_thinking or params.director_thinking,
                 timeout_sec=args.reviser_timeout or params.director_timeout_sec,
+                retry=RetryPolicy(
+                    max_retries=args.api_retries,
+                    on_retry=lambda event: _print_revision_progress("revisor", event.message),
+                ),
             )
         result = ProjectReviser(reviser, on_progress=_print_revision_progress).revise(
             project_dir, args.request, from_version
@@ -336,6 +356,13 @@ def handle_versions(args: argparse.Namespace) -> int:
         )
     print("\n* = versão atual")
     return 0
+
+
+def _non_negative_int(value: str) -> int:
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("deve ser 0 ou maior")
+    return number
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -573,6 +600,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--reviser-timeout", type=float, default=None,
         help="Tempo limite em segundos (padrão: o do Diretor do projeto)",
     )
+
+    for ai_parser in (report_ai_parser, edit_parser, revise_parser):
+        ai_parser.add_argument(
+            "--api-retries",
+            type=_non_negative_int,
+            default=DEFAULT_API_RETRIES,
+            metavar="N",
+            help=(
+                "Novas tentativas da API do Gemini em falhas temporárias (503, 504, 429, conexão), "
+                f"com espera crescente; 0 desliga (padrão: {DEFAULT_API_RETRIES})"
+            ),
+        )
 
     # Subcomando: versions
     versions_parser = subparsers.add_parser("versions", help="Lista as versões de um projeto")

@@ -135,6 +135,7 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 | `--director-model` | `gemini-3.8-flash` | Modelo do Diretor Gemini |
 | `--director-thinking` | `low` | Raciocínio ("thinking") do Diretor Gemini: `off` (mínimo; nem todo modelo aceita), `low` ou `high`. Se a API recusar o nível, sobe sozinho (off → low → high); o nível pedido e o efetivo aparecem no relatório e no `director_decision.json` |
 | `--director-timeout` | 120 | Tempo limite (s) da chamada ao Diretor |
+| `--api-retries` | 4 | Novas tentativas da API do Gemini em falhas temporárias (503, 504, 429 por minuto, conexão), com espera de 2s, 4s, 8s, 16s + jitter (respeita `Retry-After`); `0` desliga. Erros permanentes (autenticação, 400, 404) nunca são repetidos. Cada tentativa aparece no terminal (`[4/8] Diretor: Gemini indisponível (503), nova tentativa em 4s (2/5)`), o erro final traz o detalhe original da API e o relatório registra as chamadas à API de cada tentativa. Vale também para `revise` e `report-ai` |
 | `--intensity` | `light` | Quanto o Diretor corta: `light`, `medium` ou `aggressive` |
 | `--target-duration` | — | Duração final desejada em segundos |
 | `--instructions` | — | Pedido livre ao Diretor (ex: `"corte as piadas"`) |
@@ -173,6 +174,7 @@ Depois do `edit`, peça ajustes sem refazer as etapas caras (probe, silêncios e
 | `--from vN` | versão atual | Versão em que a revisão se baseia (as frases removidas/mantidas partem dela) |
 | `--reviser` | `gemini` | `gemini` (requer `GEMINI_API_KEY`) ou `mock` (determinístico, sem rede) |
 | `--reviser-model` / `--reviser-thinking` / `--reviser-timeout` | os do Diretor do projeto | Mesma configuração do Diretor: modelo, raciocínio (com subida automática de nível se a API recusar) e timeout |
+| `--api-retries` | 4 | Novas tentativas em falhas temporárias da API (`0` desliga); mesma regra do `edit` |
 
 * O revisor recebe as frases numeradas com o estado atual na versão base (mantida ou removida, com categoria e motivo), o briefing original, os últimos pedidos e o pedido novo. Devolve o **novo conjunto completo** de frases removidas (pode restaurar frases removidas antes), o motivo de cada restauração, um resumo e, opcionalmente, o ritmo das pausas: `natural` (mais folga), `normal` (o do `edit`) ou `tight` (menos folga). Nunca timestamps.
 * A resposta passa pela mesma validação do Diretor (IDs existentes e únicos, limite de remoção, enrolação proibida com `--keep-fillers`) mais a coerência das restaurações, com uma nova tentativa enviando o erro ao modelo. **Se o pedido for impossível, ambíguo, não mudar nada ou a resposta continuar inválida, nenhuma versão é criada** e o comando explica o motivo (código de saída 1). Se o render falhar, nada fica pela metade.
@@ -212,6 +214,7 @@ O `edit_report.md` de uma revisão traz a seção "Revisão": pedido, ritmo das 
 ### Módulo Intelligence (Fase 3)
 * [`src/ai_video_editor/intelligence/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/schema.py): Modelos Pydantic (`VisualObservation`, `SceneTransitionHypothesis`, `VisualAnalysisResponse`, `AIAnalysisConfig`, `CompleteAIReport`).
 * [`src/ai_video_editor/intelligence/exceptions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/exceptions.py): Exceções padronizadas de IA (`AIAuthenticationError`, `AIRateLimitError`, `AITimeoutError`, `AIUnavailableError`, `AIResponseValidationError`).
+* [`src/ai_video_editor/intelligence/retry.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/retry.py): `RetryPolicy` e `call_with_retry` (nova tentativa com espera exponencial, jitter e `Retry-After`; `sleep` injetável).
 * [`src/ai_video_editor/intelligence/provider.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/provider.py): Interface abstrata `MultimodalAIProvider`.
 * [`src/ai_video_editor/intelligence/image_proxy.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/image_proxy.py): Otimizador e downscaler de imagens 4K para proxies leves (JPEG / 1024px) com Pillow.
 * [`src/ai_video_editor/intelligence/reporter.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/reporter.py): Compilador de relatório Markdown rico com caminhos relativos e ressalvas anti-alucinação.

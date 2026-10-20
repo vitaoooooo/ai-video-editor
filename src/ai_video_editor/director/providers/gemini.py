@@ -19,6 +19,7 @@ from ai_video_editor.intelligence.providers.gemini import (
     map_gemini_error,
     resolve_gemini_api_key,
 )
+from ai_video_editor.intelligence.retry import RetryPolicy, call_with_retry
 
 DEFAULT_DIRECTOR_MODEL = "gemini-3.8-flash"
 
@@ -73,19 +74,27 @@ def generate_structured(
     schema,
     temperature: float,
     timeout_sec: float,
+    retry: Optional[RetryPolicy] = None,
 ):
     """Chama o Gemini com saída JSON no `schema`, subindo o raciocínio se a API recusar o nível.
+
+    Falhas temporárias (503, 504, 429 por minuto, conexão) são repetidas conforme `retry`;
+    erros permanentes (autenticação, 400, 404) sobem na hora. Ao fim, `retry.attempts_made`
+    tem o total de chamadas à API.
 
     Returns:
         (resposta, rótulo do nível efetivo ou None se o nível pedido foi aceito).
     """
     from google.genai import types
 
+    retry = retry if retry is not None else RetryPolicy()
+    retry.reset()
     refused: list[str] = []
     for level in _fallback_ladder(model_id, thinking):
         name, value = _thinking_setting(model_id, level)
-        try:
-            response = client.models.generate_content(
+
+        def call(level=level):
+            return client.models.generate_content(
                 model=model_id,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -96,9 +105,12 @@ def generate_structured(
                     http_options=build_http_options(timeout_sec),
                 ),
             )
-        except Exception as e:
-            if not is_thinking_level_unsupported(e):
-                raise map_gemini_error(e, timeout_sec) from e
+
+        try:
+            response = call_with_retry(call, retry, lambda e: map_gemini_error(e, timeout_sec))
+        except AIProviderError as e:
+            if not is_thinking_level_unsupported(e.__cause__ or e):
+                raise
             refused.append(str(value))
             continue
         label = f"{thinking} → {value} ({', '.join(refused)} não suportado)" if refused else None
@@ -190,6 +202,7 @@ class GeminiDirector(EditDirector):
         timeout_sec: float = 120.0,
         thinking: DirectorThinking = "low",
         client=None,
+        retry: Optional[RetryPolicy] = None,
     ):
         self._model_id = model_id
         self._api_key = api_key
@@ -197,6 +210,7 @@ class GeminiDirector(EditDirector):
         self.timeout_sec = timeout_sec
         self.thinking = thinking
         self._client = client
+        self.retry = retry if retry is not None else RetryPolicy()
         # `thinking_label` é o nível PEDIDO (entra no fingerprint do cache);
         # `effective_thinking_label` só muda quando a API recusa o nível e subimos de nível.
         self.thinking_label = thinking_label(model_id, thinking)
@@ -227,10 +241,13 @@ class GeminiDirector(EditDirector):
         client = self._get_client()
         prompt = build_director_prompt(sentences, brief, context)
 
-        response, effective = generate_structured(
-            client, self._model_id, self.thinking, prompt, DirectorDecision,
-            self.temperature, self.timeout_sec,
-        )
+        try:
+            response, effective = generate_structured(
+                client, self._model_id, self.thinking, prompt, DirectorDecision,
+                self.temperature, self.timeout_sec, self.retry,
+            )
+        finally:
+            self.last_api_attempts = max(1, self.retry.attempts_made)
         if effective:
             self.effective_thinking_label = effective
 

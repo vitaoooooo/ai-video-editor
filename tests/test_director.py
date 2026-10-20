@@ -24,6 +24,7 @@ from ai_video_editor.intelligence.exceptions import (
     AIRateLimitError,
     AIResponseValidationError,
 )
+from ai_video_editor.intelligence.retry import RetryPolicy
 from ai_video_editor.transcription.schema import Transcript, TranscriptSegment
 
 
@@ -336,7 +337,7 @@ def test_gemini_director_maps_sdk_errors():
         def generate_content(self, **kwargs):
             raise RuntimeError("HTTP 429 quota exceeded")
 
-    director = GeminiDirector(client=SimpleNamespace(models=Broken()))
+    director = GeminiDirector(client=SimpleNamespace(models=Broken()), retry=RetryPolicy(max_retries=0))
     with pytest.raises(AIRateLimitError):
         director.decide(_sentences(3), UserBrief(), CONTEXT)
 
@@ -395,6 +396,6 @@ def test_gemini_director_does_not_escalate_on_other_errors():
         def generate_content(self, **kwargs):
             raise RuntimeError("429 quota exceeded")
 
-    director = GeminiDirector(client=SimpleNamespace(models=_Boom()), thinking="off")
+    director = GeminiDirector(client=SimpleNamespace(models=_Boom()), thinking="off", retry=RetryPolicy(max_retries=0))
     with pytest.raises(AIRateLimitError):
         director.decide(build_sentences(_transcript([(0.0, 2.0, " Oi.")])), UserBrief(), CONTEXT)
