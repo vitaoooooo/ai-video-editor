@@ -320,6 +320,7 @@ def test_end_to_end_director_removes_sentences(tmp_path, lesson_video):
 
     report = (result.project_dir / "edit_report.md").read_text(encoding="utf-8")
     assert "## Decisões do Diretor" in report
+    assert "Duração média das frases" in report and "Duração máxima das frases" in report
     assert "| 1 | 00:04.600 | 00:07.400 | repetition | Hoje vamos falar de cortes! | Repete a frase 0. |" in report
     assert "| Diretor | mock (mock) |" in report
 

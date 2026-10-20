@@ -12,7 +12,7 @@ from typing import Callable, Optional
 from pydantic import BaseModel, Field
 
 from ai_video_editor.audio import AudioAnalysisResult
-from ai_video_editor.director import DirectorDecision, DirectorRun, build_sentences
+from ai_video_editor.director import DirectorDecision, DirectorRun, Sentence, build_sentences
 from ai_video_editor.director.schema import SentenceRemoval
 from ai_video_editor.pipeline.cutting import plan_keep_ranges
 from ai_video_editor.pipeline.project import (
@@ -144,7 +144,9 @@ class ProjectReviser:
 
         transcript = Transcript.load(project_dir / TRANSCRIPT_FILE)
         audio = AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE)
-        sentences = build_sentences(transcript)
+        sentences = self._base_sentences(project_dir, base)
+        if sentences is None:
+            sentences = build_sentences(transcript, manifest.params.sentences)
         if not sentences:
             raise ProjectStateError("a transcrição não tem frases para revisar")
         by_id = {s.id: s for s in sentences}
@@ -240,6 +242,17 @@ class ProjectReviser:
             summary=decision.summary,
             timings=record.timings,
         )
+
+    @staticmethod
+    def _base_sentences(project_dir: Path, base: VersionRecord) -> Optional[list[Sentence]]:
+        """Frases gravadas na versão base: os IDs das remoções valem para elas, não para uma remontagem.
+
+        None se a versão não tem Diretor (então as frases são montadas da transcrição).
+        """
+        path = version_dir(project_dir, base.number) / DIRECTOR_DECISION_FILE
+        if not path.is_file():
+            return None
+        return DirectorRun.model_validate_json(path.read_text(encoding="utf-8")).sentences or None
 
     @staticmethod
     def _base_removals(

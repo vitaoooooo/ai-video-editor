@@ -139,6 +139,10 @@ def _director_section(director: DirectorRun) -> list[str]:
         f"| Instruções | {_cell(brief.instructions) if brief.instructions else '—'} |",
         f"| Frases analisadas | {len(director.sentences)} |",
     ]
+    if director.sentences:
+        durations = [s.duration for s in director.sentences]
+        lines.append(f"| Duração média das frases | {sum(durations) / len(durations):.1f}s |")
+        lines.append(f"| Duração máxima das frases | {max(durations):.1f}s |")
     for i, attempt in enumerate(director.attempts, start=1):
         tokens = (
             f"{attempt.input_tokens} entrada / {attempt.output_tokens} saída"

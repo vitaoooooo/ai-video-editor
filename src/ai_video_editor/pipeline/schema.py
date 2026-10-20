@@ -6,7 +6,7 @@ from typing import Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
-from ai_video_editor.director.schema import DirectorThinking, UserBrief
+from ai_video_editor.director.schema import DirectorThinking, SentenceParams, UserBrief
 from ai_video_editor.planning.schema import PausePreset, SilenceCutParams
 from ai_video_editor.subtitles.schema import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
@@ -50,6 +50,7 @@ class EditPipelineParams(BaseModel):
     api_retries: int = Field(
         default=4, ge=0, description="Novas tentativas da API em falhas temporárias (0 desliga)"
     )
+    sentences: SentenceParams = Field(default_factory=SentenceParams)
     brief: UserBrief = Field(default_factory=UserBrief)
     subtitles: bool = Field(default=True, description="Gera o .srt quando há transcrição")
     subtitle: SubtitleParams = Field(default_factory=SubtitleParams)

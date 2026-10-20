@@ -6,6 +6,7 @@ from ai_video_editor.director.schema import (
     DirectorDecision,
     DirectorRun,
     Sentence,
+    SentenceParams,
     SentenceRemoval,
     UserBrief,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "DirectorRun",
     "EditDirector",
     "Sentence",
+    "SentenceParams",
     "SentenceRemoval",
     "UserBrief",
     "build_sentences",
