@@ -6,10 +6,25 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 
+# Modelos que "auto" escolhe pelo dispositivo efetivo.
+AUTO_MODEL_GPU = "large-v3-turbo"
+AUTO_MODEL_CPU = "small"
+
+
+def resolve_model_size(model_size: str, device: str) -> str:
+    """Resolve "auto": `large-v3-turbo` na GPU (cuda) e `small` na CPU; valores explícitos passam direto."""
+    if model_size != "auto":
+        return model_size
+    return AUTO_MODEL_GPU if device == "cuda" else AUTO_MODEL_CPU
+
+
 class TranscriptionConfig(BaseModel):
     """Parâmetros de execução da transcrição."""
 
-    model_size: str = Field(default="small", description="Tamanho/nome do modelo (ex: 'small', 'medium')")
+    model_size: str = Field(
+        default="auto",
+        description="Nome do modelo (ex: 'small', 'medium'); 'auto' = large-v3-turbo na GPU e small na CPU",
+    )
     language: Optional[str] = Field(default=None, description="Código do idioma (ex: 'pt'); None = detecção automática")
     device: Literal["auto", "cpu", "cuda"] = Field(
         default="auto", description="Dispositivo de inferência: 'auto' usa a GPU NVIDIA quando disponível"

@@ -443,6 +443,11 @@ def handle_revise(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_markdown(text: str) -> None:
+    """Imprime sem quebrar em consoles que não têm "→", "—" etc. (ex.: cp1252 no Windows)."""
+    print(text.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8"))
+
+
 def handle_benchmark_transcription(args: argparse.Namespace) -> int:
     """Mede velocidade e WER de configurações de transcrição em um ou mais áudios."""
     from datetime import date
@@ -451,8 +456,8 @@ def handle_benchmark_transcription(args: argparse.Namespace) -> int:
         BenchmarkConfig,
         BenchmarkItem,
         BenchmarkManifest,
-        format_markdown,
         run_benchmark,
+        save_run,
     )
 
     if bool(args.manifest) == bool(args.audio):
@@ -495,14 +500,27 @@ def handle_benchmark_transcription(args: argparse.Namespace) -> int:
     name = args.name or default_name
     out_dir = Path(args.results_dir) / f"{date.today().isoformat()}-{name}"
     print(f"Benchmark '{name}': {len(configs)} configuração(ões) × {len(items)} item(ns)")
-    run = run_benchmark(name, configs, items, on_progress=print)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "results.json").write_text(run.model_dump_json(indent=2), encoding="utf-8")
-    markdown = format_markdown(run)
-    (out_dir / "results.md").write_text(markdown + "\n", encoding="utf-8")
-    print(f"\n{markdown}")
+    run = run_benchmark(name, configs, items, on_progress=print, out_dir=out_dir)
+    markdown = save_run(run, out_dir)
+    _print_markdown(f"\n{markdown}")
     print(f"Resultados em: {out_dir}")
     return 0 if any(config_run.status == "ok" for config_run in run.configs) else 1
+
+
+def handle_benchmark_rescore(args: argparse.Namespace) -> int:
+    """Recalcula WER (bruto e normalizado) de uma execução a partir dos textos salvos, sem transcrever."""
+    from ai_video_editor.benchmark import RescoreError, rescore_run, save_run
+
+    run_dir = Path(args.run_dir)
+    try:
+        run = rescore_run(run_dir, Path(args.reference) if args.reference else None)
+    except (RescoreError, ValueError) as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+    _print_markdown(save_run(run, run_dir))
+    print(f"Resultados recalculados em: {run_dir}")
+    return 0
 
 
 def handle_versions(args: argparse.Namespace) -> int:
@@ -682,7 +700,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--language", default=None, help="Idioma da transcrição (ex: pt); padrão: automático"
     )
     edit_parser.add_argument(
-        "--whisper-model", default="small", help="Modelo do faster-whisper (padrão: small)"
+        "--whisper-model",
+        default="auto",
+        help="Modelo do faster-whisper: auto (large-v3-turbo na GPU, small na CPU) ou um nome "
+        "explícito, ex: small, medium (padrão: auto)",
     )
     edit_parser.add_argument(
         "--whisper-device",
@@ -875,6 +896,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pasta base dos resultados; cria <data>-<nome>/ dentro dela (padrão: benchmark/results)",
     )
 
+    bench_rescore = benchmark_sub.add_parser(
+        "rescore",
+        help="Recalcula as métricas de uma execução a partir das transcrições salvas (sem transcrever)",
+    )
+    bench_rescore.add_argument("run_dir", help="Pasta da execução (benchmark/results/<data>-<nome>)")
+    bench_rescore.add_argument(
+        "--reference", help="Referência a usar no lugar da gravada no results.json (execuções de um item)"
+    )
+
     # Subcomando: versions
     versions_parser = subparsers.add_parser("versions", help="Lista as versões de um projeto")
     versions_parser.add_argument("project", help="Pasta do projeto")
@@ -901,6 +931,8 @@ def main() -> None:
     elif args.command == "versions":
         sys.exit(handle_versions(args))
     elif args.command == "benchmark":
+        if args.benchmark_command == "rescore":
+            sys.exit(handle_benchmark_rescore(args))
         sys.exit(handle_benchmark_transcription(args))
     else:
         parser.print_help()

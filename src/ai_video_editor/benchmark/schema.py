@@ -93,6 +93,12 @@ class WerResult(BaseModel):
     insertions: int = Field(..., ge=0)
     reference_words: int = Field(..., ge=0)
     hypothesis_words: int = Field(..., ge=0)
+    tail_words: int = Field(
+        default=0,
+        ge=0,
+        description="palavras da hipótese depois do fim da referência; NÃO entram em `insertions` nem no WER",
+    )
+    tail_preview: Optional[str] = Field(default=None, description="início da cauda, para conferência")
     top_substitutions: list[SubstitutionCount] = Field(default_factory=list)
 
     @property
@@ -109,7 +115,13 @@ class ItemResult(BaseModel):
     audio_duration_sec: Optional[float] = None
     transcription_time_sec: Optional[float] = None
     real_time_factor: Optional[float] = Field(default=None, description="tempo de transcrição / duração do áudio")
-    wer: Optional[WerResult] = Field(default=None, description="None quando o item não tem referência")
+    wer: Optional[WerResult] = Field(default=None, description="WER bruto; None quando o item não tem referência")
+    wer_normalized: Optional[WerResult] = Field(
+        default=None, description="WER com a normalização do idioma; None sem referência ou sem regras para o idioma"
+    )
+    hypothesis_file: Optional[str] = Field(
+        default=None, description="texto gerado, relativo à pasta da execução (usado pelo `rescore`)"
+    )
 
 
 class ConfigRun(BaseModel):
@@ -120,6 +132,7 @@ class ConfigRun(BaseModel):
     error: Optional[str] = None
     effective_device: Optional[str] = None
     effective_compute_type: Optional[str] = None
+    effective_model: Optional[str] = None
     load_time_sec: Optional[float] = None
     items: list[ItemResult] = Field(default_factory=list)
 
@@ -138,6 +151,7 @@ class ConfigAverage(BaseModel):
     transcription_time_sec: float
     real_time_factor: Optional[float] = None
     wer: Optional[WerResult] = None
+    wer_normalized: Optional[WerResult] = None
 
 
 class EnvironmentInfo(BaseModel):
@@ -152,7 +166,7 @@ class EnvironmentInfo(BaseModel):
 class BenchmarkRun(BaseModel):
     """Arquivo `results.json`."""
 
-    schema_version: int = 1
+    schema_version: int = 2
     name: str
     created_at: datetime
     environment: EnvironmentInfo
@@ -161,4 +175,8 @@ class BenchmarkRun(BaseModel):
     averages: list[ConfigAverage] = Field(default_factory=list)
     normalization: str = (
         "minúsculas, apóstrofos unificados, pontuação/hífens removidos, espaços colapsados"
+    )
+    normalization_extra: str = (
+        "por idioma (en): números por extenso → dígitos (0–999 e milhares simples), okay → ok, "
+        "x's → xs, separador de milhar removido"
     )

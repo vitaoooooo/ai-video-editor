@@ -20,6 +20,7 @@ from ai_video_editor.transcription.schema import (
     TranscriptSegment,
     TranscriptionConfig,
     Word,
+    resolve_model_size,
 )
 
 # Menor duração aceita para uma palavra; o Whisper às vezes devolve start == end.
@@ -83,12 +84,13 @@ class FasterWhisperProvider(TranscriptionProvider):
 
     def __init__(self, on_warning: Optional[Callable[[str], None]] = None):
         self._warn = on_warning or _print_warning
-        # (dispositivo, compute_type) do último modelo carregado.
+        # (dispositivo, compute_type) e nome do último modelo carregado.
         self._effective: Optional[tuple[str, str]] = None
+        self._effective_model: Optional[str] = None
         # Callback e duração do áudio da transcrição em curso.
         self._progress: Optional[tuple[TranscriptionProgress, float]] = None
-        # Modelo carregado com `preload`: (chave da configuração, modelo, (dispositivo, compute_type)).
-        self._preloaded: Optional[tuple[tuple[str, str, str], object, tuple[str, str]]] = None
+        # Modelo carregado com `preload`: (chave da configuração, modelo, (dispositivo, compute_type), nome).
+        self._preloaded: Optional[tuple[tuple[str, str, str], object, tuple[str, str], str]] = None
 
     @staticmethod
     def _resolve(device: str, compute_type: str) -> tuple[str, str]:
@@ -100,6 +102,9 @@ class FasterWhisperProvider(TranscriptionProvider):
 
     def effective_settings(self, config: TranscriptionConfig) -> tuple[str, str]:
         return self._resolve(config.device, config.compute_type)
+
+    def effective_model(self, config: TranscriptionConfig) -> str:
+        return resolve_model_size(config.model_size, self.effective_settings(config)[0])
 
     @staticmethod
     def _cpu_settings(compute_type: str) -> tuple[str, str]:
@@ -119,22 +124,27 @@ class FasterWhisperProvider(TranscriptionProvider):
             raise TranscriptionDependencyError(self.provider_name) from exc
 
         device, compute_type = self._resolve(config.device, config.compute_type)
+        model_name = resolve_model_size(config.model_size, device)
         if device == "cuda":
             register_nvidia_dll_dirs()
             if config.device == "cuda" and not cuda_available():
                 raise TranscriptionGpuError(self.provider_name, details="nenhuma GPU CUDA detectada")
             try:
-                model = WhisperModel(config.model_size, device=device, compute_type=compute_type)
+                model = WhisperModel(model_name, device=device, compute_type=compute_type)
             except Exception as exc:
                 if config.device == "cuda":
                     raise TranscriptionGpuError(self.provider_name, details=str(exc)) from exc
                 self._warn(f"GPU indisponível ({exc}); transcrevendo na CPU.")
                 device, compute_type = self._cpu_settings(config.compute_type)
+                # Em "auto", a CPU usa o modelo da CPU (o turbo seria lento demais nela).
+                model_name = resolve_model_size(config.model_size, device)
             else:
                 self._effective = (device, compute_type)
+                self._effective_model = model_name
                 return model
-        model = WhisperModel(config.model_size, device=device, compute_type=compute_type)
+        model = WhisperModel(model_name, device=device, compute_type=compute_type)
         self._effective = (device, compute_type)
+        self._effective_model = model_name
         return model
 
     @staticmethod
@@ -148,7 +158,12 @@ class FasterWhisperProvider(TranscriptionProvider):
         """
         self._effective = None
         model = self._load_model(config)
-        self._preloaded = (self._model_key(config), model, self._effective or self._cpu_settings(config.compute_type))
+        self._preloaded = (
+            self._model_key(config),
+            model,
+            self._effective or self._cpu_settings(config.compute_type),
+            self._effective_model or resolve_model_size(config.model_size, "cpu"),
+        )
 
     def _decode_audio(self, media_path: Path):
         """Decodifica o áudio com FFmpeg para um array float32 mono 16 kHz (sem usar o PyAV)."""
@@ -195,11 +210,12 @@ class FasterWhisperProvider(TranscriptionProvider):
             raise TranscriptionMediaError(self.provider_name, media_path, "Arquivo inexistente.")
 
         if self._preloaded is not None and self._preloaded[0] == self._model_key(config):
-            _, model, self._effective = self._preloaded
+            _, model, self._effective, self._effective_model = self._preloaded
         else:
             self._effective = None
             model = self._load_model(config)
         device, compute_type = self._effective or self._cpu_settings(config.compute_type)
+        model_name = self._effective_model or resolve_model_size(config.model_size, device)
         audio = self._decode_audio(media_path)
         duration = len(audio) / _SAMPLE_RATE
         self._progress = (on_progress, duration) if on_progress is not None else None
@@ -213,10 +229,11 @@ class FasterWhisperProvider(TranscriptionProvider):
                 raise TranscriptionGpuError(self.provider_name, details=str(exc)) from exc
             self._warn(f"falha ao transcrever na GPU ({exc}); repetindo na CPU.")
             device, compute_type = self._cpu_settings(config.compute_type)
+            model_name = resolve_model_size(config.model_size, device)
             try:
                 from faster_whisper import WhisperModel
 
-                cpu_model = WhisperModel(config.model_size, device=device, compute_type=compute_type)
+                cpu_model = WhisperModel(model_name, device=device, compute_type=compute_type)
                 segments, language = self._run(cpu_model, audio, config)
             except Exception as cpu_exc:
                 raise TranscriptionFailedError(self.provider_name, details=str(cpu_exc)) from cpu_exc
@@ -225,7 +242,7 @@ class FasterWhisperProvider(TranscriptionProvider):
             source_path=media_path,
             language=language,
             duration_sec=duration,
-            model_used=f"faster-whisper:{config.model_size} ({device}, {compute_type})",
+            model_used=f"faster-whisper:{model_name} ({device}, {compute_type})",
             segments=segments,
         )
 

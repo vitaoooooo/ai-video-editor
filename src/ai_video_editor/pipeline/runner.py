@@ -289,11 +289,12 @@ class EditPipeline:
         fp_transcript: Optional[str] = None
         if params.transcribe:
             provider = self.transcription_provider
-            # Dispositivo e compute_type efetivos (resolvidos de "auto") entram no cache.
+            # Modelo, dispositivo e compute_type efetivos (resolvidos de "auto") entram no cache.
             effective = provider.effective_settings(params.transcription)
+            effective_model = provider.effective_model(params.transcription)
             fp_transcript = fingerprint(
                 "transcription", video_hash, provider.provider_name,
-                params.transcription.model_copy(update={"device": effective[0], "compute_type": effective[1]}),
+                params.transcription.model_copy(update={"model_size": effective_model, "device": effective[0], "compute_type": effective[1]}),
             )
 
             def do_transcription() -> tuple[dict, str]:

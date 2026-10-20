@@ -121,7 +121,7 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 .\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4" `
   --threshold-db -40 --min-silence-sec 0.6 `
   --padding-before 0.15 --padding-after 0.25 --min-gap 0.3 --min-keep 0.1 `
-  --transcribe --language pt --whisper-model small
+  --transcribe --language pt --whisper-model small   # o padrão é auto: large-v3-turbo na GPU, small na CPU
 
 # Com o Diretor de IA removendo frases repetidas, recomeçadas e enrolação (requer GEMINI_API_KEY)
 .\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4" `
@@ -232,15 +232,17 @@ python -m ai_video_editor.cli benchmark transcription --audio benchmark/data/mit
 python -m ai_video_editor.cli benchmark transcription --manifest benchmark/manifest.json --configs small:cpu:int8,small:cuda:float16
 ```
 
-Saída em `benchmark/results/<data>-<nome>/`: `results.json` (validado por Pydantic: versão do projeto, CPU/GPU, configurações e medições) e `results.md` (uma tabela por item, a tabela de **média geral** quando há mais de um item, as 10 substituições mais frequentes por configuração e as falhas). Os áudios de `benchmark/data/` não são versionados; o texto de referência (`*_reference.txt`) é.
+Saída em `benchmark/results/<data>-<nome>/`: `results.json` (validado por Pydantic: versão do projeto, CPU/GPU, configurações e medições), `results.md` (uma tabela por item, a tabela de **média geral** quando há mais de um item, as 10 substituições mais frequentes por configuração, as palavras após o fim da referência e as falhas) e `hypotheses/` com o texto gerado por cada configuração (`hypotheses/<config>.txt`, com `:` trocado por `_`; com vários itens, `hypotheses/<item>/<config>.txt`). Os áudios de `benchmark/data/` não são versionados; o texto de referência (`*_reference.txt`) é.
 
-Resultado (aula 1 de Álgebra Linear do MIT, 39min 49s, RTX 2060; `benchmark/results/2026-10-20-mit-1806-lecture01/`):
+Resultado (aula 1 de Álgebra Linear do MIT, 39min 49s, RTX 2060; `benchmark/results/2026-10-20-mit-1806-lecture01/`, com o texto gerado em `hypotheses/`):
 
-| Configuração | Carga | Tempo | Tempo real | WER | S | D | I |
-|---|---|---|---|---|---|---|---|
-| `small:cpu:int8` | 2,0s | 11min 42s | 0,294x | 9,2% | 227 | 98 | 130 |
-| `small:cuda:float16` | 1,0s | 1min 45s | 0,044x | 10,3% | 218 | 98 | 195 |
-| `large-v3-turbo:cuda:float16` | 58,2s | 1min 24s | 0,035x | 8,9% | 118 | 70 | 254 |
+| Configuração | Carga | Tempo | Tempo real | WER bruto | S/D/I (bruto) | WER norm. | S/D/I (norm.) | Após a ref. |
+|---|---|---|---|---|---|---|---|---|
+| `small:cpu:int8` | 2,5s | 11min 40s | 0,293x | 8,9% | 227/98/116 | 5,6% | 61/98/116 | 14 |
+| `small:cuda:float16` | 1,1s | 1min 36s | 0,040x | 9,9% | 216/96/176 | 6,8% | 62/98/178 | 18 |
+| `large-v3-turbo:cuda:float16` | 2,9s | 1min 22s | 0,035x | 8,5% | 118/70/235 | 7,4% | 63/70/235 | 19 |
+
+A normalização tira mais de 130 "substituições" do `small` que eram só grafia (one→1, okay→ok, ys→y's...): as substituições caem de ~220 para ~62. Com isso, o `large-v3-turbo` deixa de ser o mais preciso: as inserções (235 contra 116 do `small` na CPU) são palavras que ele escreve e a referência omite (artigos, "uh", repetições), então ele é mais literal, não pior. A cauda após o fim da referência existe (a referência termina em "...to a system of any size and", e a fala segue com "find out because elimination fails, find out when there isn't a solution. Okay, thanks."), mas são só 14–19 palavras e não explicam as inserções. Os tempos foram medidos de novo nesta execução (a carga do turbo caiu de 58s para 2,9s porque o modelo já estava baixado).
 
 **Manifesto** (`--manifest arquivo.json`): objeto com a lista `items` (ou a própria lista). Caminhos relativos valem a partir da pasta do manifesto; `name` é obrigatório e único.
 
@@ -265,9 +267,27 @@ Resultado (aula 1 de Álgebra Linear do MIT, 39min 49s, RTX 2060; `benchmark/res
 | `reference` | não | Texto de referência (linhas iniciadas por `#` são ignoradas); sem ele, o item só mede velocidade |
 | `language` | não | Código do idioma (ex.: `en`, `pt`); sem ele, detecção automática |
 
-Como ler as colunas: *Tempo* é a transcrição (inclui decodificar o áudio com FFmpeg, não inclui a carga do modelo); *Tempo real* é tempo ÷ duração do áudio (0,1x = 10 vezes mais rápido que o áudio); S/D/I são substituições, omissões (palavras da referência que faltam) e inserções. Na média geral, o tempo real é o tempo total ÷ áudio total e o WER é agregado (erros somados ÷ palavras de referência somadas, só dos itens com referência).
+Como ler as colunas: *Tempo* é a transcrição (inclui decodificar o áudio com FFmpeg, não inclui a carga do modelo); *Tempo real* é tempo ÷ duração do áudio (0,1x = 10 vezes mais rápido que o áudio); S/D/I são substituições, omissões (palavras da referência que faltam) e inserções; *WER bruto* e *WER norm.* trazem cada um os seus S/D/I; *Após a ref.* são as palavras do fim da transcrição sem correspondência na referência (ver abaixo). Na média geral, o tempo real é o tempo total ÷ áudio total e o WER é agregado (erros somados ÷ palavras de referência somadas, só dos itens com referência).
 
-**Limitações do WER**: a comparação é textual. Antes dela, o texto vai para minúsculas, apóstrofos são unificados, pontuação e hífens somem e os espaços são colapsados; fora isso nada é normalizado. Por isso "2" (dígito) × "two" (por extenso), "okay" × "OK", "gonna" × "going to" e hesitações ("uh", "um") que só um dos textos registra contam como erro, e erros da própria referência entram na conta. Compare configurações entre si com a mesma referência; o valor absoluto tem esse piso de ruído.
+**WER bruto × normalizado.** O *bruto* usa só a normalização básica: minúsculas, apóstrofos unificados, pontuação e hífens viram espaço, espaços colapsados. O *normalizado* aplica, nos dois textos (referência e transcrição), as regras do idioma do item (`benchmark/normalize.py`, sem dependência nova; hoje só `en`, e idioma sem regras mostra "—" no normalizado). Regras do inglês:
+
+* números por extenso viram dígitos: 0–999 e milhares simples ("zero" → 0, "twenty one" → 21, "a hundred" → 100, "two hundred and five" → 205, "two thousand five" → 2005); sequências como "one two three" continuam separadas ("1 2 3"), e dígitos que já estão escritos não mudam;
+* "okay" → "ok";
+* apóstrofo antes do "s" final some: "x's" → "xs", "y's" → "ys" (outras contrações, como "don't", ficam);
+* hífens já viram espaço na normalização básica ("twenty-one" → "twenty one" → 21) e o separador de milhar entre dígitos é removido ("1,000" → "1000").
+
+Para outro idioma (ex.: `pt`), escreva uma função `texto -> palavras` e registre em `NORMALIZERS`.
+
+**Palavras após o fim da referência.** A referência pode terminar antes da fala (a do MIT parece parar no meio de uma frase). Se a transcrição gerada continua além do último trecho que casa com a referência, as palavras a mais no final (pelo menos 5) são contadas à parte em *Após a ref.* e **não** entram nas inserções nem no WER (bruto ou normalizado); o `results.md` mostra por onde a cauda começa, para conferir. Cauda menor que 5 palavras continua sendo inserção comum.
+
+**Recalcular sem transcrever** (`benchmark rescore`): a partir do `results.json` e de `hypotheses/`, recalcula os dois WERs, a cauda e as médias, mantendo os tempos medidos, e regenera `results.json` e `results.md`. Serve para mudar a normalização ou a referência sem repetir os 15 minutos de transcrição. Execuções sem `hypotheses/` (anteriores a esta versão) precisam ser rodadas de novo.
+
+```bash
+python -m ai_video_editor.cli benchmark rescore benchmark/results/2026-10-20-mit-1806-lecture01
+# --reference outro.txt troca a referência (execuções de um item)
+```
+
+**Limitações do WER**: a comparação continua textual. Mesmo normalizado, "gonna" × "going to", hesitações ("uh", "um") que só um dos textos registra, símbolos falados ("x" × "ex") e erros da própria referência contam como erro. Compare configurações entre si com a mesma referência; o valor absoluto tem esse piso de ruído.
 
 Para incluir outro provedor de transcrição (ex.: Gemini), registre uma fábrica com `register_benchmark_provider("nome", fabrica)` em `benchmark/runner.py` e use `nome/modelo:dispositivo:compute_type` nas configurações (o `mock/...` existe para testes).
 
@@ -282,7 +302,9 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 
 - `--whisper-device {auto,cpu,cuda}`: `cuda` falha com instruções se a GPU não puder ser usada; `cpu` ignora a GPU.
 - `--whisper-compute-type`: `auto` = `float16` na GPU e `int8` na CPU; aceita valores explícitos (ex.: `int8_float16`).
-- O dispositivo e o compute_type efetivos aparecem no `transcript.json` (`model_used`, ex.: `faster-whisper:small (cuda, float16)`), no relatório e entram no cache da transcrição.
+- `--whisper-model {auto,<modelo>}`: `auto` (padrão) escolhe pelo dispositivo efetivo: `large-v3-turbo` na GPU (CUDA) e `small` na CPU; um nome explícito (`small`, `medium`...) é respeitado. Se a GPU falhar e o programa voltar para a CPU, o `auto` passa a usar o `small`.
+- O modelo, o dispositivo e o compute_type efetivos aparecem no `transcript.json` (`model_used`, ex.: `faster-whisper:large-v3-turbo (cuda, float16)`), no relatório e entram no cache da transcrição.
+- **Atenção ao atualizar:** o padrão mudou de `small` para `auto`. Em máquina com GPU, projetos já transcritos serão transcritos de novo na próxima execução do `edit` (o modelo efetivo mudou e faz parte do cache), com o download único do `large-v3-turbo`. Na CPU o `auto` resolve para `small`, igual ao padrão antigo, e o cache continua válido. Para manter o cache de antes numa máquina com GPU, passe `--whisper-model small`.
 
 ---
 
@@ -343,7 +365,9 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 * [`src/ai_video_editor/llm/keys.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/keys.py) e [`errors.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/errors.py): chaves por variável de ambiente/`.env` e utilitários de erro (remove chaves `AIza…`/`sk-…` das mensagens).
 
 ### Módulo Benchmark (comando `benchmark transcription`)
-* [`src/ai_video_editor/benchmark/wer.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/wer.py): normalização e WER por distância de edição entre palavras (S/D/I e substituições mais frequentes), sem dependências.
+* [`src/ai_video_editor/benchmark/wer.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/wer.py): normalização básica e WER por distância de edição entre palavras (S/D/I, substituições mais frequentes e palavras após o fim da referência), sem dependências.
+* [`src/ai_video_editor/benchmark/normalize.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/normalize.py): normalização por idioma (inglês: números, okay/ok, x's) para o WER normalizado.
+* [`src/ai_video_editor/benchmark/rescore.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/rescore.py): `benchmark rescore`, que recalcula as métricas a partir de `hypotheses/`.
 * [`src/ai_video_editor/benchmark/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/runner.py): `run_benchmark` (configurações × itens, carga do modelo medida à parte, falhas registradas) e o registro extensível de provedores.
 * [`src/ai_video_editor/benchmark/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/schema.py) e [`report.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/report.py): modelos Pydantic (`BenchmarkRun`, manifesto) e o `results.md`.
 
