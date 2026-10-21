@@ -18,9 +18,24 @@
 
 ## O problema e a solução
 
-Gravar uma aula ou um tutorial é rápido; editar não é. Boa parte do trabalho é mecânica: tirar silêncios, frases recomeçadas ("Let me, I can even say right away…"), repetições e muletas. Ferramentas de "corte de silêncio" resolvem só a primeira parte, e editores com IA costumam cortar sem dizer o quê nem por quê.
+Editar uma aula ou tutorial gravado é, em grande parte, trabalho braçal: assistir tudo, achar e cortar pausas, repetições e frases recomeçadas, e depois legendar. Referências do mercado estimam de 20 a 30 minutos de edição por minuto de vídeo final só para cortes simples em vídeos de pessoa falando [1][2], e de 5 a 10 minutos por minuto de vídeo para legendar à mão [3]. Em um estudo com gravações de aulas, um fluxo automatizado de cortes baseado na transcrição da fala foi, em média, 76% mais rápido do que a edição manual feita por pessoas com experiência em edição [4].
 
-Este projeto faz as duas coisas e mostra o trabalho: mede as pausas no áudio, transcreve, deixa um modelo de linguagem decidir quais **frases** saem (com categoria e motivo), renderiza com FFmpeg e entrega relatórios que dizem exatamente o que saiu, o que ficou e se cada corte pedido foi de fato aplicado. Depois, dá para pedir ajustes em português ("corta menos") e cada pedido vira uma nova versão.
+O AI Video Editor automatiza essa parte mecânica: corta pausas, repetições e enrolação, gera legendas sincronizadas e explica cada corte. Ele não substitui as escolhas criativas de um editor humano; tira do caminho o trabalho repetitivo.
+
+| | Aula do MIT (5:00 → 4:11) | Palestra (57:07 → 53:40) |
+| --- | --- | --- |
+| Cortes à mão (estimativa\*) | ~1h30 a 2h | ~18 a 27 h |
+| Legendas à mão (estimativa\*) | ~20 a 40 min | ~4h30 a 9 h |
+| **AI Video Editor (medido)** | **1min 05s** (cortes + legendas) | **9min 59s** (cortes + legendas; transcrição em cache) |
+
+\* Estimativas calculadas a partir das referências [2] e [3] sobre a duração final de cada vídeo; não são medições deste projeto. As referências do mercado cobrem uma edição mais completa do que a feita aqui, então a comparação vale para a parte mecânica do trabalho.
+
+**Referências**
+
+1. Tasty Edits — *How Long Does It Take to Edit a Video?* — https://www.tastyedits.com/how-long-does-it-take-to-edit-a-video/
+2. Create and Elate — *How Long Does Video Editing Take?* (cortes simples em vídeo de pessoa falando: 20–30 min por minuto final) — https://www.createandelate.com/blog/how-long-does-video-editing-take/
+3. Minnesota IT Services — *Video Captioning Essentials: How long does it take?* — https://mn.gov/mnit-accessibility/captioningessentials/intro_howlong.html
+4. Nußbaumer, D.; Mair, B.; Schön, S.; Edelsbrunner, S.; Ebner, M. (2024). *Evaluating the Efficacy of Automated Video Editing in Educational Content Production: A Time Efficiency and Learner Perspective Study.* HCII 2024, Lecture Notes in Computer Science, Springer. DOI: 10.1007/978-3-031-61672-3_15
 
 ## Como funciona
 
