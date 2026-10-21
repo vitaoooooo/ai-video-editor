@@ -168,11 +168,26 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 📊 Render dos testes (isolado): Timeline mista de 4 s com 4 formatos, 2 overlays e ambiente ≈ 10 s; quase todo o tempo é a partida dos processos FFmpeg (~1,2 s cada nesta máquina Windows), não a codificação.
 - 📊 455 testes automatizados (42 novos); suíte completa em 4min 31s.
 
+## Projetos com clipes, rodada 1: receitas e catálogo (2026-10-21)
+
+- 🔁 **Mudança de rumo: de "só vídeos falados" para qualquer tipo de vídeo.** Todo trabalho passa a ser um **projeto com clipes** (um vídeo = 1 clipe; uma pasta = N clipes, ex.: vlog com `principal/`, `drone/`, `pov/`, `broll/`). Um Produtor de IA (rodada 2) vai ler o pedido + o catálogo e devolver um briefing validado; por dentro, **peças** (etapas) e **receitas** (combinações validadas); uma Timeline com trilhas substituirá o `EditPlan`. O princípio continua: a IA aponta IDs, código e FFmpeg executam. Visão e plano de rodadas em [ARQUITETURA.md](ARQUITETURA.md).
+  - **Por quê:** a V1 de vídeo falado está pronta e medida; o próximo uso real é um vlog com várias câmeras, que precisa de um catálogo de clipes e de um jeito de combinar etapas sem que a IA invente processos.
+- ✅ **Teste de referência do perfil falado** (`tests/test_reference_fala.py`, commitado antes de qualquer outra mudança): roda o `edit` completo num vídeo sintético (5 falas, uma repetida) com transcrição e Diretor mock e compara com `tests/data/reference_fala/` (frases removidas, trechos do plano com 3 casas, duração final e legendas). Tolerância de ±2 ms nos tempos (decodificador AAC de outra versão do FFmpeg, ex.: CI) e ±50 ms na duração do render; regenerar só com `UPDATE_REFERENCE=1`.
+  - **Por quê:** a refatoração do pipeline em receitas não podia mudar nada do `edit`; o teste passou antes e depois, sem regenerar o snapshot.
+- ✅ **Receitas como dados** (`recipes/`): catálogo de peças `PIECES` (com o que cada peça sempre exige), modelo `Recipe` validado (etapa desconhecida, repetida, dependência faltando, ordem impossível ou circular → erro em português) e registro com a receita `fala` = etapas do `edit`. O `EditPipeline.run` virou um laço sobre `recipe.steps`, uma etapa por método com o estado compartilhado em `_EditState`; a numeração `[n/N]` da CLI vem da receita. CLI: `edit --receita fala`.
+  - 📊 Fingerprints das 8 etapas idênticos antes e depois, e um projeto criado pelo código antigo saiu 100% do cache com o novo.
+- ✅ **Comando `catalog <pasta>`** (`catalog/`): lê a pasta sem modificá-la e gera `catalog/` no projeto `<pasta>-<hash>` (hash da listagem: caminho relativo + tamanho + mtime, sem ler os vídeos). Papel pela subpasta (sinônimos, acentos, plural; `--papel`), IDs `P001/D001/V001/B001/X001` por data de gravação, com origem registrada (tags QuickTime/container/trilha → nome do arquivo → mtime pouco confiável) e `--ajuste-relogio papel=+3h`. ffprobe (com `probe_rotation`), miniaturas a 10/50/90% e `signalstats` em paralelo; fala pelo VAD Silero do faster-whisper (áudio a 16 kHz em blocos de 60s; sem ele, `desconhecido` com aviso); suspeita de perfil log (baixo contraste + baixa saturação); folha de contato por papel com o ID escrito (Pillow, já era dependência). Saídas: `catalog.json` (`ProjectCatalog`, `schema_version` 1), `catalog.md` (resumo por papel, avisos, tabela por clipe) e `contact_sheet_<papel>.jpg`. Arquivo corrompido ou sem vídeo vira aviso.
+  - 🔁 **Cache por clipe fora do projeto** (`output/projects/_cache/clips/`, chave = caminho absoluto + tamanho + mtime). **Por quê:** o hash do projeto muda quando entra um clipe; com o cache dentro do projeto, um clipe novo numa pasta de 200 refaria o VAD de todos.
+  - 🔁 `StageProgress` ganhou a unidade `clips` (`12/40 clipes (30%)` na linha ao vivo).
+  - 📊 Pasta sintética de 6 arquivos (5 clipes + 1 corrompido): 11,9s na primeira execução, mídia e fala do cache na segunda.
+  - 📊 413 → 463 testes automatizados (referência, receitas e catálogo); depois do merge com a Timeline, 505 testes, suíte completa em 4min 14s.
+- ❌ **Fora desta tarefa** (de propósito): renderer, `core/schema.py` e o formato dos IDs das frases (outra tarefa mexe em `core/`/`renderer/`; os IDs de frase com clipe vêm na rodada 2), proxies e análise visual com IA, e o próprio Produtor (`--pedido`).
+
 ---
 
 ## 🔄 Em andamento
 
-- (nada no momento)
+- (nada no momento; rodada 1 concluída: Timeline + render e catálogo + receitas estão na main)
 
 ## 🔮 Próximos passos (V1)
 
@@ -184,7 +199,13 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - **Teste com vídeo em português** com mais enrolação.
 - Pequenos ajustes: cópia de vídeo por versão ocupa o dobro de disco; motivo do Diretor às vezes truncado.
 
+## 🔮 Projetos com clipes (próximas rodadas; ver [ARQUITETURA.md](ARQUITETURA.md))
+
+- **Rodada 2:** Produtor (pedido + catálogo → briefing validado) ∥ espinha falada multiclipe (IDs de frase com o clipe) ∥ análise visual dos clipes (proxies; a análise visual da Fase 3 volta aqui).
+- **Rodada 3:** Diretor de cobertura + render com cobertura.
+- **Rodada 4:** `revise` multitrilha + relatórios.
+
 ## 🔮 V2 (futuro)
 
-- **Perfis de edição**: Gameplay (picos de áudio + imagem), Vlog (imagem + música) — a análise visual da Fase 3 volta aqui.
+- **Perfis de edição**: Gameplay (picos de áudio + imagem), Vlog (imagem + música), como receitas.
 - **Aplicação web**: upload, prévia, chat de ajustes, fila de processamento.

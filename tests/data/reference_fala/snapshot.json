@@ -1,0 +1,44 @@
+{
+  "outcomes": {
+    "probe": "ran",
+    "silences": "ran",
+    "transcription": "ran",
+    "director": "ran",
+    "plan": "ran",
+    "render": "ran",
+    "subtitles": "ran",
+    "report": "ran"
+  },
+  "removed_sentences": [
+    {
+      "id": 1,
+      "text": "Hoje vamos falar de cortes!",
+      "category": "repetition"
+    }
+  ],
+  "plan_segments": [
+    [
+      0.0,
+      3.201
+    ],
+    [
+      8.85,
+      12.2
+    ],
+    [
+      13.35,
+      16.7
+    ],
+    [
+      17.85,
+      21.0
+    ]
+  ],
+  "target_fps": 30,
+  "resolution": [
+    320,
+    240
+  ],
+  "original_duration_sec": 21.0,
+  "final_duration_sec": 13.0
+}

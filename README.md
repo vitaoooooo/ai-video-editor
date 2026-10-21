@@ -187,6 +187,7 @@ python -m ai_video_editor.cli edit aula.mp4 --transcribe --director openai --dir
 python -m ai_video_editor.cli revise output\projects\aula-<hash> "corta menos"
 python -m ai_video_editor.cli revise output\projects\aula-<hash> "mantém a frase sobre o livro" --from v1
 python -m ai_video_editor.cli versions output\projects\aula-<hash>
+python -m ai_video_editor.cli catalog D:\vlog   # catálogo de uma pasta de clipes (papéis, IDs, datas, fala, folhas de contato)
 
 # Benchmark de transcrição
 python -m ai_video_editor.cli benchmark transcription --audio aula.webm --reference ref.txt --language en --configs small:cpu:int8 large-v3-turbo:cuda:float16

@@ -153,7 +153,7 @@ Renderiza um plano de edição completo a partir de um arquivo JSON estruturado.
 - Antes do render, cada origem é inspecionada uma vez: item que passa do fim da origem (mais de 1 frame), overlay/base sem trilha de vídeo ou ambiente sem trilha de áudio são recusados com mensagem que identifica o item (ex.: `video_overlay[0] (D003)`).
 
 ### Opção E: Remover as pausas de um vídeo falado (`edit`)
-Fluxo completo: metadados → silêncios → transcrição (opcional) → Diretor de IA (opcional) → plano de corte → render → legendas (com transcrição) → relatório. Sem `--director`, é só corte de silêncio, sem IA. A resolução e o FPS da saída são os do vídeo de origem (FPS arredondado para inteiro).
+Fluxo completo: metadados → silêncios → transcrição (opcional) → Diretor de IA (opcional) → plano de corte → render → legendas (com transcrição) → relatório. Sem `--director`, é só corte de silêncio, sem IA. As etapas vêm da **receita** `fala` (`--receita fala`, o padrão e por enquanto a única); veja "Receitas" abaixo. A resolução e o FPS da saída são os do vídeo de origem (FPS arredondado para inteiro).
 
 ```bash
 .\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4"
@@ -175,6 +175,7 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 
 | Opção | Padrão | Efeito |
 | --- | --- | --- |
+| `--receita` | `fala` | Receita (combinação validada de etapas) a executar. Nome desconhecido é recusado com a lista das disponíveis |
 | `--threshold-db` | auto | `auto` mede o ruído de cada vídeo e escolhe o limite; um número (ex: `-40`) usa esse limite fixo em dB |
 | `--min-silence-sec` | 0.5 | Duração mínima de um silêncio detectado |
 | `--padding-before` / `--padding-after` | 0.15 / 0.20 | Folga mantida antes/depois de cada fala |
@@ -219,6 +220,8 @@ Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 **Troca automática de modelo:** o Diretor (e o revisor) usa uma cadeia ordenada `provedor:modelo`; o padrão é `gemini:gemini-3.8-flash` → `gemini:gemini-3.6-flash` → `gemini:gemini-3.5-flash-lite`. Se o modelo atual continuar falhando depois das novas tentativas com erro temporário (503, 504, 429 por minuto, conexão) ou com a cota diária/de cobrança esgotada, a etapa passa para o próximo da cadeia e avisa no terminal (`[4/8] Diretor: gemini-3.8-flash indisponível (503) após 5 tentativas → trocando para gemini-3.6-flash`). Erros de autenticação ou de requisição inválida (400/404) não trocam de modelo. Provedores sem chave configurada são pulados com um aviso. Depois de uma troca, as chamadas seguintes da mesma execução continuam no modelo que funcionou. O relatório ("Cadeia de modelos", "Modelo usado", "Troca de modelo") e o `director_decision.json` (`model_chain`, `effective_provider`, `effective_model_id`, `model_switches`) registram o pedido, o usado e cada troca com o motivo. O cache do Diretor usa a cadeia **pedida**: uma troca de modelo durante a execução não muda o fingerprint.
 
 **Normalização de volume:** com `--loudness` diferente de `off`, o render faz duas passadas do filtro `loudnorm` sobre o áudio já concatenado: a primeira mede (I, TP, LRA, limiar e offset, lidos do JSON que o FFmpeg imprime) e a segunda aplica o ganho no concat final com os valores medidos e `linear=true` (ganho único, sem "bombear" a fala; o vídeo continua com `-c:v copy` e o AAC é codificado uma única vez). Se o áudio original já chega a 0 dBTP ou mais de true peak, o relatório e o terminal avisam: a gravação provavelmente saiu distorcida, e a normalização só abaixa o volume, não desfaz a distorção. Áudio todo em silêncio (loudness `-inf` ou inválido) ou vídeo sem áudio: a normalização é pulada com aviso, sem falhar. A medição fica nas métricas `loudness_*` da etapa render no `project.json`. O `EditPlan` tem o campo opcional `loudness` (padrão `null` = sem normalização), então `render` e `quick-cut` continuam como antes.
+
+**Receitas:** uma receita (`recipes/`) é um dado: nome, descrição, etapas em ordem e dependências entre elas. As etapas possíveis são as peças do catálogo `PIECES` (`probe`, `silences`, `transcription`, `director`, `plan`, `render`, `subtitles`, `report`), e cada peça declara o que sempre exige antes dela (ex.: `director` precisa de `transcription`). Ao criar uma receita, a validação recusa etapa desconhecida, etapa repetida, dependência faltando e ordem impossível (inclusive circular), com mensagem em português (`Receita 'x': ordem impossível: 'silences' precisa vir depois de 'probe'.`). O `EditPipeline` executa as etapas na ordem da receita, e a numeração `[n/N]` do terminal vem dela. A receita `fala` é exatamente o fluxo acima: mesmos fingerprints, cache e saída (garantido por `tests/test_reference_fala.py`, que compara o `edit` completo com um snapshot em `tests/data/reference_fala/`; para regenerá-lo depois de uma mudança intencional: `UPDATE_REFERENCE=1 python -m pytest -q tests/test_reference_fala.py`, e revisar o diff). A visão de receitas e do Produtor está em [ARQUITETURA.md](ARQUITETURA.md).
 
 **Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` (ou alternar entre `auto` e um número) refaz silêncios, plano, render e relatório; mudar só um padding ou o `--loudness` refaz a partir do plano; sem Diretor, a transcrição nunca força novo render. As legendas dependem do plano, da transcrição e de `--subtitle-max-chars`: mudar só esse limite refaz apenas legendas e relatório, sem novo render. O Diretor é refeito quando mudam a transcrição, o briefing ou o modelo. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
 
@@ -333,6 +336,42 @@ python -m ai_video_editor.cli benchmark rescore benchmark/results/2026-10-20-mit
 
 Para incluir outro provedor de transcrição (ex.: Gemini), registre uma fábrica com `register_benchmark_provider("nome", fabrica)` em `benchmark/runner.py` e use `nome/modelo:dispositivo:compute_type` nas configurações (o `mock/...` existe para testes).
 
+### Opção H: Catalogar uma pasta de clipes (`catalog`)
+
+Lê uma pasta de clipes **sem modificar nada nela** e gera o catálogo do projeto: papel e ID de cada clipe, dados técnicos, data de gravação, detecção de fala, sinais de cor e miniaturas. É a porta de entrada dos projetos com vários clipes (ver [ARQUITETURA.md](ARQUITETURA.md)).
+
+```bash
+# Pasta com subpastas por câmera: Principal/, Drone/, GoPro/, B-Roll/...
+.\.venv\Scripts\python.exe -m ai_video_editor.cli catalog "D:\Vlog Viagem"
+
+# Corrigindo o papel de uma pasta e o relógio do drone (3h atrasado)
+.\.venv\Scripts\python.exe -m ai_video_editor.cli catalog "D:\Vlog Viagem" `
+  --papel "Celular=broll" --ajuste-relogio drone=+3h
+```
+
+| Opção | Padrão | Efeito |
+| --- | --- | --- |
+| `--papel PASTA=PAPEL` | — | Papel de uma subpasta de primeiro nível (repetível). Papéis: `principal`, `drone`, `pov`, `broll`, `outro` (aceita os mesmos sinônimos das pastas). Pasta inexistente vira aviso |
+| `--ajuste-relogio PAPEL=AJUSTE` | — | Soma um ajuste às datas de um papel antes de ordenar (repetível): `+3h`, `-1h30m`, `+45s`. Fica registrado no catálogo |
+| `--force` | desligado | Refaz a análise de todos os clipes, ignorando o cache |
+| `--projects-dir` | `output/projects` | Diretório base dos projetos |
+| `--no-live` | desligado | Sem linha de andamento ao vivo |
+
+* **Projeto:** `<projects-dir>/<nome-da-pasta>-<hash>/catalog/`. O hash vem da lista de vídeos (caminho relativo, tamanho e data de modificação); o conteúdo dos vídeos não é lido para isso. Acrescentar, remover ou alterar um vídeo cria outro projeto.
+* **Arquivos:** só extensões de vídeo (`.mp4`, `.mov`, `.mkv`, `.mts`, `.mxf`, `.insv`...), em qualquer profundidade; o resto (inclusive `.LRV`/`.THM` das câmeras, ocultos e `._*` do macOS) é ignorado e contado.
+* **Papel** pela subpasta de primeiro nível, sem diferenciar maiúsculas, acentos, hífens e plural: `principal`/`main`/`a-roll`/`a-cam` → `principal`; `drone` → `drone`; `pov`/`gopro` → `pov`; `broll`/`b-roll`/`b-cam` → `broll`; o resto → `outro`. Arquivos na raiz da pasta → `principal`.
+* **IDs** por papel, na ordem de gravação (desempate pelo nome do arquivo): `P001` (principal), `D001` (drone), `V001` (pov), `B001` (broll), `X001` (outro). Arquivos com problema não ganham ID.
+* **Dados técnicos** (ffprobe, em paralelo): duração, resolução (já girada pela rotação, via `probe_rotation`), fps, codec, bit depth e `pix_fmt`, rotação, áudio (codec), bitrate e tamanho.
+* **Data de gravação**, com a origem em `recorded_at.source`: tags do arquivo (`com.apple.quicktime.creationdate` → `creation_time` do container → da trilha de vídeo; relógios zerados como 1904/1970 são ignorados) → padrão no nome (`DJI_20240115123045`, `VID_20240115_123045`, `PXL_...`, `IMG_...`, `2024-01-15 12-30-45`) → data de modificação do arquivo (`mtime`, marcada como pouco confiável, porque muda ao copiar). Tudo é guardado em UTC: tags sem fuso são UTC; datas do nome são lidas no fuso desta máquina.
+* **Fala** (clipes com áudio): VAD Silero do faster-whisper (extra `.[transcription]`, import tardio) sobre o áudio decodificado pelo FFmpeg a 16 kHz mono, lido em blocos de 60s. Resultado: proporção da duração com fala, segundos e trechos. Sem faster-whisper: `desconhecido` e um aviso (na próxima execução com ele instalado, só a fala é refeita). Sem áudio: `sem_audio`.
+* **Sinais de cor** (sem IA, rotulados como suspeita): `signalstats` nos três frames das miniaturas. Faixa entre os percentis 10 e 90 da luma < 0,45 = baixo contraste; saturação média < 0,08 = baixa saturação; os dois juntos = **suspeita de perfil log**.
+* **Miniaturas:** 3 por clipe (10%, 50% e 90% da duração), 320px de largura, em `catalog/thumbs/<ID>_<pct>.jpg`; e uma **folha de contato por papel** (`contact_sheet_<papel>.jpg`, Pillow): a miniatura do meio de cada clipe, em ordem, com `ID · duração` escrito.
+* **Cache por clipe** em `<projects-dir>/_cache/clips/<chave>/` (análise + miniaturas), com a chave = caminho absoluto + tamanho + data de modificação. Fica fora da pasta do projeto: acrescentar um clipe muda o hash do projeto, mas os outros clipes não são reprocessados. Papéis, IDs e ajustes de relógio não entram no cache (são recalculados a cada execução, em milissegundos).
+* **Arquivo com problema** (corrompido, sem trilha de vídeo) vira aviso e uma linha em "Arquivos com problema", nunca erro fatal.
+* **Saídas** em `catalog/`: `catalog.json` (`ProjectCatalog` com `schema_version`, papéis, ajustes, clipes `CatalogClip`, avisos, tempos), `catalog.md` (resumo por papel: quantidade, duração, resoluções/fps/codecs, intervalo de datas e proporção com fala; avisos; tabela por clipe; arquivos com problema), as folhas de contato e `thumbs/`.
+* **Avisos:** arquivos com problema; relógio suspeito (data no futuro, ou um papel sem nenhuma data no intervalo do principal ±30 min, com a sugestão de `--ajuste-relogio`); datas vindas de `mtime`; formatos misturados num papel (resoluções, fps, codecs) e fps diferentes no projeto; clipes sem áudio; suspeita de perfil log.
+* **Terminal:** `[1/4] Varredura`, `[2/4] Metadados e miniaturas` e `[3/4] Detecção de fala` (com `12/40 clipes (30%)` ao vivo) e `[4/4] Catálogo`; no fim, o resumo por papel, os avisos e o tempo total.
+
 ### Usando a GPU
 A transcrição usa a GPU NVIDIA automaticamente quando ela existe e as bibliotecas CUDA estão instaladas (`--whisper-device auto`, o padrão); senão, volta para a CPU com um aviso. Para instalar as bibliotecas (cuBLAS para CUDA 12 e cuDNN 9, compatíveis com o ctranslate2 4.x do faster-whisper) no Windows:
 
@@ -415,8 +454,20 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 * [`src/ai_video_editor/benchmark/runner.py`](../src/ai_video_editor/benchmark/runner.py): `run_benchmark` (configurações × itens, carga do modelo medida à parte, falhas registradas) e o registro extensível de provedores.
 * [`src/ai_video_editor/benchmark/schema.py`](../src/ai_video_editor/benchmark/schema.py) e [`report.py`](../src/ai_video_editor/benchmark/report.py): modelos Pydantic (`BenchmarkRun`, manifesto) e o `results.md`.
 
+### Módulo Recipes (receitas)
+* [`src/ai_video_editor/recipes/schema.py`](../src/ai_video_editor/recipes/schema.py): catálogo de peças `PIECES` (etapas que o código executa e o que cada uma sempre exige), `Recipe` (validação de etapas, dependências e ordem) e `RecipeError`.
+* [`src/ai_video_editor/recipes/registry.py`](../src/ai_video_editor/recipes/registry.py): `register_recipe`, `get_recipe`, `recipe_names` e a receita `fala`.
+
+### Módulo Catalog (comando `catalog`)
+* [`src/ai_video_editor/catalog/builder.py`](../src/ai_video_editor/catalog/builder.py): `CatalogBuilder` (varredura, hash da listagem, cache por clipe, etapas em paralelo, IDs, avisos).
+* [`src/ai_video_editor/catalog/schema.py`](../src/ai_video_editor/catalog/schema.py): `ProjectCatalog`, `CatalogClip`, `ClipMedia`, `RecordingDate`, `SpeechDetection`, `ColorSignals` e `ClipAnalysis` (o que vai para o cache).
+* [`src/ai_video_editor/catalog/roles.py`](../src/ai_video_editor/catalog/roles.py) e [`dates.py`](../src/ai_video_editor/catalog/dates.py): papéis por pasta, `--papel`, `--ajuste-relogio` e a data de gravação com origem.
+* [`src/ai_video_editor/catalog/media.py`](../src/ai_video_editor/catalog/media.py): ffprobe do clipe, miniaturas e `signalstats`.
+* [`src/ai_video_editor/catalog/speech.py`](../src/ai_video_editor/catalog/speech.py): interface `SpeechDetector`, `FasterWhisperVAD` e `MockSpeechDetector`.
+* [`src/ai_video_editor/catalog/sheets.py`](../src/ai_video_editor/catalog/sheets.py) e [`report.py`](../src/ai_video_editor/catalog/report.py): folhas de contato e `catalog.md`.
+
 ### Módulo Pipeline (comandos `edit` e `revise`)
-* [`src/ai_video_editor/pipeline/runner.py`](../src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que orquestra as etapas com cache por fingerprint e callbacks de eventos (`on_progress`) e de andamento da etapa em curso (`on_stage_progress`, com `StageProgress`); `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis. O transcriber (`transcribe(..., on_progress)`) e o executor (`execute(plan, on_progress)`) informam o progresso; o pipeline só repassa, sem depender do terminal.
+* [`src/ai_video_editor/pipeline/runner.py`](../src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que executa as etapas da receita (uma por método, na ordem de `recipe.steps`) com cache por fingerprint e callbacks de eventos (`on_progress`) e de andamento da etapa em curso (`on_stage_progress`, com `StageProgress`); `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis. O transcriber (`transcribe(..., on_progress)`) e o executor (`execute(plan, on_progress)`) informam o progresso; o pipeline só repassa, sem depender do terminal.
 * [`src/ai_video_editor/live_status.py`](../src/ai_video_editor/live_status.py): `LiveStatus`, a linha de andamento ao vivo da CLI (thread de atualização a cada 1s, avisos acima da linha, modo sem terminal só com linhas finais).
 * [`src/ai_video_editor/pipeline/schema.py`](../src/ai_video_editor/pipeline/schema.py): `EditPipelineParams`, `ProjectManifest` (`project.json`), `StageRecord`, `RunTimings`/`StageTiming`, `EditPipelineResult`.
 * [`src/ai_video_editor/pipeline/project.py`](../src/ai_video_editor/pipeline/project.py): Hash curto do vídeo, nome da pasta do projeto, nomes dos artefatos e fingerprints.

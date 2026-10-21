@@ -1,0 +1,17 @@
+1
+00:00:00,100 --> 00:00:02,850
+Hoje vamos falar de cortes.
+
+2
+00:00:03,450 --> 00:00:06,200
+Primeiro abrimos o editor e importamos o
+vídeo da aula.
+
+3
+00:00:06,783 --> 00:00:09,533
+Depois cortamos as pausas longas, sem
+pressa.
+
+4
+00:00:10,117 --> 00:00:12,867
+Obrigado por assistir.
