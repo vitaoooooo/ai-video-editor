@@ -15,6 +15,7 @@ from ai_video_editor.pipeline.project import (
     EDIT_DIFF_FILE,
     EDIT_PLAN_FILE,
     EDIT_REPORT_FILE,
+    EDIT_TIMELINE_FILE,
     EDIT_TRANSCRIPT_FILE,
     fingerprint,
 )
@@ -61,11 +62,14 @@ def edit_fingerprint(manifest: ProjectManifest) -> Optional[str]:
 
 
 def _backfill_comparison(project_dir: Path, target: Path) -> None:
-    """Versão criada antes da transcrição comparativa: recebe os arquivos novos e o relatório refeito."""
-    source = project_dir / EDIT_TRANSCRIPT_FILE
-    if not target.is_dir() or not source.is_file() or (target / EDIT_TRANSCRIPT_FILE).is_file():
+    """Versão criada antes da transcrição comparativa ou da linha do tempo: recebe os arquivos novos e o relatório refeito."""
+    if not target.is_dir() or not (project_dir / EDIT_TRANSCRIPT_FILE).is_file():
         return
-    for name in (EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE, EDIT_REPORT_FILE):
+    if (target / EDIT_TRANSCRIPT_FILE).is_file() and (
+        (target / EDIT_TIMELINE_FILE).is_file() or not (project_dir / EDIT_TIMELINE_FILE).is_file()
+    ):
+        return
+    for name in (EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE, EDIT_TIMELINE_FILE, EDIT_REPORT_FILE):
         if (project_dir / name).is_file():
             shutil.copy2(project_dir / name, target / name)
 
@@ -109,7 +113,7 @@ def register_edit_version(
             shutil.copy2(project_dir / subtitles, target / subtitles)
         if manifest.stages["director"].status == "done" and (project_dir / DIRECTOR_DECISION_FILE).is_file():
             shutil.copy2(project_dir / DIRECTOR_DECISION_FILE, target / DIRECTOR_DECISION_FILE)
-        for name in (EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE):
+        for name in (EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE, EDIT_TIMELINE_FILE):
             if (project_dir / name).is_file():
                 shutil.copy2(project_dir / name, target / name)
 

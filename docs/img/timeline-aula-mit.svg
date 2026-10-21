@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="182" viewBox="0 0 1000 182" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-label="aula1_5min.mp4: 5:00 → 4:11 (16,2% removido)">
+<title>aula1_5min.mp4: 5:00 → 4:11 (16,2% removido)</title>
+<rect class="background" x="0.5" y="0.5" width="999" height="181" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+<text x="24" y="32" font-size="18" font-weight="600" fill="#1f2328">aula1_5min.mp4: 5:00 → 4:11 (16,2% removido)</text>
+<text x="24" y="54" font-size="12.5" fill="#57606a">4 frases removidas · 0 parciais/não aplicadas · 11 pausas de 1,0s ou mais · 38,4s de pausas no total</text>
+<rect class="track" x="24" y="74" width="952.00" height="34" fill="#e6e9ed"/>
+<line x1="24.00" y1="108" x2="24.00" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="24.00" y="125" font-size="11" fill="#57606a" text-anchor="start">0:00</text>
+<line x1="119.17" y1="108" x2="119.17" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="119.17" y="125" font-size="11" fill="#57606a" text-anchor="middle">0:30</text>
+<line x1="214.34" y1="108" x2="214.34" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="214.34" y="125" font-size="11" fill="#57606a" text-anchor="middle">1:00</text>
+<line x1="309.50" y1="108" x2="309.50" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="309.50" y="125" font-size="11" fill="#57606a" text-anchor="middle">1:30</text>
+<line x1="404.67" y1="108" x2="404.67" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="404.67" y="125" font-size="11" fill="#57606a" text-anchor="middle">2:00</text>
+<line x1="499.84" y1="108" x2="499.84" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="499.84" y="125" font-size="11" fill="#57606a" text-anchor="middle">2:30</text>
+<line x1="595.01" y1="108" x2="595.01" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="595.01" y="125" font-size="11" fill="#57606a" text-anchor="middle">3:00</text>
+<line x1="690.18" y1="108" x2="690.18" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="690.18" y="125" font-size="11" fill="#57606a" text-anchor="middle">3:30</text>
+<line x1="785.35" y1="108" x2="785.35" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="785.35" y="125" font-size="11" fill="#57606a" text-anchor="middle">4:00</text>
+<line x1="880.51" y1="108" x2="880.51" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="880.51" y="125" font-size="11" fill="#57606a" text-anchor="middle">4:30</text>
+<line x1="975.68" y1="108" x2="975.68" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="975.68" y="125" font-size="11" fill="#57606a" text-anchor="end">5:00</text>
+<g class="item kept" data-sentence-id="0"><title>0:08–0:08 · Hi.</title><rect x="50.84" y="74" width="1.65" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="1"><title>0:09–0:14 · This is the first lecture in MIT's course, 1806, linear algebra.</title><rect x="53.25" y="74" width="18.27" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="2"><title>0:15–0:17 · And I'm Gilbert Strang.</title><rect x="74.44" y="74" width="4.95" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="3"><title>0:19–0:25 · The text for the course is this book, Introduction to Linear Algebra.</title><rect x="84.27" y="74" width="19.41" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="4"><title>0:26–0:43 · And the course web page, which has got a lot of exercises from the past, MATLAB codes, the syllabus for the course is...</title><rect x="106.86" y="74" width="53.87" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="6"><title>0:48–0:56 · And later we'll say which will give the web address for viewing these video tapes.</title><rect x="178.30" y="74" width="24.55" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="7"><title>0:57–0:59 · OK, so what's in the first lecture?</title><rect x="205.39" y="74" width="5.77" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="8"><title>1:00–1:12 · This is my plan, the fundamental problem of linear algebra, which is to solve a system of linear equations.</title><rect x="214.34" y="74" width="40.99" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="9"><title>1:13–1:20 · So let's start with the case when we have some number of equations, say n equations and n unknowns.</title><rect x="257.80" y="74" width="21.57" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="10"><title>1:21–1:23 · So an equal number of equations and unknowns.</title><rect x="282.22" y="74" width="7.04" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="11"><title>1:23–1:26 · That's the normal, nice case.</title><rect x="289.77" y="74" width="7.11" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="12"><title>1:26–1:36 · And what I want to do is with examples, of course, to describe first what I call the row picture.</title><rect x="296.88" y="74" width="33.25" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="13"><title>1:37–1:40 · That's the picture of one equation at a time.</title><rect x="332.41" y="74" width="9.96" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="14"><title>1:40–1:46 · It's the picture you've seen before in two by two equations where lines meet.</title><rect x="343.38" y="74" width="17.45" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="15"><title>1:46–1:48 · So in a minute you'll see lines meeting.</title><rect x="361.40" y="74" width="6.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="16"><title>1:49–1:54 · The second picture, I'll put a star beside that, because that's such an important one.</title><rect x="370.92" y="74" width="16.62" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="17"><title>1:54–2:00 · And maybe new to you is the picture a column at a time.</title><rect x="387.54" y="74" width="19.10" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="18"><title>2:01–2:04 · And those are the rows and columns of a matrix.</title><rect x="408.42" y="74" width="10.91" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="19"><title>2:05–2:12 · So the third, the algebra way to look at the problem is the matrix form in using a matrix that I'll call a.</title><rect x="421.42" y="74" width="23.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="20"><title>2:13–2:16 · OK, so can I do an example?</title><rect x="448.01" y="74" width="9.90" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="21"><title>2:17–2:24 · The whole semester will be examples and then see what's going on with the example.</title><rect x="459.81" y="74" width="23.86" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="23"><title>2:27–2:29 · Two equations, two unknowns.</title><rect x="493.12" y="74" width="4.57" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="24"><title>2:30–2:43 · So let me take 2x minus y equals 0, let's say, and minus x plus, say, 2y equals 3.</title><rect x="501.11" y="74" width="43.08" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="26"><title>2:53–2:56 · that is, what's the coefficient matrix?</title><rect x="574.39" y="74" width="10.79" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="27"><title>2:57–3:00 · The matrix that involves these numbers.</title><rect x="587.27" y="74" width="8.12" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="28"><title>3:00–3:04 · A matrix is just a rectangular array of numbers.</title><rect x="596.79" y="74" width="12.05" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="29"><title>3:04–3:07 · Here it's two rows and two columns.</title><rect x="609.54" y="74" width="8.44" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="30"><title>3:07–3:15 · So 2 and minus 1 in the first row, minus 1 and 2 in the second row, that's the matrix.</title><rect x="620.13" y="74" width="23.03" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="31"><title>3:16–3:22 · And the unknown, well, we've got two unknowns.</title><rect x="647.42" y="74" width="19.67" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="32"><title>3:23–3:31 · So we've got a vector x with two components, x and y, and we've got two right-hand sides that go into a vector 0, 3.</title><rect x="668.10" y="74" width="27.85" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="33"><title>3:33–3:40 · I couldn't resist writing the matrix form right, even before the pictures.</title><rect x="700.71" y="74" width="22.71" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="34"><title>3:41–3:44 · So I always will think of this as the matrix A.</title><rect x="725.07" y="74" width="9.83" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="35"><title>3:45–3:47 · The matrix of coefficients.</title><rect x="738.59" y="74" width="6.15" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="36"><title>3:48–3:49 · Then there's a vector of unknowns.</title><rect x="747.60" y="74" width="5.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="37"><title>3:50–3:51 · Here we've only got two unknowns.</title><rect x="753.69" y="74" width="4.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="38"><title>3:51–3:53 · Later we'll have any number of unknowns.</title><rect x="759.02" y="74" width="5.77" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="39"><title>3:54–4:06 · And that vector of unknowns, well, I'll often, I'll make that extra bold, and the right-hand side is also a vector th...</title><rect x="766.38" y="74" width="39.40" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="40"><title>4:08–4:20 · So linear equations are ax equal b, and the idea now is to solve this particular example and then step back to see th...</title><rect x="810.98" y="74" width="37.81" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="41"><title>4:20–4:22 · What's the picture for this example?</title><rect x="851.65" y="74" width="6.28" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="42"><title>4:23–4:23 · The row picture.</title><rect x="858.50" y="74" width="2.22" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="44"><title>4:30–4:33 · So that means I take one row at a time, and I'm drawing</title><rect x="881.15" y="74" width="11.74" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="45"><title>4:33–4:45 · here the x, y plane, and I'm going to put, plot all the points that satisfy that first equation.</title><rect x="892.89" y="74" width="37.81" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="46"><title>4:47–4:52 · So I'm looking at all the points that satisfy 2x minus y equals 0.</title><rect x="936.73" y="74" width="14.53" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="47"><title>4:53–4:59 · It's often good to start with which point on the horizontal line, on this horizontal line.</title><rect x="954.81" y="74" width="20.81" height="34" fill="#4c78a8"/></g>
+<g class="item pause"><title>0:00–0:08 · pausa de 8,7s removida</title><rect x="24.00" y="74" width="27.55" height="34" fill="#f2b134"/></g>
+<g class="item removed" data-sentence-id="5"><title>0:44–0:47 · And this is the first lecture, lecture one. — aplicada · repetition: Repetição da informação de abertura que já foi apresentada na frase [1].</title><rect x="164.72" y="74" width="9.01" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>1:01–1:02 · pausa de 1,4s removida</title><rect x="217.92" y="74" width="4.35" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>1:28–1:29 · pausa de 1,2s removida</title><rect x="303.30" y="74" width="3.87" height="34" fill="#f2b134"/></g>
+<g class="item removed" data-sentence-id="22"><title>2:25–2:26 · So take an example. — aplicada · filler: Frase de transição redundante antes de especificar o exemplo.</title><rect x="484.49" y="74" width="5.01" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>2:26–2:27 · pausa de 1,0s removida</title><rect x="489.50" y="74" width="3.28" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>2:45–2:47 · pausa de 1,7s removida</title><rect x="549.75" y="74" width="5.48" height="34" fill="#f2b134"/></g>
+<g class="item removed" data-sentence-id="25"><title>2:47–2:51 · Let me, I can even say right away, what's the matrix — aplicada · false_start: Início de frase reformulado na frase seguinte.</title><rect x="555.23" y="74" width="13.51" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>2:51–2:53 · pausa de 1,4s removida</title><rect x="568.74" y="74" width="4.34" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>3:32–3:33 · pausa de 1,5s removida</title><rect x="696.96" y="74" width="4.90" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>3:44–3:45 · pausa de 1,1s removida</title><rect x="736.42" y="74" width="3.53" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>4:06–4:08 · pausa de 1,3s removida</title><rect x="806.85" y="74" width="4.03" height="34" fill="#f2b134"/></g>
+<g class="item removed" data-sentence-id="43"><title>4:24–4:26 · So here comes the row picture. — aplicada · repetition: Repetição desnecessária do tópico 'row picture' logo após as frases [41] e [42].</title><rect x="864.34" y="74" width="5.33" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>4:28–4:30 · pausa de 1,1s removida</title><rect x="877.21" y="74" width="3.60" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>4:46–4:47 · pausa de 1,7s removida</title><rect x="931.45" y="74" width="5.37" height="34" fill="#f2b134"/></g>
+<g class="legend">
+<rect x="24" y="142" width="14" height="14" rx="2" fill="#4c78a8"/>
+<text x="44" y="153.5" font-size="12.5" fill="#1f2328">Fala mantida</text>
+<rect x="149" y="142" width="14" height="14" rx="2" fill="#f2b134"/>
+<text x="169" y="153.5" font-size="12.5" fill="#1f2328">Pausa removida</text>
+<rect x="287" y="142" width="14" height="14" rx="2" fill="#d1495b"/>
+<text x="307" y="153.5" font-size="12.5" fill="#1f2328">Frase removida (Diretor/revisão)</text>
+<rect x="550" y="142" width="14" height="14" rx="2" fill="#8e6cc0"/>
+<text x="570" y="153.5" font-size="12.5" fill="#1f2328">Remoção parcial ou não aplicada</text>
+<rect x="806" y="142" width="14" height="14" rx="2" fill="#e6e9ed"/>
+<text x="826" y="153.5" font-size="12.5" fill="#1f2328">Sem fala / pausa curta</text>
+</g>
+</svg>

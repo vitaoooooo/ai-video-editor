@@ -1,0 +1,613 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="502" viewBox="0 0 1000 502" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-label="palestra_rms.webm: 57:07 → 53:40 (6,0% removido)">
+<title>palestra_rms.webm: 57:07 → 53:40 (6,0% removido)</title>
+<rect class="background" x="0.5" y="0.5" width="999" height="501" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+<text x="24" y="32" font-size="18" font-weight="600" fill="#1f2328">palestra_rms.webm: 57:07 → 53:40 (6,0% removido)</text>
+<text x="24" y="54" font-size="12.5" fill="#57606a">6 frases removidas · 5 parciais/não aplicadas · 52 pausas de 1,0s ou mais · 198,2s de pausas no total</text>
+<rect class="track" x="24" y="74" width="952.00" height="34" fill="#e6e9ed"/>
+<line x1="24.00" y1="108" x2="24.00" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="24.00" y="125" font-size="11" fill="#57606a" text-anchor="start">0:00</text>
+<line x1="119.20" y1="108" x2="119.20" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="119.20" y="125" font-size="11" fill="#57606a" text-anchor="middle">1:00</text>
+<line x1="214.40" y1="108" x2="214.40" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="214.40" y="125" font-size="11" fill="#57606a" text-anchor="middle">2:00</text>
+<line x1="309.60" y1="108" x2="309.60" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="309.60" y="125" font-size="11" fill="#57606a" text-anchor="middle">3:00</text>
+<line x1="404.80" y1="108" x2="404.80" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="404.80" y="125" font-size="11" fill="#57606a" text-anchor="middle">4:00</text>
+<line x1="500.00" y1="108" x2="500.00" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="500.00" y="125" font-size="11" fill="#57606a" text-anchor="middle">5:00</text>
+<line x1="595.20" y1="108" x2="595.20" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="595.20" y="125" font-size="11" fill="#57606a" text-anchor="middle">6:00</text>
+<line x1="690.40" y1="108" x2="690.40" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="690.40" y="125" font-size="11" fill="#57606a" text-anchor="middle">7:00</text>
+<line x1="785.60" y1="108" x2="785.60" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="785.60" y="125" font-size="11" fill="#57606a" text-anchor="middle">8:00</text>
+<line x1="880.80" y1="108" x2="880.80" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="880.80" y="125" font-size="11" fill="#57606a" text-anchor="middle">9:00</text>
+<line x1="976.00" y1="108" x2="976.00" y2="113" stroke="#57606a" stroke-width="1"/>
+<text x="976.00" y="125" font-size="11" fill="#57606a" text-anchor="end">10:00</text>
+<rect class="track" x="24" y="138" width="952.00" height="34" fill="#e6e9ed"/>
+<line x1="24.00" y1="172" x2="24.00" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="24.00" y="189" font-size="11" fill="#57606a" text-anchor="start">10:00</text>
+<line x1="119.20" y1="172" x2="119.20" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="119.20" y="189" font-size="11" fill="#57606a" text-anchor="middle">11:00</text>
+<line x1="214.40" y1="172" x2="214.40" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="214.40" y="189" font-size="11" fill="#57606a" text-anchor="middle">12:00</text>
+<line x1="309.60" y1="172" x2="309.60" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="309.60" y="189" font-size="11" fill="#57606a" text-anchor="middle">13:00</text>
+<line x1="404.80" y1="172" x2="404.80" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="404.80" y="189" font-size="11" fill="#57606a" text-anchor="middle">14:00</text>
+<line x1="500.00" y1="172" x2="500.00" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="500.00" y="189" font-size="11" fill="#57606a" text-anchor="middle">15:00</text>
+<line x1="595.20" y1="172" x2="595.20" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="595.20" y="189" font-size="11" fill="#57606a" text-anchor="middle">16:00</text>
+<line x1="690.40" y1="172" x2="690.40" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="690.40" y="189" font-size="11" fill="#57606a" text-anchor="middle">17:00</text>
+<line x1="785.60" y1="172" x2="785.60" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="785.60" y="189" font-size="11" fill="#57606a" text-anchor="middle">18:00</text>
+<line x1="880.80" y1="172" x2="880.80" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="880.80" y="189" font-size="11" fill="#57606a" text-anchor="middle">19:00</text>
+<line x1="976.00" y1="172" x2="976.00" y2="177" stroke="#57606a" stroke-width="1"/>
+<text x="976.00" y="189" font-size="11" fill="#57606a" text-anchor="end">20:00</text>
+<rect class="track" x="24" y="202" width="952.00" height="34" fill="#e6e9ed"/>
+<line x1="24.00" y1="236" x2="24.00" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="24.00" y="253" font-size="11" fill="#57606a" text-anchor="start">20:00</text>
+<line x1="119.20" y1="236" x2="119.20" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="119.20" y="253" font-size="11" fill="#57606a" text-anchor="middle">21:00</text>
+<line x1="214.40" y1="236" x2="214.40" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="214.40" y="253" font-size="11" fill="#57606a" text-anchor="middle">22:00</text>
+<line x1="309.60" y1="236" x2="309.60" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="309.60" y="253" font-size="11" fill="#57606a" text-anchor="middle">23:00</text>
+<line x1="404.80" y1="236" x2="404.80" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="404.80" y="253" font-size="11" fill="#57606a" text-anchor="middle">24:00</text>
+<line x1="500.00" y1="236" x2="500.00" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="500.00" y="253" font-size="11" fill="#57606a" text-anchor="middle">25:00</text>
+<line x1="595.20" y1="236" x2="595.20" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="595.20" y="253" font-size="11" fill="#57606a" text-anchor="middle">26:00</text>
+<line x1="690.40" y1="236" x2="690.40" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="690.40" y="253" font-size="11" fill="#57606a" text-anchor="middle">27:00</text>
+<line x1="785.60" y1="236" x2="785.60" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="785.60" y="253" font-size="11" fill="#57606a" text-anchor="middle">28:00</text>
+<line x1="880.80" y1="236" x2="880.80" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="880.80" y="253" font-size="11" fill="#57606a" text-anchor="middle">29:00</text>
+<line x1="976.00" y1="236" x2="976.00" y2="241" stroke="#57606a" stroke-width="1"/>
+<text x="976.00" y="253" font-size="11" fill="#57606a" text-anchor="end">30:00</text>
+<rect class="track" x="24" y="266" width="952.00" height="34" fill="#e6e9ed"/>
+<line x1="24.00" y1="300" x2="24.00" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="24.00" y="317" font-size="11" fill="#57606a" text-anchor="start">30:00</text>
+<line x1="119.20" y1="300" x2="119.20" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="119.20" y="317" font-size="11" fill="#57606a" text-anchor="middle">31:00</text>
+<line x1="214.40" y1="300" x2="214.40" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="214.40" y="317" font-size="11" fill="#57606a" text-anchor="middle">32:00</text>
+<line x1="309.60" y1="300" x2="309.60" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="309.60" y="317" font-size="11" fill="#57606a" text-anchor="middle">33:00</text>
+<line x1="404.80" y1="300" x2="404.80" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="404.80" y="317" font-size="11" fill="#57606a" text-anchor="middle">34:00</text>
+<line x1="500.00" y1="300" x2="500.00" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="500.00" y="317" font-size="11" fill="#57606a" text-anchor="middle">35:00</text>
+<line x1="595.20" y1="300" x2="595.20" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="595.20" y="317" font-size="11" fill="#57606a" text-anchor="middle">36:00</text>
+<line x1="690.40" y1="300" x2="690.40" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="690.40" y="317" font-size="11" fill="#57606a" text-anchor="middle">37:00</text>
+<line x1="785.60" y1="300" x2="785.60" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="785.60" y="317" font-size="11" fill="#57606a" text-anchor="middle">38:00</text>
+<line x1="880.80" y1="300" x2="880.80" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="880.80" y="317" font-size="11" fill="#57606a" text-anchor="middle">39:00</text>
+<line x1="976.00" y1="300" x2="976.00" y2="305" stroke="#57606a" stroke-width="1"/>
+<text x="976.00" y="317" font-size="11" fill="#57606a" text-anchor="end">40:00</text>
+<rect class="track" x="24" y="330" width="952.00" height="34" fill="#e6e9ed"/>
+<line x1="24.00" y1="364" x2="24.00" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="24.00" y="381" font-size="11" fill="#57606a" text-anchor="start">40:00</text>
+<line x1="119.20" y1="364" x2="119.20" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="119.20" y="381" font-size="11" fill="#57606a" text-anchor="middle">41:00</text>
+<line x1="214.40" y1="364" x2="214.40" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="214.40" y="381" font-size="11" fill="#57606a" text-anchor="middle">42:00</text>
+<line x1="309.60" y1="364" x2="309.60" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="309.60" y="381" font-size="11" fill="#57606a" text-anchor="middle">43:00</text>
+<line x1="404.80" y1="364" x2="404.80" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="404.80" y="381" font-size="11" fill="#57606a" text-anchor="middle">44:00</text>
+<line x1="500.00" y1="364" x2="500.00" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="500.00" y="381" font-size="11" fill="#57606a" text-anchor="middle">45:00</text>
+<line x1="595.20" y1="364" x2="595.20" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="595.20" y="381" font-size="11" fill="#57606a" text-anchor="middle">46:00</text>
+<line x1="690.40" y1="364" x2="690.40" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="690.40" y="381" font-size="11" fill="#57606a" text-anchor="middle">47:00</text>
+<line x1="785.60" y1="364" x2="785.60" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="785.60" y="381" font-size="11" fill="#57606a" text-anchor="middle">48:00</text>
+<line x1="880.80" y1="364" x2="880.80" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="880.80" y="381" font-size="11" fill="#57606a" text-anchor="middle">49:00</text>
+<line x1="976.00" y1="364" x2="976.00" y2="369" stroke="#57606a" stroke-width="1"/>
+<text x="976.00" y="381" font-size="11" fill="#57606a" text-anchor="end">50:00</text>
+<rect class="track" x="24" y="394" width="677.77" height="34" fill="#e6e9ed"/>
+<line x1="24.00" y1="428" x2="24.00" y2="433" stroke="#57606a" stroke-width="1"/>
+<text x="24.00" y="445" font-size="11" fill="#57606a" text-anchor="start">50:00</text>
+<line x1="119.20" y1="428" x2="119.20" y2="433" stroke="#57606a" stroke-width="1"/>
+<text x="119.20" y="445" font-size="11" fill="#57606a" text-anchor="middle">51:00</text>
+<line x1="214.40" y1="428" x2="214.40" y2="433" stroke="#57606a" stroke-width="1"/>
+<text x="214.40" y="445" font-size="11" fill="#57606a" text-anchor="middle">52:00</text>
+<line x1="309.60" y1="428" x2="309.60" y2="433" stroke="#57606a" stroke-width="1"/>
+<text x="309.60" y="445" font-size="11" fill="#57606a" text-anchor="middle">53:00</text>
+<line x1="404.80" y1="428" x2="404.80" y2="433" stroke="#57606a" stroke-width="1"/>
+<text x="404.80" y="445" font-size="11" fill="#57606a" text-anchor="middle">54:00</text>
+<line x1="500.00" y1="428" x2="500.00" y2="433" stroke="#57606a" stroke-width="1"/>
+<text x="500.00" y="445" font-size="11" fill="#57606a" text-anchor="middle">55:00</text>
+<line x1="595.20" y1="428" x2="595.20" y2="433" stroke="#57606a" stroke-width="1"/>
+<text x="595.20" y="445" font-size="11" fill="#57606a" text-anchor="middle">56:00</text>
+<line x1="690.40" y1="428" x2="690.40" y2="433" stroke="#57606a" stroke-width="1"/>
+<text x="690.40" y="445" font-size="11" fill="#57606a" text-anchor="middle">57:00</text>
+<g class="item kept" data-sentence-id="0"><title>0:07–0:13 · So as we're saying our problem is the user is the final user is it's</title><rect x="36.66" y="74" width="8.12" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="1"><title>0:14–0:26 · People are In a way train to use windows and train you say the final user. Do you mean the Person that is sitting beh...</title><rect x="46.72" y="74" width="18.79" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="2"><title>0:30–0:42 · However you select them and you can train them. Yeah, so if you take a long-term view The point is you're you face an...</title><rect x="72.33" y="74" width="18.47" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="3"><title>0:42–0:45 · Moving your operation towards freedom</title><rect x="92.00" y="74" width="4.13" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="4"><title>0:46–0:49 · so instead of giving up and</title><rect x="97.34" y="74" width="5.59" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="5"><title>0:50–0:55 · Just basically lying down in front of this obstacle. You can say I will</title><rect x="103.81" y="74" width="8.54" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="6"><title>0:55–1:02 · Overcome this obstacle and you can start taking the necessary steps. It might take a</title><rect x="112.35" y="74" width="11.55" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="7"><title>1:03–1:09 · Year to train a few of these people to switch to free software but you can make it happen and</title><rect x="125.26" y="74" width="9.77" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="8"><title>1:11–1:19 · It's vital that you do so because by using non-free software, you're endorsing and injustice</title><rect x="136.65" y="74" width="13.01" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="9"><title>1:20–1:26 · by showing that you'll make the effort to move to free software and that that means teaching others and</title><rect x="151.09" y="74" width="10.66" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="10"><title>1:28–1:37 · Then you can talk about it to the public That's helping the free software movement liberate cyberspace mm-hmm</title><rect x="163.88" y="74" width="14.72" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="11"><title>1:37–1:43 · Yeah, as I was saying we do use and and we're increasing the use of free software</title><rect x="178.60" y="74" width="9.55" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="12"><title>1:44–1:48 · as I said we have a Some of our servers</title><rect x="189.43" y="74" width="6.44" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="13"><title>1:49–2:00 · Use free software. Well, that's good. I can't imagine why anyone wants to run a server that runs a Non-free system. I...</title><rect x="197.01" y="74" width="17.64" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="14"><title>2:00–2:13 · Basically businesses that know what they're doing. They all run GNU slash linux or maybe some other free system Why e...</title><rect x="215.92" y="74" width="19.80" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="15"><title>2:13–2:19 · But you should go beyond the servers because it's the computer that a person is</title><rect x="236.07" y="74" width="9.58" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="16"><title>2:20–2:30 · working at That affects that person's freedom. Mm-hmm. So It seemed ironic to me that free software had such a</title><rect x="246.70" y="74" width="16.60" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="17"><title>2:31–2:40 · giant success in Servers and super computers and yet the area that's most important is people's</title><rect x="264.33" y="74" width="13.76" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="18"><title>2:40–2:46 · laptops or desktop PCs and of course mobile devices also</title><rect x="278.09" y="74" width="9.30" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="19"><title>2:46–2:53 · because our goal is to liberate everyone in cyberspace from the</title><rect x="288.83" y="74" width="10.33" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="20"><title>2:54–3:03 · Unjust power of some software developer or software owner that is controlling Whoever get access to whatever uses the...</title><rect x="300.18" y="74" width="15.33" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="21"><title>3:03–3:13 · We're basically that's what a non-free program does. That's an injustice It puts the users under the power of the owner</title><rect x="315.50" y="74" width="15.58" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="22"><title>3:14–3:19 · And oftentimes people get confused. They said well, I downloaded for free</title><rect x="332.89" y="74" width="7.58" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="23"><title>3:21–3:28 · That's not that's not really sometimes true because you can download for free, but that doesn't mean</title><rect x="343.78" y="74" width="10.73" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="24"><title>3:28–3:35 · Software leave me. Yes, remember Free software is a matter of freedom not price</title><rect x="355.45" y="74" width="10.44" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="25"><title>3:35–3:41 · Which is why it's much better to say it in Portuguese if you say software leave me</title><rect x="365.89" y="74" width="9.23" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="26"><title>3:41–3:50 · People know you're not saying software gratis. Yes, we're not talking about the price. That's a minor detail Yeah, I ...</title><rect x="376.14" y="74" width="13.61" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="27"><title>3:51–3:56 · Money should be around in order for people to maintain themselves and keep doing</title><rect x="391.00" y="74" width="8.25" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="28"><title>3:57–4:08 · Society and we're not trying to change that. Yeah, that's not the issue Is not freedom to people to choose and not to...</title><rect x="401.40" y="74" width="17.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="29"><title>4:08–4:14 · When you talk about freedom to choose that diminishes the meaning of freedom</title><rect x="418.54" y="74" width="9.77" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="30"><title>4:15–4:24 · Because if you have it because if you have a choice between several proprietary programs That means you have it you c...</title><rect x="429.27" y="74" width="14.50" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="31"><title>4:25–4:33 · But freedom is not having a master having no master. That means you can control your life</title><rect x="445.13" y="74" width="12.22" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="32"><title>4:33–4:40 · So if I were offered a choice between 50 different proprietary programs</title><rect x="457.35" y="74" width="11.39" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="33"><title>4:40–4:48 · I'd say none of them because each one would subjugate me to somebody and I don't care who the somebody is</title><rect x="468.74" y="74" width="12.41" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="34"><title>4:48–4:52 · What I insist on is freedom and I will work for years</title><rect x="481.15" y="74" width="7.71" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="35"><title>4:52–5:01 · So that I can avoid using any of those 50. That's why talking about a monopoly is a distraction</title><rect x="488.86" y="74" width="13.45" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="36"><title>5:02–5:13 · Microsoft for a while was a quasi monopoly Hmm and yes, it's bad to allow such quasi monopolies to exist in any area ...</title><rect x="503.87" y="74" width="18.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="37"><title>5:13–5:20 · In fact, it's bad to allow any area of business to be so concentrated that there are only five</title><rect x="521.96" y="74" width="11.33" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="38"><title>5:21–5:24 · Competitors that's already too much concentration</title><rect x="534.40" y="74" width="4.86" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="39"><title>5:25–5:34 · Governments have a duty to make sure that they that that can't happen and to break up those companies One way or anot...</title><rect x="540.11" y="74" width="15.30" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="40"><title>5:35–5:41 · But that's a totally different issue the injustice of a non-free program is that</title><rect x="556.55" y="74" width="8.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="41"><title>5:41–5:48 · What it does is controlled by the owner and it doesn't matter whether that owner controls</title><rect x="566.39" y="74" width="10.60" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="42"><title>5:50–6:04 · 500 million users or five users. It's wrong either way and Free software means the users control the program. I bette...</title><rect x="580.06" y="74" width="22.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="43"><title>6:04–6:13 · Yeah, sure Free software software leave it is software that respects users freedom and community</title><rect x="603.01" y="74" width="12.82" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="44"><title>6:15–6:23 · With any program there are two possibilities either the users control the program or the program controls the users</title><rect x="619.14" y="74" width="12.92" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="45"><title>6:24–6:30 · It's always one or the other when the users control the program That's free software</title><rect x="633.80" y="74" width="9.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="46"><title>6:32–6:38 · Because that means that they can make that program do their computing activities The way they wish</title><rect x="646.12" y="74" width="10.73" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="47"><title>6:38–6:48 · If the users don't control the program then automatically the program controls the users and the owner controls the p...</title><rect x="656.84" y="74" width="15.36" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="48"><title>6:48–6:55 · So that non-free program just because it's non-free gives the owner power over the users</title><rect x="672.20" y="74" width="11.27" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="49"><title>6:56–7:05 · This should never happen. It's wrong And our goal in the free software movement is to put an end to that</title><rect x="684.80" y="74" width="13.61" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="50"><title>7:05–7:15 · The users should always control the software they use Now controlling the software actually there are two kinds of co...</title><rect x="698.41" y="74" width="16.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="51"><title>7:15–7:21 · One user having control over what the program does and there's collective control</title><rect x="715.39" y="74" width="9.62" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="52"><title>7:22–7:29 · Meaning that users in any sort of group can make the program do what they want and they're both necessary</title><rect x="725.96" y="74" width="11.46" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="53"><title>7:29–7:36 · You have to have individual control and collective control and this requires the four essential freedoms</title><rect x="737.41" y="74" width="11.61" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="54"><title>7:36–7:48 · These freedoms are what give the users control over the program Freedom zero is the freedom to run the program howeve...</title><rect x="749.03" y="74" width="18.21" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="55"><title>7:49–7:56 · Freedom one is the freedom to study the program source code and change it so it does your computing the way you wish</title><rect x="768.61" y="74" width="12.15" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="56"><title>7:56–8:05 · Now these two freedoms give each user separately control over the program You could make the program do anything that...</title><rect x="780.76" y="74" width="14.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="57"><title>8:05–8:13 · But that's not enough first of all most users are not programmers They don't know how to change source code</title><rect x="794.85" y="74" width="12.76" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="58"><title>8:13–8:20 · But even if you are a programmer you use so many programs typically you wouldn't have time to study</title><rect x="807.61" y="74" width="11.20" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="59"><title>8:20–8:30 · Those programs and make all the changes yourself that you want so your control would be everywhere But it would only ...</title><rect x="818.81" y="74" width="14.82" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="60"><title>8:30–8:35 · Then what we need for it. We need therefore also</title><rect x="834.49" y="74" width="6.70" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="61"><title>8:35–8:42 · collective control collective control allows the non programmer users to participate in the control too</title><rect x="841.97" y="74" width="11.80" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="62"><title>8:42–8:50 · Because if a group of users want a certain change they can get together and they can then and some of them</title><rect x="853.78" y="74" width="12.31" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="63"><title>8:50–8:57 · Programmers and then they can all decide together what changes to make and the programmers will do it</title><rect x="866.09" y="74" width="10.15" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="64"><title>8:57–9:07 · Suppose there's nobody in the group that is a programmer They can all put together some money and hire a programmer t...</title><rect x="877.45" y="74" width="14.63" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="65"><title>9:07–9:16 · This means that groups of users can make big changes happen or small changes I see yeah, we</title><rect x="892.08" y="74" width="15.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="66"><title>9:21–9:26 · When the GNU project started and and how this</title><rect x="914.99" y="74" width="7.11" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="67"><title>9:26–9:36 · How this all this whole thing came to you and you say, okay, it's time to</title><rect x="923.47" y="74" width="14.76" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="68"><title>9:36–9:44 · to 1970s I worked for MIT and we were in a software sharing community</title><rect x="938.22" y="74" width="12.47" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="69"><title>9:44–9:51 · In 1971 when I started that was not unusual. There was a lot of free software still</title><rect x="950.69" y="74" width="11.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="70"><title>9:51–9:57 · but over the 70s the operating systems became proprietary by</title><rect x="961.83" y="74" width="10.73" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="71"><title>9:58–10:06 · 1980 we were basically the only place where there was a free operating system We had written it most of it ourselves</title><rect x="974.05" y="74" width="1.95" height="34" fill="#4c78a8"/><rect x="24.00" y="138" width="10.49" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="72"><title>10:06–10:12 · But we had got some pieces from other places back earlier in the 70s</title><rect x="34.49" y="138" width="8.85" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="73"><title>10:12–10:24 · And then that community died the computer our free operating system was written for became obsolete It was not portab...</title><rect x="44.36" y="138" width="18.37" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="74"><title>10:25–10:32 · Basically, it was rare to make a portable operating system. It wasn't the obvious. It was not obvious how to do that ...</title><rect x="64.22" y="138" width="11.90" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="75"><title>10:35–10:43 · So I found myself facing a future of proprietary software which basically meant</title><rect x="79.61" y="138" width="12.79" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="76"><title>10:44–10:52 · Disgust and shame a Future that was not work offered me nothing to be worth living</title><rect x="94.34" y="138" width="12.66" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="77"><title>10:53–11:01 · So I just said I decided I was going to fix this problem I was going to make another software sharing community</title><rect x="108.24" y="138" width="13.96" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="78"><title>11:02–11:11 · But we couldn't have a software sharing community unless we had free software that was sufficient for everything We n...</title><rect x="123.37" y="138" width="14.34" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="79"><title>11:12–11:16 · That didn't exist. Well, it was my job</title><rect x="139.30" y="138" width="5.36" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="80"><title>11:16–11:23 · That was my duty. What I say is that this problem fell into my lap. I</title><rect x="145.52" y="138" width="11.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="81"><title>11:23–11:29 · Could do something about this problem and I knew no one else was going to try and</title><rect x="156.69" y="138" width="9.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="82"><title>11:32–11:36 · So I know I think it started with GNU and then well reply to</title><rect x="170.01" y="138" width="6.60" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="83"><title>11:36–11:46 · Yes, and no, I had to decide what kind of system it would be I concluded that the best kind of system would be something</title><rect x="177.40" y="138" width="15.11" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="84"><title>11:47–11:52 · Compatible with the UNIX operating system because it had some technical</title><rect x="193.77" y="138" width="8.12" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="85"><title>11:52–11:59 · advantages had some clean design aspects and it was very widely used so</title><rect x="202.75" y="138" width="10.88" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="86"><title>12:00–12:08 · Once I decided to make a UNIX like operating system Then according to the traditions of my community</title><rect x="214.84" y="138" width="13.01" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="87"><title>12:08–12:14 · The name you give it is a recursive acronym that says this system is not the other</title><rect x="227.85" y="138" width="9.62" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="88"><title>12:14–12:21 · So the recursive acronym I found was GNU which stands for GNU is not UNIX and</title><rect x="237.47" y="138" width="11.42" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="89"><title>12:22–12:32 · Then I announced the project and asked people to join in and help Little by little people started joining in and writ...</title><rect x="250.26" y="138" width="15.64" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="90"><title>12:33–12:43 · Because I realized if I had to write them all myself it would take decades perhaps But that with other people joining...</title><rect x="267.46" y="138" width="16.18" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="91"><title>12:45–12:50 · And it did In 1992</title><rect x="285.91" y="138" width="8.20" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="92"><title>12:51–13:01 · there was one important gap in the GNU system and The program Linux was was made free software in 1992</title><rect x="295.99" y="138" width="16.72" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="93"><title>13:02–13:10 · It first appeared in 1991, but then it was non-free, but in 92 Linux became free and</title><rect x="314.12" y="138" width="12.31" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="94"><title>13:11–13:22 · Using Linux to fill the last gap in GNU. We got a complete system, which was basically the GNU system plus Linux as a...</title><rect x="327.51" y="138" width="17.61" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="95"><title>13:23–13:30 · Completing the GNU. Yeah, so at that point it was possible for the first time to</title><rect x="347.03" y="138" width="11.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="96"><title>13:31–13:39 · To buy a PC and run it in freedom and the goal of course is</title><rect x="359.18" y="138" width="13.61" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="97"><title>13:40–13:43 · All software should be free</title><rect x="374.26" y="138" width="4.19" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="98"><title>13:44–13:47 · Users should have control of their own computing so that</title><rect x="379.52" y="138" width="6.00" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="99"><title>13:48–13:58 · Companies or other software developers don't have power over people. Yeah As saying this It reminds me of something here</title><rect x="386.44" y="138" width="16.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="100"><title>13:58–14:09 · Of course, this is not perfect, but it's it's a start in Brazil. There is a government program called software libert...</title><rect x="403.13" y="138" width="16.95" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="101"><title>14:11–14:19 · The government encourages the agencies cities the states whatever to use free software</title><rect x="422.62" y="138" width="12.44" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="102"><title>14:20–14:35 · Not only as like a Text editor or anything like an operating system being the free software Do you think governments ...</title><rect x="437.47" y="138" width="23.20" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="104"><title>14:37–14:45 · Incentivate people to The government exists for the people</title><rect x="465.01" y="138" width="12.19" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="105"><title>14:46–14:54 · Everything it does if it is legitimate, that's because it's being done for the people well every public agency</title><rect x="479.36" y="138" width="11.61" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="106"><title>14:54–15:06 · Has a responsibility to the people to maintain its full control of its computing To make sure that it doesn't fall in...</title><rect x="490.97" y="138" width="19.04" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="107"><title>15:07–15:17 · However, if the agency uses a non-free program that computing has fallen into private hands, this is wrong. This is a</title><rect x="511.34" y="138" width="16.72" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="108"><title>15:17–15:24 · Failure to comply with their responsibility to the people all public agencies</title><rect x="528.07" y="138" width="10.03" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="109"><title>15:24–15:31 · Should be making steady progress at getting rid of all non-free software from their acts</title><rect x="538.92" y="138" width="10.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="110"><title>15:31–15:42 · activities now With something as big as a government that's going to take time It might take 20 years, but I'm sure i...</title><rect x="549.65" y="138" width="18.02" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="111"><title>15:45–15:46 · Take steps</title><rect x="572.02" y="138" width="2.22" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="112"><title>15:47–15:58 · Take steps that are big enough so that in 20 years you reach the intended destination And that requires more than jus...</title><rect x="575.92" y="138" width="16.53" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="113"><title>15:59–16:09 · Take a look at genu.org slash government for the policies We propose to bring about this migration over time</title><rect x="593.98" y="138" width="15.99" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="114"><title>16:09–16:15 · but it has to be mandatory on every agency at every level and</title><rect x="609.97" y="138" width="9.44" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="115"><title>16:16–16:21 · This means that public agencies should not be allowed</title><rect x="621.49" y="138" width="7.62" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="116"><title>16:22–16:25 · to use non-free software without</title><rect x="630.98" y="138" width="4.95" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="117"><title>16:26–16:38 · Demonstrating that they need an exception and the exception should last for a limited period of time like maybe five ...</title><rect x="637.23" y="138" width="18.75" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="118"><title>16:39–16:57 · The government should have funds for development of free replacement software. So every Every year it should look at ...</title><rect x="658.37" y="138" width="28.62" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="119"><title>16:58–17:03 · What free program could we write so that in a few years when it's working a</title><rect x="687.88" y="138" width="8.35" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="120"><title>17:04–17:11 · Lot of these exceptions will no longer be renewable because there will be a free program to use</title><rect x="697.90" y="138" width="10.57" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="121"><title>17:12–17:18 · But also the government has to run the computers that do its computing</title><rect x="709.74" y="138" width="9.33" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="122"><title>17:18–17:25 · There is a modern foolish practice, which nobody should do. It's extremely foolish to do this</title><rect x="720.21" y="138" width="9.90" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="124"><title>17:27–17:38 · Service as a software substitute If somebody says I offer this service, I'll do that computing job for you. Send me a...</title><rect x="734.37" y="138" width="17.23" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="125"><title>17:38–17:42 · I'll do the computing and I'll send you the results</title><rect x="751.60" y="138" width="5.71" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="126"><title>17:42–17:44 · That's a trap for fools</title><rect x="758.52" y="138" width="3.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="127"><title>17:45–17:55 · because If you send your data to that service, you don't control what it's doing. It might as well be a non-free program</title><rect x="762.70" y="138" width="15.23" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="128"><title>17:55–18:04 · So the state must also completely reject the idea of entrusting its computing to computers run by</title><rect x="779.21" y="138" width="14.06" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="129"><title>18:05–18:11 · Something other than the state and you should refuse to entrust your computing to</title><rect x="794.06" y="138" width="9.30" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="130"><title>18:11–18:17 · Computers run by anyone other than you where you could mean you personally or it could mean the newspaper</title><rect x="803.35" y="138" width="10.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="131"><title>18:18–18:26 · Anyone basically the same principle applies to except that if you lose control over your computing You're the victim</title><rect x="815.45" y="138" width="12.50" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="132"><title>18:26–18:41 · But if a public agency loses control over its computing the victim is not the public agency It's the people the peopl...</title><rect x="827.95" y="138" width="23.07" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="133"><title>18:41–18:52 · It lose the agency has no control over what it's doing. It can't be accountable this is a general injustice of privat...</title><rect x="851.05" y="138" width="17.87" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="134"><title>18:53–18:54 · provision of some</title><rect x="869.71" y="138" width="2.00" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="135"><title>18:55–18:58 · Public service is handed to a company</title><rect x="873.30" y="138" width="5.52" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="136"><title>18:59–19:07 · The employees of that company become much less accountable So then the boss can tell them to cheat the public</title><rect x="879.74" y="138" width="13.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="137"><title>19:07–19:12 · while paying them too little so that it doesn't really get good people and</title><rect x="892.91" y="138" width="7.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="138"><title>19:13–19:21 · This is predictable and there's almost nothing the people can do about it except say no more privatization</title><rect x="902.71" y="138" width="12.12" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="139"><title>19:21–19:26 · Bring all these public services back to state employees</title><rect x="915.66" y="138" width="7.08" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="140"><title>19:28–19:38 · Well manager that will do the job with the way Because you can be sure that the company that gets the state contract ...</title><rect x="925.62" y="138" width="16.47" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="141"><title>19:38–19:47 · Because that's the profitable way to handle such a thing The only way in which companies do a good job for the public...</title><rect x="942.09" y="138" width="14.28" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="142"><title>19:47–19:58 · When the state has nothing to do with it if there's something that you just want to buy and there's a competitive mar...</title><rect x="956.37" y="138" width="16.95" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="143"><title>19:58–20:09 · With the good products or good services because you'll drop whichever one doesn't but when the state gives a contract...</title><rect x="973.95" y="138" width="2.05" height="34" fill="#4c78a8"/><rect x="24.00" y="202" width="15.57" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="144"><title>20:09–20:19 · There is no competition there not in any effective way what we need for a public service is clear accountability and ...</title><rect x="39.57" y="202" width="15.96" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="145"><title>20:20–20:29 · governments have made laws to ensure accountability for the public employees let do things for people and</title><rect x="56.32" y="202" width="13.80" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="146"><title>20:30–20:40 · If they're not doing it, right, there's something the public can do Yeah, on that matter. I was I had a bunch of ques...</title><rect x="71.77" y="202" width="16.53" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="148"><title>20:42–20:52 · This all the way which I think is more interesting actually didn't know all those questions that I have brought Do yo...</title><rect x="91.77" y="202" width="16.06" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="149"><title>20:53–20:58 · In some way when you have a whole bunch of computers using</title><rect x="108.51" y="202" width="7.57" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="150"><title>20:58–21:05 · Same software same operating system. They are more likely to be exposed to</title><rect x="117.22" y="202" width="11.27" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="151"><title>21:06–21:12 · to what happened in the elections were a 50 million</title><rect x="129.66" y="202" width="9.81" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="152"><title>21:14–21:25 · People gather personal information Used actually that has nothing to do. They have nothing to do with each other Are ...</title><rect x="142.44" y="202" width="17.64" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="153"><title>21:26–21:38 · I'm not sure what you're talking about. You say 50 million people No, that's not Nothing to do with the operating On ...</title><rect x="161.39" y="202" width="18.18" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="154"><title>21:39–21:47 · Using Windows some of them which is an injustice Yeah, some of them were using Mac OS which is an even nastier injust...</title><rect x="181.48" y="202" width="13.36" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="155"><title>21:48–21:49 · We're using</title><rect x="196.49" y="202" width="1.59" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="156"><title>21:52–22:01 · Operating system had nothing to do with that particular wrong that was done to people and that wrong was collecting p...</title><rect x="202.23" y="202" width="14.47" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="157"><title>22:01–22:12 · I believe we need laws to stop collection of personal data where it's done by companies or by the state It's dangerou...</title><rect x="216.70" y="202" width="17.33" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="158"><title>22:13–22:23 · Saying that you need to ask for the user's consent. That's no protection It is trivial for companies to manufacture c...</title><rect x="235.61" y="202" width="16.47" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="159"><title>22:24–22:28 · Consent in order to use your product Consent</title><rect x="254.02" y="202" width="5.97" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="160"><title>22:31–22:42 · The idea of hiding it in the fine print in some long contract that users agree to without reading So we just need law...</title><rect x="264.30" y="202" width="17.42" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="161"><title>22:43–22:46 · You're not allowed to get this data unless you can prove</title><rect x="283.09" y="202" width="5.52" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="162"><title>22:47–22:55 · that you have some legitimate grounds for asking for it and That you couldn't pass up that this job</title><rect x="289.94" y="202" width="12.79" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="163"><title>22:56–23:06 · Possibly be done in some other way without asking for that data And it doesn't matter if users consent. Yeah, I was b...</title><rect x="303.65" y="202" width="15.68" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="164"><title>23:06–23:15 · 50 million that happened with Facebook and Cambridge Analytica and this sharing of a personal information basically to</title><rect x="320.31" y="202" width="14.66" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="165"><title>23:16–23:23 · To come to a point that people sometimes they're not aware of they're doing and people are not aware of</title><rect x="336.27" y="202" width="10.41" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="166"><title>23:23–23:31 · Where they're going as you said you send your information to somebody else to do the job that you could be doing your...</title><rect x="346.68" y="202" width="13.39" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="167"><title>23:38–23:41 · Things that was doing something different</title><rect x="370.89" y="202" width="4.22" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="168"><title>23:41–23:52 · Facebook doesn't say we'll do your computing for you. Just send all the data and we'll do the computing job What Face...</title><rect x="376.07" y="202" width="16.72" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="169"><title>23:52–23:59 · Individuals own computing now Instagram. I think I've never seen it. I don't know much detail about what it does</title><rect x="392.79" y="202" width="11.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="170"><title>24:00–24:11 · I think that Instagram started as a photo editing service You would send a photo and then you'd say do these edits on...</title><rect x="405.13" y="202" width="17.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="171"><title>24:11–24:20 · Mm-hmm. All right, so face so Instagram I think was an instance of service as a software substitute, which was wrong</title><rect x="422.30" y="202" width="14.31" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="172"><title>24:20–24:30 · Facebook is not an instance of that But it's doing something wrong namely collecting lots of data about people and we...</title><rect x="437.72" y="202" width="14.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="173"><title>24:30–24:41 · Such disservices do not exist, but you know in order to understand these issues We have to see which issue which diff...</title><rect x="452.73" y="202" width="18.44" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="174"><title>24:43–24:46 · Collecting a lot of personal data is wrong in one way and</title><rect x="473.07" y="202" width="6.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="175"><title>24:47–24:54 · A service that does people's own computing for them is wrong in a different way</title><rect x="480.47" y="202" width="10.63" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="176"><title>24:54–25:01 · So Instagram if my understanding of what it does is correct is wrong in both ways</title><rect x="491.10" y="202" width="10.54" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="177"><title>25:02–25:08 · Yeah, and I was had this</title><rect x="503.60" y="202" width="9.27" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="178"><title>25:09–25:12 · Idea here, how does this copyright?</title><rect x="515.37" y="202" width="5.11" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="179"><title>25:14–25:22 · How how it works with the free software and how The paid software copyrights, but please don't compare free and paid</title><rect x="522.55" y="202" width="13.87" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="180"><title>25:23–25:29 · Leavey or now leavey. No, no what I'm saying is not free is with</title><rect x="537.84" y="202" width="8.73" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="181"><title>25:29–25:41 · Non-pay I'm saying free software and you said paid software. Yeah to contrast about the the contrast with free softwa...</title><rect x="546.57" y="202" width="18.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="182"><title>25:41–25:51 · User subjugating software whether it's pick whether users pay to use it or not. Remember there are many non-free prog...</title><rect x="566.18" y="202" width="15.01" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="183"><title>25:51–25:59 · That are gratis, but they're still unjust because the users don't control them. Yeah, all right So</title><rect x="582.21" y="202" width="12.79" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="184"><title>26:00–26:06 · What again was your question exactly right? How do you hear it? Yeah, basically copyright</title><rect x="596.26" y="202" width="9.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="185"><title>26:07–26:13 · Doesn't is not an important a crucial problem. Here's why</title><rect x="607.46" y="202" width="8.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="186"><title>26:14–26:22 · There are various methods that are used to make programs non-free the principle technical method is</title><rect x="617.68" y="202" width="13.31" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="188"><title>26:26–26:32 · Well, they're they can technically make it impossible to change a program by having the product sign</title><rect x="637.17" y="202" width="10.28" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="189"><title>26:33–26:39 · Check for a signature on the code and it refuses to run anything modified and then the principle</title><rect x="648.40" y="202" width="10.00" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="190"><title>26:42–26:52 · Legal method is by making users agree to a contract Because that gives them a lot more power than copyright does they...</title><rect x="661.94" y="202" width="16.39" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="191"><title>26:53–26:58 · Nasty requirements on a user through a contract which they can't impose through copyright</title><rect x="679.85" y="202" width="8.85" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="192"><title>26:59–27:10 · The secondary methods well, there's a technical one which is not publishing the source code and There and the seconda...</title><rect x="690.07" y="202" width="17.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="193"><title>27:12–27:20 · Meanwhile Free software gets along okay with copyright as long as the contributors to the program</title><rect x="709.77" y="202" width="12.60" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="194"><title>27:21–27:30 · Agree to contribute to it. Well, they hold the copyright. They can do that and then free software licenses are based ...</title><rect x="724.15" y="202" width="14.18" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="196"><title>27:34–27:44 · declarations by the copyright holders of this code where they say We give you the free the four freedoms and here are...</title><rect x="745.38" y="202" width="15.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="197"><title>27:45–27:53 · So copyright does not generally get in our way It's it's a guarantee that the software will</title><rect x="762.20" y="202" width="13.55" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="198"><title>27:54–28:05 · No, it doesn't guarantee anything. It's just that copyright is something we have to take in a take account of and we ...</title><rect x="777.08" y="202" width="17.42" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="200"><title>28:08–28:12 · We it also gives us the ability to do copy left</title><rect x="799.67" y="202" width="6.41" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="201"><title>28:13–28:23 · Copy left is a way of using copyright to defend freedom for every user in Portuguese. It's a Iscardo outdoor owl</title><rect x="807.48" y="202" width="16.15" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="202"><title>28:24–28:30 · It's the same joke you said the point is with copy left we say</title><rect x="825.03" y="202" width="9.74" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="203"><title>28:32–28:35 · We give you the right to redistribute this</title><rect x="836.52" y="202" width="5.68" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="204"><title>28:36–28:45 · But you have to redistribute it the right way You have to pass it along with the same license and with the source cod...</title><rect x="843.12" y="202" width="15.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="205"><title>28:45–28:52 · The license covers the additions as well. You have to distribute them in the same way same way and that way</title><rect x="858.25" y="202" width="11.04" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="206"><title>28:53–29:05 · we We legally require the middleman To pass along the same freedom to the following users and thus</title><rect x="870.50" y="202" width="18.72" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="207"><title>29:06–29:16 · When this works properly when we can when governments enforce it we can make sure That the users all get freedom</title><rect x="891.35" y="202" width="16.41" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="208"><title>29:18–29:27 · As I'm not an expert on computing and software and so on. I have a basic knowledge</title><rect x="910.55" y="202" width="13.39" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="209"><title>29:29–29:38 · Came to my mind here and I have my bad lot of people to ask how does Safety or or how can you control?</title><rect x="927.97" y="202" width="13.49" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="210"><title>29:39–29:41 · Whatever gets into your computer</title><rect x="943.24" y="202" width="3.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="211"><title>29:43–29:50 · Well, the main thing is today you have a whole bunch of things. Let me let me answer because basically</title><rect x="949.14" y="202" width="12.00" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="212"><title>29:52–29:58 · Proprietary software gives the user zero security against its developer</title><rect x="963.93" y="202" width="9.87" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="213"><title>29:58–30:05 · Yep, and you know most most discussions of computer security ignore this point they</title><rect x="973.79" y="202" width="2.21" height="34" fill="#4c78a8"/><rect x="24.00" y="266" width="8.90" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="214"><title>30:06–30:17 · Limit the the topic to security against third parties And they don't say that they are omitting something which is se...</title><rect x="34.04" y="266" width="17.50" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="215"><title>30:18–30:27 · when they talk, you know what they talk about a security of products that people put into their homes these are typic...</title><rect x="52.77" y="266" width="14.63" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="216"><title>30:28–30:37 · Products that are tied to one server the manufacturer the product has a server the product is constantly communicatin...</title><rect x="68.49" y="266" width="15.28" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="217"><title>30:38–30:40 · That is basically</title><rect x="84.59" y="266" width="3.43" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="218"><title>30:41–30:44 · Guaranteed to spy on the user. Hmm. It's</title><rect x="89.23" y="266" width="6.00" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="219"><title>30:45–30:54 · The whole point of it is to be malicious in most cases for instance We read last year about a sex toy</title><rect x="96.21" y="266" width="13.90" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="220"><title>30:54–31:01 · That's designed to communicate over the internet except and accept commands for what to do</title><rect x="111.19" y="266" width="10.12" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="221"><title>31:02–31:14 · That could be enjoyable in some circumstances, but it communicates through the manufacturer server Which means that t...</title><rect x="123.37" y="266" width="18.12" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="222"><title>31:14–31:24 · Every time you use Not only that But the product was built for spying in this way because they put into it a thermometer</title><rect x="142.32" y="266" width="15.74" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="223"><title>31:25–31:32 · Now the users what what do they need with a thermometer? They know what they're doing. The point is the</title><rect x="159.45" y="266" width="10.82" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="224"><title>31:32–31:37 · Manufacturer wanted to know when the device was in contact with a human body</title><rect x="171.45" y="266" width="7.93" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="225"><title>31:38–31:47 · But and the thermometer exactly and I suspect that it also knows just how the device is in contact with a human body</title><rect x="180.33" y="266" width="14.95" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="226"><title>31:48–31:50 · By different temperatures</title><rect x="195.57" y="266" width="3.90" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="227"><title>31:51–31:56 · Exactly, so the or you know, is it superficial contact?</title><rect x="201.12" y="266" width="6.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="228"><title>31:59–32:03 · This is a monstrous vicious device</title><rect x="213.75" y="266" width="6.19" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="229"><title>32:04–32:13 · But once you see it's talking with the manufacturer's server You know, but they're going to be mistreating the users ...</title><rect x="220.83" y="266" width="14.63" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="230"><title>32:13–32:17 · Insecurity of these devices is a big topic</title><rect x="236.34" y="266" width="5.93" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="231"><title>32:18–32:28 · Because what that means is that third parties can't break into them and Spend on them also or turn it into a botnet o...</title><rect x="243.17" y="266" width="16.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="232"><title>32:29–32:37 · But these discussions of security they actually focus on the manufacturer's security not the user's security</title><rect x="261.57" y="266" width="12.66" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="233"><title>32:38–32:42 · The only way the users will have security is if it's free software</title><rect x="275.22" y="266" width="6.38" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="234"><title>32:43–32:51 · Free software gives the user's control, which means they have the chance to try to maintain security</title><rect x="283.58" y="266" width="11.77" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="235"><title>32:52–33:04 · proprietary software always gives the users no security against the developers Yeah, it's a way of a controlling so t...</title><rect x="297.24" y="266" width="18.74" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="236"><title>33:10–33:12 · That's one the issues that</title><rect x="326.55" y="266" width="3.46" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="237"><title>33:14–33:15 · Came to</title><rect x="332.04" y="266" width="2.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="238"><title>33:16–33:24 · As a topic, I don't know how it was in the United States But in Brazil with that game Pokemon go when you chase those...</title><rect x="335.46" y="266" width="13.07" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="239"><title>33:25–33:30 · And I never saw that of course. I only read about it. Yeah, I I have two daughters</title><rect x="349.62" y="266" width="8.31" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="240"><title>33:31–33:40 · And they asked me to install the game for them on their phones and I said, okay fine We can do it if we are able not ...</title><rect x="359.23" y="266" width="15.33" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="241"><title>33:41–33:48 · Okay, so as a parent I looked into it and I was not able to set up the game</title><rect x="375.54" y="266" width="10.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="242"><title>33:48–33:57 · Without sharing information. So I said, you know what if we're gonna share anything here You're not gonna use it beca...</title><rect x="386.52" y="266" width="14.60" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="243"><title>33:57–34:08 · How about you're doing where everything in a mobile phone is Spying on and tracking the user almost every app is conn...</title><rect x="401.12" y="266" width="17.07" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="244"><title>34:08–34:12 · Organization which is getting data about the user</title><rect x="418.89" y="266" width="5.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="245"><title>34:12–34:20 · The nastiest ones are the streaming apps things like Spotify or Netflix</title><rect x="424.73" y="266" width="13.26" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="246"><title>34:21–34:31 · Because they make the users identify themselves and then they keep track of what the user watches or listens to Now t...</title><rect x="439.29" y="266" width="15.20" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="247"><title>34:31–34:41 · Nobody should be allowed to know What you watch or what you listen to that kind of surveillance of people threatens a</title><rect x="455.51" y="266" width="14.50" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="248"><title>34:42–34:43 · free society</title><rect x="471.76" y="266" width="1.40" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="250"><title>34:51–34:58 · Yeah, no basically but the point is they should When many of those sites you can avoid identifying yourself and you can</title><rect x="486.05" y="266" width="12.33" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="251"><title>34:59–35:10 · Disguise where you are and who you are, but you can't do that with the services Dis-services that require users to id...</title><rect x="499.68" y="266" width="17.26" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="252"><title>35:11–35:16 · Then likewise for transportation consider uber</title><rect x="518.72" y="266" width="7.33" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="253"><title>35:18–35:24 · Uber requires users to identify themselves and therefore it makes a</title><rect x="529.54" y="266" width="9.49" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="254"><title>35:24–35:33 · It keeps track it keeps a dossier about each user. Oh, yeah. Well, I know we're gonna be one of those</title><rect x="539.03" y="266" width="13.39" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="255"><title>35:33–35:41 · Not only that they found that the App was tracking people before and after the rides</title><rect x="553.38" y="266" width="11.96" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="256"><title>35:42–35:44 · Using the locations exactly</title><rect x="566.64" y="266" width="3.40" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="257"><title>35:44–35:51 · Is I don't have a device like that and I never will you have a regular cell phone</title><rect x="571.27" y="266" width="10.66" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="258"><title>35:51–35:57 · I don't have any mobile phone because the phone system tracks them all. Yeah, right</title><rect x="581.94" y="266" width="9.23" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="259"><title>35:57–36:08 · The way the cellular communication works, they always know what cell you're in and they can find out Exactly where yo...</title><rect x="591.17" y="266" width="18.18" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="260"><title>36:09–36:15 · But not only that a mobile phone has a universal back door a</title><rect x="610.43" y="266" width="9.01" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="261"><title>36:16–36:26 · A back door in a program or a device Means it's accepting some kind of commands from someone that isn't supposed to b...</title><rect x="620.90" y="266" width="17.01" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="262"><title>36:26–36:33 · That tell it to do something dirty to the user Well, a universal back door</title><rect x="637.91" y="266" width="10.76" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="263"><title>36:34–36:43 · Means it can be told to do anything whatsoever to the user because it allows Remote changes of the code itself</title><rect x="649.72" y="266" width="15.04" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="264"><title>36:45–36:54 · well more or less every portable phone Has a universal back door and almost every model</title><rect x="667.04" y="266" width="14.41" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="265"><title>36:55–37:05 · Connect connects the processor with that back door to the microphone So remotely they can turn it into a full-time li...</title><rect x="683.10" y="266" width="15.83" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="266"><title>37:05–37:16 · If someone here has a portable phone that could be listening to and transmitting our conversation right now Well, I d...</title><rect x="699.86" y="266" width="16.28" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="267"><title>37:16–37:27 · But are any conversation you have with anybody if there's a portable phone in the room It could be listening and tran...</title><rect x="716.96" y="266" width="16.72" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="268"><title>37:28–37:32 · They don't just do this they do another thing. It won't shut off</title><rect x="735.02" y="266" width="6.70" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="270"><title>37:34–37:46 · They modify it so that when you push the shut off button It pretends to shut off, but it doesn't really it keeps list...</title><rect x="744.60" y="266" width="18.82" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="271"><title>37:47–37:53 · Which could eventually happen? Yeah, the point is But then if you have one of these you don't want to run out of battery</title><rect x="765.32" y="266" width="10.15" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="272"><title>37:53–38:02 · So you wouldn't want to if you expected to use it, but when I found out about this I decided I would do without</title><rect x="775.48" y="266" width="13.61" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="273"><title>38:03–38:04 · Stalin's dream</title><rect x="790.80" y="266" width="1.27" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="274"><title>38:04–38:16 · Because that's what it is a mobile phone There's the two things Stalin would have wanted to do to everyone in the Sov...</title><rect x="793.15" y="266" width="18.88" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="275"><title>38:17–38:18 · Listen to their conversations</title><rect x="813.02" y="266" width="2.67" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="276"><title>38:19–38:29 · And I don't know the microphone. I mean they can turn on the camera. They can do Yeah, although the cat it's easy to ...</title><rect x="816.73" y="266" width="15.55" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="277"><title>38:29–38:39 · You can't cover up the microphone in the same way you put the thing in what are you going to put it in that such that...</title><rect x="832.28" y="266" width="15.99" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="278"><title>38:40–38:47 · There isn't such a thing Yeah, do you need to have like a box that would not well I had tremendous</title><rect x="849.29" y="266" width="11.27" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="279"><title>38:47–38:57 · We've made sound insulation. Yeah, now somebody's building a mobile phone Where all these things will be fixed as muc...</title><rect x="860.55" y="266" width="16.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="280"><title>38:57–39:04 · Because there's no way to put free software into that processor. That's talking to the radio</title><rect x="877.47" y="266" width="10.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="281"><title>39:04–39:15 · But what you could do is give it an on off switch a real on off switch so that you if you turn it off It's not runnin...</title><rect x="888.16" y="266" width="16.83" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="282"><title>39:15–39:21 · physical thing they actually Physically the phone is not connected to that processor</title><rect x="905.00" y="266" width="10.38" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="283"><title>39:24–39:35 · So Has to go through the other processor that's going to run free software I said so that is assuming that your secur...</title><rect x="920.10" y="266" width="17.01" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="284"><title>39:35–39:41 · The thing will be able to listen to you when you're not making a call you know because</title><rect x="937.11" y="266" width="9.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="285"><title>39:42–39:53 · Normally the the processor that runs the free system. That's what will listen to your microphone when your free softw...</title><rect x="947.93" y="266" width="17.49" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="286"><title>39:54–40:05 · But that won't allow them to listen to you Except when you're making a call and we all know that they can listen to p...</title><rect x="967.45" y="266" width="8.55" height="34" fill="#4c78a8"/><rect x="24.00" y="330" width="8.81" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="287"><title>40:06–40:12 · the Horrible change of mobile phones is that they can be used to listen to people all the time wherever they are</title><rect x="33.73" y="330" width="10.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="289"><title>40:15–40:25 · Police and and law enforcement agencies they have software they can do that Well, and of course you can't expect them...</title><rect x="48.77" y="330" width="15.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="290"><title>40:25–40:29 · No, it depends who you are, right? Yeah, you're poor in Brazil</title><rect x="63.90" y="330" width="7.62" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="291"><title>40:31–40:36 · You might not but if you have yeah, or if you're a dissident so</title><rect x="73.52" y="330" width="8.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="292"><title>40:38–40:49 · We shouldn't be carrying around things that allow the state to listen to us and track us all the time</title><rect x="85.01" y="330" width="17.07" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="293"><title>40:49–40:58 · Because that gives the state too much power Now the state the state needs to be powerful or it can't carry out its mi...</title><rect x="102.52" y="330" width="14.34" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="294"><title>41:00–41:08 · Right, we have to have a protection to make sure that the people control the state and not vice versa</title><rect x="119.37" y="330" width="12.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="295"><title>41:08–41:19 · Yeah, the state needs to be big enough to provide everything that is supposed to provide but not too big so that It h...</title><rect x="133.18" y="330" width="16.22" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="296"><title>41:19–41:27 · So that democracy can exist. I mean and in the sense of the word democracy what we see today</title><rect x="150.12" y="330" width="12.95" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="297"><title>41:27–41:33 · It's not mostly plutocracy. Yeah, the rich control the government</title><rect x="163.07" y="330" width="9.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="298"><title>41:34–41:41 · That's very clear in Brazil. I'm sad to say and very clear in the United States. I'm sad to say</title><rect x="173.32" y="330" width="11.30" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="299"><title>41:42–41:46 · someone did a study and determined that since the late 1990s</title><rect x="186.05" y="330" width="7.49" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="300"><title>41:47–41:55 · Public opinion has no effect on US government policies in Brazil, that's also true and</title><rect x="194.60" y="330" width="13.36" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="301"><title>41:57–42:00 · We can There's lots of examples</title><rect x="210.39" y="330" width="5.59" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="302"><title>42:01–42:11 · and one of the things is is that as they have all the information through The different kinds of devices that we use</title><rect x="217.53" y="330" width="15.58" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="303"><title>42:12–42:16 · They don't need to hear what we have to say because they know</title><rect x="234.28" y="330" width="6.35" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="304"><title>42:16–42:24 · We don't care what we have to say the point is public opinion regardless of how expressed or how</title><rect x="240.63" y="330" width="13.01" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="305"><title>42:27–42:33 · Evaluated doesn't matter to the US government since the late 1990s 20 years ago</title><rect x="257.95" y="330" width="9.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="306"><title>42:34–42:44 · What the study checked was, you know, they looked at public opinion Poland. So on some issues It's known what public ...</title><rect x="268.57" y="330" width="16.26" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="307"><title>42:44–42:52 · And they found that the government decisions reflected the wishes of the rich and the wishes of whatever special inte...</title><rect x="284.83" y="330" width="13.49" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="308"><title>42:53–43:02 · were mainly interested in that particular decision and that's all and General public opinion had no effect anymore</title><rect x="299.65" y="330" width="13.49" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="309"><title>43:03–43:13 · In Brazil that's going on since the 1500s which for For us were It's it's in our system internally</title><rect x="314.38" y="330" width="16.28" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="310"><title>43:14–43:18 · It's sad to say that we got used to it, but in the United States which</title><rect x="332.21" y="330" width="6.51" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="312"><title>43:21–43:29 · Suppose supposedly has a more involved democracy than we did. It did. It did this development was in the late</title><rect x="343.35" y="330" width="13.11" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="313"><title>43:29–43:40 · 1990s, that's when democracy in the US basically was Became so thoroughly controlled and suppressed that it couldn't ...</title><rect x="356.45" y="330" width="17.99" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="314"><title>43:42–43:52 · Now we're fighting to change that Through the progressive movement and and but we haven't won much yet and and then h...</title><rect x="376.51" y="330" width="16.88" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="315"><title>43:54–43:57 · This digital inclusion can't</title><rect x="395.96" y="330" width="4.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="316"><title>44:00–44:05 · All Not in favor of digital inclusion and asking inclusion in what?</title><rect x="404.93" y="330" width="9.23" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="317"><title>44:06–44:12 · Well, what I'm saying is it's Right, what kind of inclusion how how you</title><rect x="415.05" y="330" width="9.23" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="318"><title>44:13–44:17 · Don't campaign for inclusion. I campaign for freedom</title><rect x="426.03" y="330" width="7.24" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="319"><title>44:18–44:29 · If we want to have a digital society that is good to be included in We need freedom. Yeah, so I'm campaigning for the...</title><rect x="434.63" y="330" width="16.22" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="320"><title>44:29–44:38 · I don't endorse calls for digital inclusion Although I don't see as much of that now as I did ten years ago ten years...</title><rect x="450.85" y="330" width="15.11" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="321"><title>44:38–44:44 · so many activities presumed that using digital</title><rect x="465.95" y="330" width="8.66" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="322"><title>44:45–44:55 · Products and tools was automatically good and I had to say to them. No, it's not automatically good It can be an inju...</title><rect x="477.25" y="330" width="15.33" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="323"><title>44:56–45:08 · We should Aim to be extracted from it is an unjust digital society. The goal was not inclusion, but extraction escape...</title><rect x="493.91" y="330" width="18.85" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="324"><title>45:08–45:14 · Set myself directly against all those plans to aim for digital inclusion</title><rect x="512.76" y="330" width="9.87" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="325"><title>45:14–45:23 · I say we need digital freedom and then if that</title><rect x="522.63" y="330" width="14.68" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="326"><title>45:26–45:34 · Increases then it's good to be it might be good to be Included, but first let's fight for the freedom. Let's not blindly</title><rect x="542.44" y="330" width="12.76" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="327"><title>45:35–45:45 · lure more people to be included in things like Facebook and Google tracking and Apple and Microsoft</title><rect x="556.60" y="330" width="14.95" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="328"><title>45:46–45:52 · Amazon I'm probably one of the few exceptions that I don't have a person of Facebook account</title><rect x="572.99" y="330" width="11.00" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="329"><title>45:53–46:02 · Good Neither my wife so people should not be used of Facebook Facebook does not have users it has used</title><rect x="585.22" y="330" width="14.53" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="330"><title>46:02–46:08 · Yeah, people are I mean they they collect your data and they're they're selling</title><rect x="599.75" y="330" width="8.19" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="331"><title>46:09–46:19 · Your information to grab third parties and there's one thing about Facebook That would actually be a useful service i...</title><rect x="610.42" y="330" width="15.20" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="332"><title>46:19–46:26 · Which is a way people could say here's how you contact me if you're if you knew me before and you want to get in touch</title><rect x="625.62" y="330" width="12.00" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="333"><title>46:26–46:35 · Here's how like a phone book type of thing. Yeah, rich people. Yeah, you know exactly a service Could be a public</title><rect x="637.61" y="330" width="14.50" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="334"><title>46:36–46:41 · Activity mm-hmm done by the state if you want it you can be listed and</title><rect x="653.57" y="330" width="7.90" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="335"><title>46:42–46:47 · There's some way that it will send you a message but it won't</title><rect x="662.84" y="330" width="8.47" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="336"><title>46:47–46:56 · It won't tell anyone where you how it's reaching you would all just let them send you a message. Okay, so that's good...</title><rect x="671.31" y="330" width="13.77" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="337"><title>46:58–47:00 · Talking a little bit about the canoe</title><rect x="687.46" y="330" width="4.16" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="338"><title>47:02–47:11 · System as you said Just to tell people you can you could install it in just about any PC compatible</title><rect x="693.94" y="330" width="15.42" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="339"><title>47:13–47:16 · computer and run it as a</title><rect x="711.14" y="330" width="5.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="340"><title>47:18–47:19 · Operating system</title><rect x="719.42" y="330" width="2.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="341"><title>47:20–47:28 · Well, that's the point is that some peripherals and some videos game</title><rect x="723.58" y="330" width="12.19" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="342"><title>47:29–47:31 · High power video</title><rect x="737.76" y="330" width="3.24" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="343"><title>47:32–47:36 · Displays before the regular user the ones that use</title><rect x="742.68" y="330" width="5.46" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="344"><title>47:38–47:49 · There's some devices that need a non-free driver So if you want only free software in your system, you may need to ch...</title><rect x="751.76" y="330" width="17.49" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="345"><title>47:49–47:54 · Look at fsf.org for that information the</title><rect x="769.24" y="330" width="7.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="346"><title>47:55–48:06 · Free software foundation website. There's all the information about it in slash resources resources slash HW you'll f...</title><rect x="778.48" y="330" width="17.74" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="347"><title>48:10–48:13 · There's I think we talked quite a bit</title><rect x="801.78" y="330" width="4.79" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="348"><title>48:14–48:20 · We're about 40 minutes in and I don't know if you'd like to add something</title><rect x="808.23" y="330" width="9.68" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="349"><title>48:22–48:26 · To people I'd like to add that we have a website for the canoe</title><rect x="820.57" y="330" width="7.84" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="350"><title>48:27–48:37 · System and the free software movement, which is called canoe org So in canoe org slash philosophy, you'll find lots o...</title><rect x="829.36" y="330" width="16.22" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="351"><title>48:37–48:47 · You know various philosophical or political points that relate to free software In canoe org slash licenses, you'll f...</title><rect x="845.58" y="330" width="16.15" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="352"><title>48:47–48:59 · Which licenses are free? What's good or bad about each one how they're different and so on and In canoe org slash can...</title><rect x="861.73" y="330" width="19.02" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="353"><title>49:00–49:09 · canoe org slash Education you'll see why schools should as a matter of policy</title><rect x="882.13" y="330" width="12.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="354"><title>49:09–49:14 · teach only free software exclusively free software and</title><rect x="896.06" y="330" width="7.49" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="355"><title>49:14–49:25 · This applies to kindergarten and this applies to the university and everything between this applies to adult educatio...</title><rect x="904.16" y="330" width="16.88" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="356"><title>49:25–49:32 · Anything that the school does that tends to lead people to use lead the students to use a certain program</title><rect x="921.99" y="330" width="11.11" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="357"><title>49:32–49:43 · That should always be free software because it's wrong for a school to teach dependence that's the opposite of what t...</title><rect x="933.10" y="330" width="16.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="358"><title>49:43–49:53 · Teaching people to use proprietary softwares like teaching them to take addictive drugs Like teaching them to take to...</title><rect x="950.45" y="330" width="14.50" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="359"><title>49:54–49:57 · It's absolutely wrong and it's inexcusable</title><rect x="966.61" y="330" width="5.01" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="360"><title>49:59–50:03 · In a sense that you got to build a sense of freedom</title><rect x="975.68" y="330" width="0.32" height="34" fill="#4c78a8"/><rect x="24.00" y="394" width="5.55" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="361"><title>50:04–50:14 · The purpose of the school they're being able to choose which one suits better I choose it so that they will live in f...</title><rect x="30.76" y="394" width="16.72" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="362"><title>50:15–50:22 · Having a choice of programs is not the same thing having a choice between</title><rect x="48.78" y="394" width="10.47" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="363"><title>50:22–50:30 · Five proprietary operating systems, which is what people have today That's no good because they're all</title><rect x="60.46" y="394" width="11.90" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="364"><title>50:31–50:41 · Subjugating their users. That's just having a choice of masters It's not enough Freedom is not a matter of having som...</title><rect x="73.60" y="394" width="16.88" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="366"><title>50:45–50:56 · Misunderstanding of freedom which diminishes it if you think about freedom together with choice That means you don't ...</title><rect x="95.53" y="394" width="18.15" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="367"><title>50:56–51:03 · So it's going to look less important So that attempt to define freedom in terms of choice</title><rect x="113.68" y="394" width="11.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="368"><title>51:05–51:10 · Diminishes freedom and thus diminishes people's determination to have freedom in</title><rect x="127.64" y="394" width="8.66" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="369"><title>51:14–51:24 · GNU dot org slash government You'll find our proposed policies for governments to migrate over time in a reliable way</title><rect x="141.45" y="394" width="16.82" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="370"><title>51:25–51:28 · Making sure that they will over time reach</title><rect x="159.37" y="394" width="5.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="371"><title>51:32–51:43 · The digital sovereignty of the country and by the way using a non-free program in in a critical agency</title><rect x="169.97" y="394" width="18.98" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="372"><title>51:45–51:55 · Such as the army the police the firemen electric supply Communications and so on that threatens national security</title><rect x="190.70" y="394" width="16.69" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="373"><title>51:56–52:08 · Because every non-free program Tends to have malicious functionalities and the most widely used ones we document thes...</title><rect x="209.10" y="394" width="18.83" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="374"><title>52:09–52:11 · GNU dot org slash malware</title><rect x="229.09" y="394" width="3.55" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="375"><title>52:12–52:17 · So if a government agency is using Windows or</title><rect x="234.39" y="394" width="7.14" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="376"><title>52:18–52:19 · Mac OS or</title><rect x="243.28" y="394" width="2.63" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="377"><title>52:20–52:25 · Android or IOS or Chrome OS it has</title><rect x="247.13" y="394" width="7.31" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="378"><title>52:25–52:36 · Non-malicious functionalities and the government is the victim Mm-hmm and decided to because yes worth we're down the...</title><rect x="255.08" y="394" width="17.96" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="379"><title>52:36–52:47 · These are these vulnerabilities these malicious functionalities. They're not accidents The point is that they're idea...</title><rect x="273.04" y="394" width="16.18" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="380"><title>52:48–52:56 · as a court not in in big ways, but always happening some those point is</title><rect x="290.75" y="394" width="12.50" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="381"><title>52:56–53:00 · If the soccer was really good, you didn't need any of those</title><rect x="304.36" y="394" width="6.54" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="382"><title>53:02–53:07 · If it was well-built You wouldn't need all those</title><rect x="313.06" y="394" width="8.54" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="383"><title>53:08–53:10 · Firewalls and all that protect</title><rect x="323.28" y="394" width="2.41" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="384"><title>53:16–53:23 · It's hard for anybody to do a perfect job. Oh, I know but I won't say that free software has no</title><rect x="335.53" y="394" width="11.65" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="385"><title>53:23–53:33 · Dogs or no security holes What I will say is free software gives you a chance to try to maintain good security</title><rect x="347.65" y="394" width="14.57" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="386"><title>53:33–53:43 · Whereas with proprietary software if you're the user you're helpless. You don't have it You don't you and not only th...</title><rect x="362.21" y="394" width="15.68" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="387"><title>53:43–53:52 · A non-free program requires blind faith in the software developer Whereas with free software the community can depend...</title><rect x="377.89" y="394" width="14.79" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="388"><title>53:52–53:58 · Free software is the only known defense against malware and</title><rect x="392.68" y="394" width="10.09" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="389"><title>54:00–54:04 · as you talked about malware and and kids</title><rect x="405.10" y="394" width="6.19" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="390"><title>54:05–54:14 · Or most likely I mean not all the kids but adults also but This malware and and all the things are</title><rect x="413.89" y="394" width="13.65" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="391"><title>54:15–54:20 · There on the internet people are not really aware of how</title><rect x="429.63" y="394" width="8.19" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="392"><title>54:21–54:29 · Dangerous or I want to understand this because they're they become habituated to using</title><rect x="438.96" y="394" width="12.44" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="393"><title>54:29–54:34 · user subjugating software with malicious functionalities</title><rect x="451.40" y="394" width="7.71" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="394"><title>54:34–54:46 · Look at you know dot org slash malware if you want to see what these malicious Functionalities do and what programs w...</title><rect x="459.97" y="394" width="18.37" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="395"><title>54:46–54:53 · How bad they are You would rationally then just conclude that you shouldn't be using any of them</title><rect x="479.20" y="394" width="11.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="396"><title>54:55–55:04 · So a lot of people find that so that Prospects so distressing that they shut their eyes to the problem and they say w...</title><rect x="492.40" y="394" width="14.15" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="397"><title>55:05–55:12 · Yeah, well, thank you mr. Stallman for this talk and and to</title><rect x="509.28" y="394" width="10.60" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="398"><title>55:13–55:17 · It's in English. We're gonna we're gonna put subtitles in that's good</title><rect x="521.69" y="394" width="6.54" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="399"><title>55:19–55:24 · and I'm looking forward to this afternoon to hear from you again and and</title><rect x="530.48" y="394" width="7.93" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="400"><title>55:25–55:34 · Thank you again for coming to Patu but I'm by the way, I do Even though I don't speak Portuguese. I have invented jok...</title><rect x="540.10" y="394" width="14.18" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="401"><title>55:35–55:38 · Sabi o Kike fuzz on Brigadero</title><rect x="555.90" y="394" width="4.66" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="402"><title>55:41–55:42 · Elie agradece</title><rect x="565.61" y="394" width="1.78" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="403"><title>55:46–55:47 · Brigado Brigado</title><rect x="573.13" y="394" width="1.75" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="404"><title>55:50–56:02 · Sabi por que provotoros os chipos de linguiça No, porque es turo lingüística But you do speak Spanish, right?</title><rect x="579.97" y="394" width="19.17" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="405"><title>56:07–56:11 · Inventochistas pero no serían tan útiles para</title><rect x="607.37" y="394" width="6.28" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="406"><title>56:12–56:21 · Tus oyentes si o lectorios Mas estudiou espanol en escuela universidad</title><rect x="614.73" y="394" width="14.95" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="407"><title>56:23–56:32 · Yo con libros con libros fui a la auto escuela para a ser my autodidacta si</title><rect x="632.66" y="394" width="14.68" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="408"><title>56:34–56:38 · Well, thank you, much as gracias and Brigado por</title><rect x="650.10" y="394" width="6.54" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="409"><title>56:39–56:48 · To talk to our people that watch the website of Diario dos sudas. Thank you again</title><rect x="657.78" y="394" width="13.99" height="34" fill="#4c78a8"/></g>
+<g class="item kept" data-sentence-id="410"><title>56:48–56:57 · Capital de Goyás e Goiânia. Yeah, and now a capital do para paranoia You should be</title><rect x="672.85" y="394" width="13.14" height="34" fill="#4c78a8"/></g>
+<g class="item pause"><title>0:00–0:08 · pausa de 8,2s removida</title><rect x="24.00" y="74" width="12.99" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>3:13–3:15 · pausa de 1,4s removida</title><rect x="331.62" y="74" width="2.16" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>6:13–6:15 · pausa de 2,0s removida</title><rect x="616.20" y="74" width="3.22" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>9:18–9:19 · pausa de 1,6s removida</title><rect x="909.58" y="74" width="2.60" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>9:20–9:21 · pausa de 1,4s removida</title><rect x="913.43" y="74" width="2.18" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>9:27–9:30 · pausa de 2,4s removida</title><rect x="924.92" y="74" width="3.88" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>10:43–10:44 · pausa de 1,0s removida</title><rect x="92.85" y="138" width="1.64" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>11:10–11:12 · pausa de 1,2s removida</title><rect x="136.42" y="138" width="1.88" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>11:29–11:31 · pausa de 2,1s removida</title><rect x="166.30" y="138" width="3.32" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>12:47–12:48 · pausa de 1,4s removida</title><rect x="289.33" y="138" width="2.21" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>13:22–13:23 · pausa de 1,2s removida</title><rect x="345.39" y="138" width="1.85" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>13:35–13:36 · pausa de 1,7s removida</title><rect x="365.17" y="138" width="2.77" height="34" fill="#f2b134"/></g>
+<g class="item removed" data-sentence-id="103"><title>14:36–14:36 · To — aplicada · false_start: Frase interrompida e recomeçada em seguida.</title><rect x="461.86" y="138" width="1.20" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>14:41–14:43 · pausa de 1,2s removida</title><rect x="471.16" y="138" width="1.90" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>15:54–15:55 · pausa de 1,1s removida</title><rect x="586.23" y="138" width="1.69" height="34" fill="#f2b134"/></g>
+<g class="item removed" data-sentence-id="123"><title>17:25–17:26 · Which we call — aplicada · false_start: Início de frase abandonado para continuar em seguida.</title><rect x="731.32" y="138" width="1.90" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>19:27–19:28 · pausa de 1,2s removida</title><rect x="923.83" y="138" width="1.83" height="34" fill="#f2b134"/></g>
+<g class="item removed" data-sentence-id="147"><title>20:41–20:42 · we went — aplicada · false_start: Trecho picotado e recomeçado.</title><rect x="89.75" y="202" width="1.20" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>25:01–25:02 · pausa de 1,1s removida</title><rect x="502.15" y="202" width="1.76" height="34" fill="#f2b134"/></g>
+<g class="item partial" data-sentence-id="187"><title>26:24–26:25 · By — parcial (0,34s de 0,74s, 46%): corte limitado pelo silêncio mais próximo e pela folga das frases vizinhas · filler: Hesitação/interrupção no discurso.</title><rect x="634.52" y="202" width="1.20" height="34" fill="#8e6cc0"/></g>
+<g class="item partial" data-sentence-id="195"><title>27:31–27:33 · they are their — parcial (1,99s de 2,42s, 82%): corte limitado pelo silêncio mais próximo e pela folga das frases vizinhas · false_start: Início de frase corrigido logo depois.</title><rect x="740.17" y="202" width="3.84" height="34" fill="#8e6cc0"/></g>
+<g class="item partial" data-sentence-id="199"><title>28:06–28:07 · Um — parcial (0,48s de 0,80s, 60%): corte limitado pelo silêncio mais próximo e pela folga das frases vizinhas · filler: Hesitação sem conteúdo.</title><rect x="796.69" y="202" width="1.27" height="34" fill="#8e6cc0"/></g>
+<g class="item pause"><title>28:08–28:09 · pausa de 1,1s removida</title><rect x="798.82" y="202" width="1.67" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>29:17–29:18 · pausa de 1,2s removida</title><rect x="908.57" y="202" width="1.93" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>32:42–32:43 · pausa de 1,2s removida</title><rect x="281.87" y="266" width="1.94" height="34" fill="#f2b134"/></g>
+<g class="item removed" data-sentence-id="249"><title>34:44–34:44 · So — aplicada · filler: Palavra solta de transição sem sentido completo.</title><rect x="474.88" y="266" width="1.20" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>35:16–35:18 · pausa de 1,4s removida</title><rect x="526.55" y="266" width="2.26" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>35:48–35:50 · pausa de 1,8s removida</title><rect x="577.19" y="266" width="2.84" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>36:15–36:16 · pausa de 1,4s removida</title><rect x="619.44" y="266" width="2.25" height="34" fill="#f2b134"/></g>
+<g class="item partial" data-sentence-id="269"><title>37:33–37:33 · anymore — não aplicada: o corte ajustado aos silêncios não alcançou esta frase · false_start: Palavra solta/interrupção ao final da frase anterior.</title><rect x="742.60" y="266" width="1.20" height="34" fill="#8e6cc0"/></g>
+<g class="item removed" data-sentence-id="288"><title>40:13–40:14 · and and — aplicada · false_start: Hesitação e repetição de conjunção.</title><rect x="45.94" y="330" width="1.78" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>40:35–40:37 · pausa de 1,1s removida</title><rect x="81.04" y="330" width="1.67" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>41:55–41:57 · pausa de 1,5s removida</title><rect x="207.54" y="330" width="2.33" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>41:58–41:59 · pausa de 1,1s removida</title><rect x="212.16" y="330" width="1.67" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>43:18–43:19 · pausa de 1,1s removida</title><rect x="339.18" y="330" width="1.69" height="34" fill="#f2b134"/></g>
+<g class="item removed" data-sentence-id="311"><title>43:19–43:20 · has a — aplicada · false_start: Início incompleto recomeçado na frase seguinte.</title><rect x="340.87" y="330" width="1.49" height="34" fill="#d1495b"/></g>
+<g class="item pause"><title>43:40–43:41 · pausa de 1,2s removida</title><rect x="374.21" y="330" width="1.93" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>43:57–43:58 · pausa de 1,2s removida</title><rect x="400.58" y="330" width="1.96" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>43:59–44:00 · pausa de 1,3s removida</title><rect x="403.51" y="330" width="2.10" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>45:17–45:18 · pausa de 1,1s removida</title><rect x="527.87" y="330" width="1.73" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>45:19–45:20 · pausa de 1,1s removida</title><rect x="530.64" y="330" width="1.75" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>45:20–45:22 · pausa de 1,5s removida</title><rect x="533.19" y="330" width="2.40" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>47:17–47:18 · pausa de 1,5s removida</title><rect x="717.65" y="330" width="2.33" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>48:08–48:10 · pausa de 2,0s removida</title><rect x="798.89" y="330" width="3.18" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>49:57–49:59 · pausa de 1,1s removida</title><rect x="972.79" y="330" width="1.76" height="34" fill="#f2b134"/></g>
+<g class="item partial" data-sentence-id="365"><title>50:43–50:44 · That's a — parcial (0,74s de 1,00s, 74%): corte limitado pelo silêncio mais próximo e pela folga das frases vizinhas · false_start: Frase incompleta reformulada em seguida.</title><rect x="92.39" y="394" width="1.59" height="34" fill="#8e6cc0"/></g>
+<g class="item pause"><title>51:10–51:12 · pausa de 2,2s removida</title><rect x="135.80" y="394" width="3.51" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>51:30–51:31 · pausa de 1,3s removida</title><rect x="167.38" y="394" width="2.11" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>51:55–51:56 · pausa de 1,1s removida</title><rect x="207.81" y="394" width="1.69" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>52:11–52:13 · pausa de 1,4s removida</title><rect x="233.22" y="394" width="2.16" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>53:57–53:59 · pausa de 1,6s removida</title><rect x="401.36" y="394" width="2.50" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>54:04–54:06 · pausa de 1,6s removida</title><rect x="412.09" y="394" width="2.49" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>54:54–54:55 · pausa de 1,1s removida</title><rect x="490.62" y="394" width="1.82" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>55:12–55:13 · pausa de 1,0s removida</title><rect x="520.42" y="394" width="1.66" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>55:38–55:40 · pausa de 1,6s removida</title><rect x="561.25" y="394" width="2.49" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>55:42–55:45 · pausa de 3,0s removida</title><rect x="567.75" y="394" width="4.80" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>55:47–55:49 · pausa de 1,7s removida</title><rect x="576.00" y="394" width="2.65" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>55:59–56:00 · pausa de 1,7s removida</title><rect x="593.90" y="394" width="2.72" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>56:03–56:04 · pausa de 1,5s removida</title><rect x="600.47" y="394" width="2.40" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>56:21–56:23 · pausa de 1,4s removida</title><rect x="629.83" y="394" width="2.17" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>56:26–56:28 · pausa de 2,2s removida</title><rect x="637.15" y="394" width="3.47" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>56:41–56:43 · pausa de 1,7s removida</title><rect x="661.66" y="394" width="2.64" height="34" fill="#f2b134"/></g>
+<g class="item pause"><title>56:59–57:07 · pausa de 8,0s removida</title><rect x="689.03" y="394" width="12.74" height="34" fill="#f2b134"/></g>
+<g class="legend">
+<rect x="24" y="462" width="14" height="14" rx="2" fill="#4c78a8"/>
+<text x="44" y="473.5" font-size="12.5" fill="#1f2328">Fala mantida</text>
+<rect x="149" y="462" width="14" height="14" rx="2" fill="#f2b134"/>
+<text x="169" y="473.5" font-size="12.5" fill="#1f2328">Pausa removida</text>
+<rect x="287" y="462" width="14" height="14" rx="2" fill="#d1495b"/>
+<text x="307" y="473.5" font-size="12.5" fill="#1f2328">Frase removida (Diretor/revisão)</text>
+<rect x="550" y="462" width="14" height="14" rx="2" fill="#8e6cc0"/>
+<text x="570" y="473.5" font-size="12.5" fill="#1f2328">Remoção parcial ou não aplicada</text>
+<rect x="806" y="462" width="14" height="14" rx="2" fill="#e6e9ed"/>
+<text x="826" y="473.5" font-size="12.5" fill="#1f2328">Sem fala / pausa curta</text>
+</g>
+</svg>

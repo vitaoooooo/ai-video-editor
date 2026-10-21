@@ -331,6 +331,9 @@ def test_end_to_end_director_removes_sentences(tmp_path, lesson_video):
         "> **Diretor:** 1 remoção pedida, 1 aplicada, 0 parciais, 0 não aplicadas\n"
     )
     assert "| Transcrição comparativa | `edit_transcript.md` e `edit_diff.json` |" in report
+    assert "| Linha do tempo dos cortes | `edit_timeline.svg` |" in report
+    assert (result.project_dir / "edit_timeline.svg").is_file()
+    assert (result.project_dir / "versions" / "v1" / "edit_timeline.svg").is_file()
     assert manifest.stages["report"].metrics["applied"] == 1
     assert "| Diretor | mock (mock) |" in report
 

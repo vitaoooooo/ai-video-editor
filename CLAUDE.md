@@ -11,7 +11,7 @@ A IA **nunca executa cortes diretamente**. Ela produz dados estruturados (valida
 - Fase 1 — Core/Renderer: `core/schema.py` (`ClipSegment`, `EditPlan`), `renderer/` (compiler, executor, ffmpeg_locator). ✅
 - Fase 2 — Analyzer: `analyzer/` (ffprobe, extração de frames com timestamps, `VideoAnalysisResult`, `BatchAnalysisResult`). ✅
 - Fase 3 — Intelligence: `intelligence/` (interface `MultimodalAIProvider`, providers `gemini` e `mock`, proxies de imagem, relatório Markdown, métricas de execução). ✅
-- Comando `edit` (`pipeline/`): probe → silêncios (`audio/`; limite `--threshold-db auto` por padrão, medido em janelas de 50 ms por `audio/levels.py`, ou número fixo) → transcrição (`transcription/`) → Diretor (`director/`: frases, `EditDirector` gemini/mock, validação com retry e fallback) → plano (`planning/`) → render → legendas → relatório + transcrição comparativa (`pipeline/edit_diff.py`: `edit_transcript.md`/`edit_diff.json`, status de aplicação de cada remoção). ✅
+- Comando `edit` (`pipeline/`): probe → silêncios (`audio/`; limite `--threshold-db auto` por padrão, medido em janelas de 50 ms por `audio/levels.py`, ou número fixo) → transcrição (`transcription/`) → Diretor (`director/`: frases, `EditDirector` gemini/mock, validação com retry e fallback) → plano (`planning/`) → render → legendas → relatório + transcrição comparativa (`pipeline/edit_diff.py`: `edit_transcript.md`/`edit_diff.json`, status de aplicação de cada remoção) + linha do tempo dos cortes (`pipeline/edit_timeline.py`: `edit_timeline.svg`). ✅
 - Ciclo de revisão (`revision/`, `pipeline/revise.py`, `pipeline/versions.py`): cada resultado é uma versão em `versions/vN/` (v1 = `edit`; projetos antigos migram sozinhos). `revise <pasta> "pedido" [--from vN]` reusa probe/silêncios/transcrição do cache; `EditReviser` (gemini/mock) recebe o estado das frases na versão base e devolve o conjunto completo de removidas, restaurações com motivo e ritmo de pausas (`natural`/`normal`/`tight`); mesma validação do Diretor com retry, e sem versão criada se o pedido for impossível, ambíguo, sem efeito ou inválido. `versions <pasta>` lista o histórico. ✅
 - Provedores de IA plugáveis (`llm/`): interface `StructuredLLMClient` (prompt + schema Pydantic → objeto validado + métricas), registro `gemini`/`openai`/`mock` e `ModelChain` (cadeia `provedor:modelo` com troca automática em erro temporário persistente ou cota esgotada; pula provedor sem chave). Diretor (`LLMDirector`) e revisor (`LLMReviser`) só usam a interface. CLI: `--director-provider/--director-model/--director-fallback` e `--reviser-*`. ✅
 - Rumo da V1: editar vídeos falados (tutorial, aula, pessoa falando). Pipeline: áudio → silêncios → transcrição → Diretor de IA (decide por IDs da transcrição, nunca inventa timestamps) → EditPlan → render. A análise visual vira opcional neste perfil. Arquitetura preparada para perfis de edição (v2: gameplay, vlog).
@@ -24,7 +24,7 @@ python -m pytest -q              # testes (devem passar todos antes de concluir)
 python -m ai_video_editor.cli --help
 ```
 
-Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revise`, `versions`, `benchmark transcription` (WER e velocidade; ver README, opção G).
+Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revise`, `versions`, `benchmark transcription` (WER e velocidade; ver docs/REFERENCIA.md, opção G).
 
 ## Convenções
 
@@ -53,7 +53,7 @@ Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit`, `revi
 
 1. Durante o desenvolvimento, rodar só os testes rápidos e os arquivos afetados: `python -m pytest -q -m "not slow"` ou `python -m pytest -q tests/test_x.py`.
    A suíte completa (`python -m pytest -q -n auto`, inclui os `slow`) roda **uma única vez, antes do commit**, e deve passar toda.
-2. Atualizar o `README.md` se mudou CLI, módulo ou fluxo.
+2. Atualizar a referência técnica `docs/REFERENCIA.md` se mudou CLI, módulo ou fluxo; o `README.md` (visão geral de portfólio) só se mudou algo que ele cita (comandos principais, números, pipeline).
 3. Atualizar `docs/HISTORICO.md`: adicionar a entrada da tarefa na data de hoje (o que entrou, o que mudou/saiu e POR QUÊ, e resultados medidos, se houver), e mover o item de 'Em andamento'/'Próximos passos' se for o caso.
 4. Resumir: arquivos alterados, decisões tomadas, o que ficou pendente.
 
