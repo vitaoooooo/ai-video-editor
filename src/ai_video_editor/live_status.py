@@ -35,13 +35,14 @@ def format_remaining(seconds: float) -> str:
 
 
 def describe_progress(progress: StageProgress) -> str:
-    """`41% (23min de 57min)` ou `118/258 trechos (46%)`; vazio sem progresso mensurável."""
+    """`41% (23min de 57min)`, `118/258 trechos (46%)` ou `12/40 clipes (30%)`; vazio sem progresso mensurável."""
     fraction = progress.fraction
     if fraction is None:
         return ""
     pct = int(fraction * 100)
-    if progress.unit == "items":
-        return f"{int(progress.done)}/{int(progress.total)} trechos ({pct}%)"
+    if progress.unit in ("items", "clips"):
+        noun = "trechos" if progress.unit == "items" else "clipes"
+        return f"{int(progress.done)}/{int(progress.total)} {noun} ({pct}%)"
     return f"{pct}% ({format_media_time(progress.done)} de {format_media_time(progress.total)})"
 
 

@@ -555,6 +555,78 @@ def handle_versions(args: argparse.Namespace) -> int:
     return 0
 
 
+class CatalogProgressPrinter:
+    """Andamento das etapas do `catalog` (linha ao vivo em um terminal)."""
+
+    def __init__(self, status: LiveStatus):
+        self.status = status
+
+    def __call__(self, stage: str, event: str, detail: str) -> None:
+        from ai_video_editor.catalog import CATALOG_STAGE_LABELS, CATALOG_STAGES
+
+        step = f"[{CATALOG_STAGES.index(stage) + 1}/{len(CATALOG_STAGES)}] {CATALOG_STAGE_LABELS[stage]}"
+        if event == "start":
+            self.status.begin(step)
+        elif event == "done":
+            self.status.end(f"{step}: ok — {detail}")
+        elif event == "cached":
+            self.status.end(f"{step}: em cache")
+        elif event == "notice":
+            self.status.message(f"{step}: {detail}")
+
+    def progress(self, stage: str, progress: StageProgress) -> None:
+        self.status.apply(progress)
+
+
+def handle_catalog(args: argparse.Namespace) -> int:
+    """Cataloga uma pasta de clipes (sem modificá-la): papéis, IDs, dados técnicos, datas, fala, miniaturas."""
+    from ai_video_editor.catalog import CatalogBuilder
+    from ai_video_editor.catalog.builder import CATALOG_DIR, CATALOG_MD
+    from ai_video_editor.catalog.roles import parse_clock_adjustment, parse_role_override
+
+    source = Path(args.folder)
+    if not source.is_dir():
+        print(f"Erro: pasta não encontrada: {source}", file=sys.stderr)
+        return 1
+    try:
+        overrides = dict(parse_role_override(text) for text in args.papel or [])
+        adjustments = dict(parse_clock_adjustment(text) for text in args.ajuste_relogio or [])
+    except ValueError as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    status = LiveStatus(live=False if args.no_live else None)
+    printer = CatalogProgressPrinter(status)
+    builder = CatalogBuilder(
+        projects_root=Path(args.projects_dir), on_progress=printer, on_stage_progress=printer.progress
+    )
+    try:
+        with status:
+            catalog = builder.build(source, overrides, adjustments, force=args.force)
+    except Exception as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    catalog_dir = catalog.project_dir / CATALOG_DIR
+    valid = [c for c in catalog.clips if c.error is None]
+    print("\nCatálogo concluído!")
+    print(f"Projeto: {catalog.project_dir}")
+    print(f"Catálogo: {catalog_dir / CATALOG_MD}")
+    counts = ", ".join(
+        f"{role} {len(catalog.clips_of(role))}" for role in ("principal", "drone", "pov", "broll", "outro")
+        if catalog.clips_of(role)
+    )
+    print(f"Clipes: {len(valid)} ({counts})")
+    for role, name in catalog.contact_sheets.items():
+        print(f"Folha de contato ({role}): {catalog_dir / name}")
+    if catalog.warnings:
+        print(f"Avisos ({len(catalog.warnings)}):")
+        for warning in catalog.warnings:
+            print(f"  - {warning}")
+    print(f"Tempo total: {format_duration(catalog.total_sec)}")
+    return 0
+
+
 def _non_negative_int(value: str) -> int:
     number = int(value)
     if number < 0:
@@ -882,6 +954,36 @@ def build_parser() -> argparse.ArgumentParser:
             "(automático quando a saída não é um terminal)",
         )
 
+    # Subcomando: catalog
+    catalog_parser = subparsers.add_parser(
+        "catalog", help="Cataloga uma pasta de clipes (papéis, IDs, dados técnicos, datas, fala, miniaturas)"
+    )
+    catalog_parser.add_argument("folder", help="Pasta com os clipes (subpastas = papéis); não é modificada")
+    catalog_parser.add_argument(
+        "--papel",
+        action="append",
+        metavar="PASTA=PAPEL",
+        help="Corrige o papel de uma subpasta, ex: --papel \"Celular=broll\" (repetível; papéis: "
+        "principal, drone, pov, broll, outro)",
+    )
+    catalog_parser.add_argument(
+        "--ajuste-relogio",
+        action="append",
+        metavar="PAPEL=AJUSTE",
+        help="Corrige o relógio de uma câmera antes de ordenar, ex: drone=+3h, pov=-1h30m (repetível)",
+    )
+    catalog_parser.add_argument(
+        "--force", action="store_true", help="Refaz a análise de todos os clipes, ignorando o cache"
+    )
+    catalog_parser.add_argument(
+        "--projects-dir",
+        default="output/projects",
+        help="Diretório base dos projetos (padrão: output/projects)",
+    )
+    catalog_parser.add_argument(
+        "--no-live", action="store_true", help="Sem linha de andamento ao vivo; só as linhas finais de cada etapa"
+    )
+
     # Subcomando: benchmark
     benchmark_parser = subparsers.add_parser("benchmark", help="Benchmarks reproduzíveis")
     benchmark_sub = benchmark_parser.add_subparsers(dest="benchmark_command", required=True)
@@ -947,6 +1049,8 @@ def main() -> None:
         sys.exit(handle_revise(args))
     elif args.command == "versions":
         sys.exit(handle_versions(args))
+    elif args.command == "catalog":
+        sys.exit(handle_catalog(args))
     elif args.command == "benchmark":
         if args.benchmark_command == "rescore":
             sys.exit(handle_benchmark_rescore(args))
