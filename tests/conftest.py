@@ -193,3 +193,43 @@ def create_tone_silence_video(
     ]
     subprocess.run(args, capture_output=True, check=True)
     return output_path
+
+
+def create_rotated_video(output_path: Path, rotation: int = 90, **kwargs) -> Path:
+    """Gera um vídeo com áudio e grava metadado de rotação (display matrix) sem recodificar."""
+    raw = output_path.with_name(output_path.stem + "_raw" + output_path.suffix)
+    create_synthetic_video(raw, **kwargs)
+    args = [
+        str(get_ffmpeg_path()),
+        "-y",
+        "-display_rotation:v:0",
+        str(rotation),
+        "-i",
+        str(raw.resolve()),
+        "-c",
+        "copy",
+        str(output_path.resolve()),
+    ]
+    subprocess.run(args, capture_output=True, check=True)
+    return output_path
+
+
+@pytest.fixture(scope="session")
+def mixed_sources(tmp_path_factory) -> dict[str, Path]:
+    """Clipes de formatos misturados para a Timeline (somente leitura).
+
+    main: 640x360@30 com áudio (440 Hz); small: 320x240@25 com áudio (880 Hz);
+    vertical: 360x640@60 exibido (640x360 codificado + rotação de 90°), com áudio (660 Hz);
+    mute: 640x360@30 sem áudio. Todos com 3 s.
+    """
+    root = tmp_path_factory.mktemp("mixed_sources")
+    return {
+        "main": create_synthetic_video(root / "main.mp4", duration_sec=3.0, audio_freq=440),
+        "small": create_synthetic_video(
+            root / "small.mp4", duration_sec=3.0, width=320, height=240, fps=25, audio_freq=880
+        ),
+        "vertical": create_rotated_video(
+            root / "vertical.mp4", duration_sec=3.0, width=640, height=360, fps=60, audio_freq=660
+        ),
+        "mute": create_synthetic_video_no_audio(root / "mute.mp4", duration_sec=3.0),
+    }
