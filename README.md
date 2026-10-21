@@ -252,13 +252,7 @@ O projeto foi desenvolvido **com ajuda de IA**, e vale ser explícito sobre a di
 
 **Implementação:** feita por múltiplos agentes de IA (Claude Code) orquestrados com o [Orca](https://github.com/stablyai/orca), cada um num *git worktree* próprio e com uma tarefa focada, trabalhando em paralelo. O [`CLAUDE.md`](CLAUDE.md) guarda o contexto e as regras do projeto para os agentes (arquitetura, convenções, como rodar os testes, o que atualizar ao terminar), e o [`docs/HISTORICO.md`](docs/HISTORICO.md) registra cada decisão, o motivo e o resultado medido.
 
-## Próximos passos
-
-Cortar palavras curtas pela energia do áudio, um status próprio para "só a pausa saiu", provedor de transcrição Gemini (para quem não tem GPU) e Gemini no benchmark, render na GPU (NVENC) e um teste com vídeo em português. Na V2, perfis de edição para gameplay e vlog e uma aplicação web. Detalhes em [docs/HISTORICO.md](docs/HISTORICO.md).
-
 ## Créditos e licença
 
-- Aula de teste: **MIT OpenCourseWare 18.06 Linear Algebra**, Prof. Gilbert Strang, licença [CC BY-NC-SA](https://creativecommons.org/licenses/by-nc-sa/4.0/). A transcrição de referência do benchmark (`benchmark/data/mit_1806_lecture01_reference.txt`) vem do mesmo curso.
+- Aula de teste: **MIT OpenCourseWare 18.06 Linear Algebra**, Prof. Gilbert Strang, licença [CC BY-NC-SA](https://creativecommons.org/licenses/by-nc-sa/4.0/).
 - Palestra de teste: **Richard Stallman**, GNU Project, licença [CC BY-ND](https://creativecommons.org/licenses/by-nd/4.0/).
-- Os vídeos e áudios de teste **não são distribuídos** neste repositório.
-- Licença do código: **a definir**.
