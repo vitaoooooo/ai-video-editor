@@ -1,6 +1,7 @@
-"""Orquestrador do comando `edit`: probe → silêncios → transcrição → Diretor → plano → render → legendas → relatório.
+"""Orquestrador do comando `edit`: executa as etapas de uma receita (`recipes/`), na ordem dela.
 
-O relatório vem com a transcrição comparativa (`edit_transcript.md` + `edit_diff.json`) e a linha do tempo
+A receita padrão, `fala`, é probe → silêncios → transcrição → Diretor → plano → render → legendas →
+relatório. O relatório vem com a transcrição comparativa (`edit_transcript.md` + `edit_diff.json`) e a linha do tempo
 dos cortes (`edit_timeline.svg`) quando há transcrição.
 
 Cada etapa grava um artefato na pasta do projeto e um fingerprint no `project.json`.
@@ -11,6 +12,7 @@ entradas e parâmetros que a afetam, encadeado com o das etapas anteriores) não
 import json
 import subprocess
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
@@ -64,6 +66,7 @@ from ai_video_editor.planning import build_edit_plan, removed_ranges
 from ai_video_editor.intelligence.retry import RetryEvent, RetryPolicy
 from ai_video_editor.llm.chain import ModelChain
 from ai_video_editor.planning.schema import TimeRange
+from ai_video_editor.recipes import DEFAULT_RECIPE, Recipe, get_recipe
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.renderer.loudness import LoudnessResult
 from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
@@ -123,8 +126,36 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@dataclass
+class _EditState:
+    """O que as etapas de uma execução passam umas às outras (artefatos lidos e fingerprints)."""
+
+    run: "_Run"
+    params: EditPipelineParams
+    video_path: Path
+    video_hash: str
+    project_dir: Path
+    output_path: Path
+    srt_path: Path
+    outcomes: dict[StageName, StageOutcome] = field(default_factory=dict)
+    metadata: Optional[VideoMetadata] = None
+    resolution: tuple[int, int] = (0, 0)
+    source_fps: float = 0.0
+    fp_silences: Optional[str] = None
+    fp_transcript: Optional[str] = None
+    fp_director: Optional[str] = None
+    fp_plan: Optional[str] = None
+    fp_render: Optional[str] = None
+    fp_subtitles: Optional[str] = None
+    director_run: Optional[DirectorRun] = None
+    plan: Optional[EditPlan] = None
+    final_duration: float = 0.0
+    loudness: Optional[LoudnessResult] = None
+    subtitle_blocks: Optional[int] = None
+
+
 class EditPipeline:
-    """Executa o fluxo de corte de silêncio de um vídeo com cache por etapa."""
+    """Executa as etapas de uma receita (padrão `fala`) sobre um vídeo, com cache por etapa."""
 
     def __init__(
         self,
@@ -134,7 +165,9 @@ class EditPipeline:
         on_progress: Optional[ProgressCallback] = None,
         edit_director: Optional[EditDirector] = None,
         on_stage_progress: Optional[StageProgressCallback] = None,
+        recipe: Recipe | str = DEFAULT_RECIPE,
     ):
+        self.recipe = get_recipe(recipe) if isinstance(recipe, str) else recipe
         self.projects_root = Path(projects_root)
         self._transcription_provider = transcription_provider
         self._edit_director = edit_director
@@ -209,7 +242,7 @@ class EditPipeline:
         params: Optional[EditPipelineParams] = None,
         force: bool = False,
     ) -> EditPipelineResult:
-        """Executa (ou retoma do cache) todas as etapas e devolve o resumo."""
+        """Executa (ou retoma do cache) as etapas da receita, na ordem dela, e devolve o resumo."""
         video_path = Path(video_path).resolve()
         if not video_path.is_file():
             raise VideoNotFoundError(video_path)
@@ -227,19 +260,64 @@ class EditPipeline:
             manifest = ProjectManifest(video_path=video_path, video_hash=video_hash, params=params)
         manifest.save(manifest_path)
 
-        run = _Run(self, manifest, manifest_path, force, recorder)
-        outcomes: dict[StageName, StageOutcome] = {}
-        output_path = project_dir / output_video_name(video_path)
+        state = _EditState(
+            run=_Run(self, manifest, manifest_path, force, recorder),
+            params=params,
+            video_path=video_path,
+            video_hash=video_hash,
+            project_dir=project_dir,
+            output_path=project_dir / output_video_name(video_path),
+            srt_path=project_dir / subtitles_file_name(video_path),
+        )
+        steps: dict[str, Callable[[_EditState], StageOutcome]] = {
+            "probe": self._probe,
+            "silences": self._silences,
+            "transcription": self._transcription,
+            "director": self._director,
+            "plan": self._plan,
+            "render": self._render,
+            "subtitles": self._subtitles,
+            "report": self._report,
+        }
+        for step in self.recipe.steps:
+            state.outcomes[step] = steps[step](state)
 
-        # 1. probe
-        fp_probe = fingerprint("probe", video_hash)
+        transcript_path = project_dir / EDIT_TRANSCRIPT_FILE
+        timings = recorder.snapshot()
+        manifest.last_run = timings
+        manifest.save(manifest_path)
+        version = register_edit_version(project_dir, manifest, manifest_path, timings)
+
+        director_run, loudness = state.director_run, state.loudness
+        return EditPipelineResult(
+            project_dir=project_dir,
+            version=version.number if version is not None else None,
+            manifest_path=manifest_path,
+            output_path=state.output_path,
+            report_path=project_dir / EDIT_REPORT_FILE,
+            subtitles_path=state.srt_path if state.subtitle_blocks is not None else None,
+            transcript_path=transcript_path if transcript_path.is_file() else None,
+            original_duration_sec=state.metadata.duration_sec,
+            final_duration_sec=state.final_duration,
+            outcomes=state.outcomes,
+            timings=timings,
+            warnings=[
+                *(director_run.warnings if director_run is not None else []),
+                *(loudness.warnings if loudness is not None else []),
+            ],
+        )
+
+    # --- etapas (peças da receita) ---
+
+    def _probe(self, s: _EditState) -> StageOutcome:
+        fp_probe = fingerprint("probe", s.video_hash)
 
         def do_probe() -> tuple[dict, str]:
-            metadata = VideoProbe().probe(video_path)
-            (project_dir / PROBE_FILE).write_text(metadata.model_dump_json(indent=2), encoding="utf-8")
+            metadata = VideoProbe().probe(s.video_path)
+            (s.project_dir / PROBE_FILE).write_text(metadata.model_dump_json(indent=2), encoding="utf-8")
             v = metadata.video_stream
             width, height = v.width, v.height
-            rotation = probe_rotation(video_path)
+            rotation = probe_rotation(s.video_path)
             if abs(rotation) % 180 == 90:
                 width, height = height, width
             metrics = {
@@ -251,25 +329,27 @@ class EditPipeline:
             }
             return metrics, f"{metadata.duration_sec:.2f}s, {width}x{height} @ {v.fps}fps"
 
-        outcomes["probe"] = run.stage("probe", fp_probe, PROBE_FILE, do_probe)
-        metadata = VideoMetadata.model_validate_json((project_dir / PROBE_FILE).read_text(encoding="utf-8"))
-        probe_metrics = manifest.stages["probe"].metrics
-        recorder.video_duration_sec = metadata.duration_sec
-        resolution = (int(probe_metrics["width"]), int(probe_metrics["height"]))
-        source_fps = float(probe_metrics["fps"])
+        outcome = s.run.stage("probe", fp_probe, PROBE_FILE, do_probe)
+        s.metadata = VideoMetadata.model_validate_json((s.project_dir / PROBE_FILE).read_text(encoding="utf-8"))
+        probe_metrics = s.run.manifest.stages["probe"].metrics
+        s.run.recorder.video_duration_sec = s.metadata.duration_sec
+        s.resolution = (int(probe_metrics["width"]), int(probe_metrics["height"]))
+        s.source_fps = float(probe_metrics["fps"])
+        return outcome
 
-        # 2. silêncios
+    def _silences(self, s: _EditState) -> StageOutcome:
+        params = s.params
         # No modo auto o limite efetivo é função determinística do áudio; ele entra no fingerprint do
         # plano (abaixo) depois de medido. Aqui vale o modo + a versão da regra.
         threshold_key = (
             ("auto", AUTO_RULE_VERSION) if params.threshold_db == "auto" else ("fixed", params.threshold_db)
         )
-        fp_silences = fingerprint("silences", video_hash, threshold_key, params.min_silence_sec)
+        s.fp_silences = fingerprint("silences", s.video_hash, threshold_key, params.min_silence_sec)
 
         def do_silences() -> tuple[dict, str]:
-            result = detect_silences(video_path, params.threshold_db, params.min_silence_sec)
-            result.save_json(project_dir / AUDIO_ANALYSIS_FILE)
-            total = sum(s.duration for s in result.silences)
+            result = detect_silences(s.video_path, params.threshold_db, params.min_silence_sec)
+            result.save_json(s.project_dir / AUDIO_ANALYSIS_FILE)
+            total = sum(x.duration for x in result.silences)
             metrics: dict = {
                 "silences": len(result.silences),
                 "silence_total_sec": round(total, 3),
@@ -285,106 +365,105 @@ class EditPipeline:
                     detail += " — detecção pouco confiável"
             return metrics, detail
 
-        outcomes["silences"] = run.stage("silences", fp_silences, AUDIO_ANALYSIS_FILE, do_silences)
+        return s.run.stage("silences", s.fp_silences, AUDIO_ANALYSIS_FILE, do_silences)
 
-        # 3. transcrição (opcional; só influencia os cortes através do Diretor)
-        fp_transcript: Optional[str] = None
-        if params.transcribe:
-            provider = self.transcription_provider
-            # Modelo, dispositivo e compute_type efetivos (resolvidos de "auto") entram no cache.
-            effective = provider.effective_settings(params.transcription)
-            effective_model = provider.effective_model(params.transcription)
-            fp_transcript = fingerprint(
-                "transcription", video_hash, provider.provider_name,
-                params.transcription.model_copy(update={"model_size": effective_model, "device": effective[0], "compute_type": effective[1]}),
+    def _transcription(self, s: _EditState) -> StageOutcome:
+        """Opcional; só influencia os cortes através do Diretor."""
+        params = s.params
+        if not params.transcribe:
+            return s.run.skip("transcription", "use --transcribe para gerar")
+        provider = self.transcription_provider
+        # Modelo, dispositivo e compute_type efetivos (resolvidos de "auto") entram no cache.
+        effective = provider.effective_settings(params.transcription)
+        effective_model = provider.effective_model(params.transcription)
+        s.fp_transcript = fingerprint(
+            "transcription", s.video_hash, provider.provider_name,
+            params.transcription.model_copy(update={"model_size": effective_model, "device": effective[0], "compute_type": effective[1]}),
+        )
+
+        def do_transcription() -> tuple[dict, str]:
+            transcript = provider.transcribe(
+                s.video_path,
+                params.transcription,
+                on_progress=lambda done, total: self._stage_progress(
+                    "transcription", StageProgress(done=done, total=total, unit="sec")
+                ),
             )
+            transcript.save(s.project_dir / TRANSCRIPT_FILE)
+            metrics = {
+                "provider": provider.provider_name,
+                "language": transcript.language,
+                "segments": len(transcript.segments),
+            }
+            return metrics, f"{len(transcript.segments)} segmentos ({transcript.language})"
 
-            def do_transcription() -> tuple[dict, str]:
-                transcript = provider.transcribe(
-                    video_path,
-                    params.transcription,
-                    on_progress=lambda done, total: self._stage_progress(
-                        "transcription", StageProgress(done=done, total=total, unit="sec")
-                    ),
-                )
-                transcript.save(project_dir / TRANSCRIPT_FILE)
-                metrics = {
-                    "provider": provider.provider_name,
-                    "language": transcript.language,
-                    "segments": len(transcript.segments),
-                }
-                return metrics, f"{len(transcript.segments)} segmentos ({transcript.language})"
+        return s.run.stage("transcription", s.fp_transcript, TRANSCRIPT_FILE, do_transcription)
 
-            outcomes["transcription"] = run.stage(
-                "transcription", fp_transcript, TRANSCRIPT_FILE, do_transcription
-            )
-        else:
-            outcomes["transcription"] = run.skip("transcription", "use --transcribe para gerar")
-
-        # 4. Diretor (opcional; escolhe frases a remover pelos IDs)
-        fp_director: Optional[str] = None
-        director_run: Optional[DirectorRun] = None
+    def _director(self, s: _EditState) -> StageOutcome:
+        """Opcional; escolhe frases a remover pelos IDs."""
+        params = s.params
         if params.director == "none":
-            outcomes["director"] = run.skip("director", "use --director para ativar")
-        elif fp_transcript is None:
-            outcomes["director"] = run.skip("director", "requer --transcribe")
-        else:
-            director = self.director_for(params)
-            fp_director = fingerprint(
-                "director", fp_transcript, director.provider_name, director.model_id,
-                director.thinking_label, params.brief, params.sentences, list(director.model_chain)
+            return s.run.skip("director", "use --director para ativar")
+        if s.fp_transcript is None:
+            return s.run.skip("director", "requer --transcribe")
+        director = self.director_for(params)
+        s.fp_director = fingerprint(
+            "director", s.fp_transcript, director.provider_name, director.model_id,
+            director.thinking_label, params.brief, params.sentences, list(director.model_chain)
+        )
+
+        def do_director() -> tuple[dict, str]:
+            model = director.model_chain[0] if director.model_chain else director.model_id
+            self._stage_progress("director", StageProgress(note=model))
+            transcript = Transcript.load(s.project_dir / TRANSCRIPT_FILE)
+            sentences = build_sentences(transcript, params.sentences)
+            context = DirectorContext(
+                video_name=s.video_path.name,
+                duration_sec=s.metadata.duration_sec,
+                language=transcript.language,
             )
-
-            def do_director() -> tuple[dict, str]:
-                model = director.model_chain[0] if director.model_chain else director.model_id
-                self._stage_progress("director", StageProgress(note=model))
-                transcript = Transcript.load(project_dir / TRANSCRIPT_FILE)
-                sentences = build_sentences(transcript, params.sentences)
-                context = DirectorContext(
-                    video_name=video_path.name,
-                    duration_sec=metadata.duration_sec,
-                    language=transcript.language,
-                )
-                result = run_director(director, sentences, params.brief, context)
-                (project_dir / DIRECTOR_DECISION_FILE).write_text(
-                    result.model_dump_json(indent=2), encoding="utf-8"
-                )
-                removed = result.removed_sentences
-                removed_sec = sum(s.duration for s, _ in removed)
-                metrics = {
-                    "provider": director.provider_name,
-                    "model": director.model_id,
-                    "effective_model": result.effective_model_id or director.model_id,
-                    "model_switches": len(result.model_switches),
-                    "sentences": len(sentences),
-                    "removed": len(removed),
-                    "removed_sec": round(removed_sec, 3),
-                    "attempts": len(result.attempts),
-                    "fallback": int(result.decision is None),
-                }
-                if result.decision is None:
-                    return metrics, "resposta inválida; seguindo só com o corte de silêncio"
-                summary = f"{len(removed)} de {len(sentences)} frases removidas ({removed_sec:.2f}s)"
-                if result.model_switches:
-                    summary += f" com {result.effective_provider}:{result.effective_model_id}"
-                return metrics, summary
-
-            outcomes["director"] = run.stage("director", fp_director, DIRECTOR_DECISION_FILE, do_director)
-            director_run = DirectorRun.model_validate_json(
-                (project_dir / DIRECTOR_DECISION_FILE).read_text(encoding="utf-8")
+            result = run_director(director, sentences, params.brief, context)
+            (s.project_dir / DIRECTOR_DECISION_FILE).write_text(
+                result.model_dump_json(indent=2), encoding="utf-8"
             )
+            removed = result.removed_sentences
+            removed_sec = sum(x.duration for x, _ in removed)
+            metrics = {
+                "provider": director.provider_name,
+                "model": director.model_id,
+                "effective_model": result.effective_model_id or director.model_id,
+                "model_switches": len(result.model_switches),
+                "sentences": len(sentences),
+                "removed": len(removed),
+                "removed_sec": round(removed_sec, 3),
+                "attempts": len(result.attempts),
+                "fallback": int(result.decision is None),
+            }
+            if result.decision is None:
+                return metrics, "resposta inválida; seguindo só com o corte de silêncio"
+            summary = f"{len(removed)} de {len(sentences)} frases removidas ({removed_sec:.2f}s)"
+            if result.model_switches:
+                summary += f" com {result.effective_provider}:{result.effective_model_id}"
+            return metrics, summary
 
-        # 5. plano
+        outcome = s.run.stage("director", s.fp_director, DIRECTOR_DECISION_FILE, do_director)
+        s.director_run = DirectorRun.model_validate_json(
+            (s.project_dir / DIRECTOR_DECISION_FILE).read_text(encoding="utf-8")
+        )
+        return outcome
+
+    def _plan(self, s: _EditState) -> StageOutcome:
+        params, director_run = s.params, s.director_run
         effective_threshold = AudioAnalysisResult.load_json(
-            project_dir / AUDIO_ANALYSIS_FILE
+            s.project_dir / AUDIO_ANALYSIS_FILE
         ).params.threshold_db
-        fp_plan = fingerprint(
-            "plan", fp_silences, effective_threshold, fp_director, params.cut, video_path, resolution, source_fps,
-            params.loudness,
+        s.fp_plan = fingerprint(
+            "plan", s.fp_silences, effective_threshold, s.fp_director, params.cut, s.video_path, s.resolution,
+            s.source_fps, params.loudness,
         )
 
         def do_plan() -> tuple[dict, str]:
-            audio = AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE)
+            audio = AudioAnalysisResult.load_json(s.project_dir / AUDIO_ANALYSIS_FILE)
             removed_ids = None
             sentences = []
             if director_run is not None and director_run.decision is not None:
@@ -392,15 +471,15 @@ class EditPipeline:
                 sentences = director_run.sentences
             keep, director_cuts = plan_keep_ranges(audio, sentences, removed_ids, params.cut)
             plan = build_edit_plan(
-                video_path,
+                s.video_path,
                 keep,
-                output_path,
-                resolution,
-                source_fps,
-                title=f"Corte de silêncio — {video_path.name}",
+                s.output_path,
+                s.resolution,
+                s.source_fps,
+                title=f"Corte de silêncio — {s.video_path.name}",
                 loudness=LoudnessTarget.from_preset(params.loudness),
             )
-            (project_dir / EDIT_PLAN_FILE).write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+            (s.project_dir / EDIT_PLAN_FILE).write_text(plan.model_dump_json(indent=2), encoding="utf-8")
             kept = sum(r.duration for r in keep)
             metrics = {
                 "segments": len(keep),
@@ -409,15 +488,16 @@ class EditPipeline:
             }
             return metrics, f"{len(keep)} trechos mantidos ({kept:.2f}s)"
 
-        outcomes["plan"] = run.stage("plan", fp_plan, EDIT_PLAN_FILE, do_plan)
-        plan = EditPlan.model_validate_json((project_dir / EDIT_PLAN_FILE).read_text(encoding="utf-8"))
+        outcome = s.run.stage("plan", s.fp_plan, EDIT_PLAN_FILE, do_plan)
+        s.plan = EditPlan.model_validate_json((s.project_dir / EDIT_PLAN_FILE).read_text(encoding="utf-8"))
+        return outcome
 
-        # 6. render
-        fp_render = fingerprint("render", fp_plan, params.loudness)
+    def _render(self, s: _EditState) -> StageOutcome:
+        s.fp_render = fingerprint("render", s.fp_plan, s.params.loudness)
 
         def do_render() -> tuple[dict, str]:
             result = self.render_executor.execute(
-                plan,
+                s.plan,
                 on_progress=lambda done, total: self._stage_progress(
                     "render", StageProgress(done=done, total=total, unit="items")
                 ),
@@ -430,76 +510,77 @@ class EditPipeline:
                 metrics.update(result.loudness.to_metrics())
             return metrics, f"{result.duration_sec:.2f}s, {result.size_bytes / 1_048_576:.1f} MB"
 
-        outcomes["render"] = run.stage("render", fp_render, output_path.name, do_render)
-        final_duration = float(manifest.stages["render"].metrics["duration_sec"])
-        loudness = LoudnessResult.from_metrics(manifest.stages["render"].metrics)
+        outcome = s.run.stage("render", s.fp_render, s.output_path.name, do_render)
+        s.final_duration = float(s.run.manifest.stages["render"].metrics["duration_sec"])
+        s.loudness = LoudnessResult.from_metrics(s.run.manifest.stages["render"].metrics)
+        return outcome
 
-        # 7. legendas (só com transcrição); tempos mapeados pelos mesmos trechos do plano final
-        srt_name = subtitles_file_name(video_path)
-        srt_path = project_dir / srt_name
-        fp_subtitles: Optional[str] = None
+    def _subtitles(self, s: _EditState) -> StageOutcome:
+        """Só com transcrição; tempos mapeados pelos mesmos trechos do plano final."""
+        params, plan = s.params, s.plan
+        srt_name = s.srt_path.name
         if not params.subtitles:
-            outcomes["subtitles"] = run.skip("subtitles", "desligada por --no-subtitles", artifact=srt_name)
-        elif fp_transcript is None:
-            outcomes["subtitles"] = run.skip("subtitles", "requer --transcribe", artifact=srt_name)
-        else:
-            fp_subtitles = fingerprint("subtitles", fp_plan, fp_transcript, params.subtitle)
+            return s.run.skip("subtitles", "desligada por --no-subtitles", artifact=srt_name)
+        if s.fp_transcript is None:
+            return s.run.skip("subtitles", "requer --transcribe", artifact=srt_name)
+        s.fp_subtitles = fingerprint("subtitles", s.fp_plan, s.fp_transcript, params.subtitle)
 
-            def do_subtitles() -> tuple[dict, str]:
-                transcript = Transcript.load(project_dir / TRANSCRIPT_FILE)
-                kept_ranges = [
-                    TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments
-                ]
-                blocks = build_subtitle_blocks(transcript, kept_ranges, plan.target_fps, params.subtitle)
-                write_srt(blocks, srt_path)
-                return {"blocks": len(blocks)}, f"{srt_name}, {len(blocks)} blocos"
+        def do_subtitles() -> tuple[dict, str]:
+            transcript = Transcript.load(s.project_dir / TRANSCRIPT_FILE)
+            kept_ranges = [
+                TimeRange(start_sec=x.start_sec, end_sec=x.end_sec) for x in plan.segments
+            ]
+            blocks = build_subtitle_blocks(transcript, kept_ranges, plan.target_fps, params.subtitle)
+            write_srt(blocks, s.srt_path)
+            return {"blocks": len(blocks)}, f"{srt_name}, {len(blocks)} blocos"
 
-            outcomes["subtitles"] = run.stage("subtitles", fp_subtitles, srt_name, do_subtitles)
-        subtitle_blocks: Optional[int] = None
-        if fp_subtitles is not None:
-            subtitle_blocks = int(manifest.stages["subtitles"].metrics["blocks"])
+        outcome = s.run.stage("subtitles", s.fp_subtitles, srt_name, do_subtitles)
+        s.subtitle_blocks = int(s.run.manifest.stages["subtitles"].metrics["blocks"])
+        return outcome
 
-        # 8. relatório (+ transcrição comparativa, que só existe com transcrição)
+    def _report(self, s: _EditState) -> StageOutcome:
+        """Relatório (+ transcrição comparativa, que só existe com transcrição)."""
+        params, plan, director_run, project_dir = s.params, s.plan, s.director_run, s.project_dir
         fp_report = fingerprint(
-            "report", REPORT_FORMAT, fp_render, fp_director, fp_subtitles, fp_transcript, params
+            "report", REPORT_FORMAT, s.fp_render, s.fp_director, s.fp_subtitles, s.fp_transcript, params
         )
         removed = removed_ranges(
-            [TimeRange(start_sec=s.start_sec, end_sec=s.end_sec) for s in plan.segments],
-            metadata.duration_sec,
+            [TimeRange(start_sec=x.start_sec, end_sec=x.end_sec) for x in plan.segments],
+            s.metadata.duration_sec,
         )
 
         def do_report() -> tuple[dict, str]:
             report_started = time.perf_counter()
             audio = AudioAnalysisResult.load_json(project_dir / AUDIO_ANALYSIS_FILE)
             comparison: Optional[EditDiff] = None
-            if fp_transcript is not None:
+            if s.fp_transcript is not None:
                 comparison = _edit_comparison(
-                    video_path, Transcript.load(project_dir / TRANSCRIPT_FILE), director_run, plan,
-                    audio, params, metadata.duration_sec, final_duration,
+                    s.video_path, Transcript.load(project_dir / TRANSCRIPT_FILE), director_run, plan,
+                    audio, params, s.metadata.duration_sec, s.final_duration,
                 )
                 write_edit_diff(comparison, project_dir)
             else:
                 remove_edit_diff(project_dir)
             has_decision = director_run is not None and director_run.decision is not None
             markdown = build_edit_report(
-                video_path,
-                metadata.duration_sec,
-                final_duration,
+                s.video_path,
+                s.metadata.duration_sec,
+                s.final_duration,
                 plan,
                 removed,
                 params,
-                output_path,
+                s.output_path,
                 director=director_run,
                 audio=audio,
-                subtitles_path=srt_path if subtitle_blocks is not None else None,
-                subtitle_blocks=subtitle_blocks,
+                subtitles_path=s.srt_path if s.subtitle_blocks is not None else None,
+                subtitle_blocks=s.subtitle_blocks,
                 transcription_model=(
-                    Transcript.load(project_dir / TRANSCRIPT_FILE).model_used if fp_transcript else None
+                    Transcript.load(project_dir / TRANSCRIPT_FILE).model_used if s.fp_transcript else None
                 ),
-                timings=recorder.snapshot(in_progress=("report", report_started)),
+                timings=s.run.recorder.snapshot(in_progress=("report", report_started)),
                 comparison=comparison,
                 removal_label="Diretor" if has_decision else None,
-                loudness=loudness,
+                loudness=s.loudness,
             )
             (project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
             metrics: dict = {"cuts": len(removed)}
@@ -513,31 +594,7 @@ class EditPipeline:
                 detail += f", transcrição comparativa em {EDIT_TRANSCRIPT_FILE} e linha do tempo em {EDIT_TIMELINE_FILE}"
             return metrics, detail
 
-        outcomes["report"] = run.stage("report", fp_report, EDIT_REPORT_FILE, do_report)
-
-        transcript_path = project_dir / EDIT_TRANSCRIPT_FILE
-        timings = recorder.snapshot()
-        manifest.last_run = timings
-        manifest.save(manifest_path)
-        version = register_edit_version(project_dir, manifest, manifest_path, timings)
-
-        return EditPipelineResult(
-            project_dir=project_dir,
-            version=version.number if version is not None else None,
-            manifest_path=manifest_path,
-            output_path=output_path,
-            report_path=project_dir / EDIT_REPORT_FILE,
-            subtitles_path=srt_path if subtitle_blocks is not None else None,
-            transcript_path=transcript_path if transcript_path.is_file() else None,
-            original_duration_sec=metadata.duration_sec,
-            final_duration_sec=final_duration,
-            outcomes=outcomes,
-            timings=timings,
-            warnings=[
-                *(director_run.warnings if director_run is not None else []),
-                *(loudness.warnings if loudness is not None else []),
-            ],
-        )
+        return s.run.stage("report", fp_report, EDIT_REPORT_FILE, do_report)
 
 
 def _edit_comparison(

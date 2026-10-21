@@ -17,7 +17,6 @@ from ai_video_editor.llm.registry import provider_names
 from ai_video_editor.intelligence.service import MultimodalAnalysisService
 from ai_video_editor.live_status import LiveStatus
 from ai_video_editor.pipeline import (
-    STAGES,
     EditPipeline,
     EditPipelineParams,
     ProjectManifest,
@@ -29,6 +28,7 @@ from ai_video_editor.pipeline.schema import RunTimings, StageProgress
 from ai_video_editor.pipeline.timing import STAGE_LABELS, format_duration, summarize_run
 from ai_video_editor.pipeline.versions import ensure_versions, parse_version_ref
 from ai_video_editor.planning import SilenceCutParams
+from ai_video_editor.recipes import DEFAULT_RECIPE, Recipe, RecipeError, get_recipe, recipe_names
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.revision import RevisionError
 from ai_video_editor.subtitles import SubtitleParams
@@ -183,13 +183,17 @@ def handle_report_ai(args: argparse.Namespace) -> int:
 
 
 class EditProgressPrinter:
-    """Mostra o andamento de cada etapa do comando `edit` (linha ao vivo em um terminal)."""
+    """Mostra o andamento de cada etapa do comando `edit` (linha ao vivo em um terminal).
 
-    def __init__(self, status: LiveStatus):
+    A numeração (`[4/8] Diretor`) vem da receita executada.
+    """
+
+    def __init__(self, status: LiveStatus, recipe: Optional[Recipe] = None):
         self.status = status
+        self.recipe = recipe or get_recipe(DEFAULT_RECIPE)
 
     def __call__(self, stage: str, event: str, detail: str) -> None:
-        step = f"[{STAGES.index(stage) + 1}/{len(STAGES)}] {STAGE_LABELS[stage]}"
+        step = f"[{self.recipe.position(stage)}/{len(self.recipe.steps)}] {STAGE_LABELS[stage]}"
         if event == "start":
             self.status.begin(step)
         elif event == "done":
@@ -238,6 +242,11 @@ def handle_edit(args: argparse.Namespace) -> int:
     if not video_path.is_file():
         print(f"Erro: vídeo não encontrado: {video_path}", file=sys.stderr)
         return 1
+    try:
+        recipe = get_recipe(args.receita)
+    except RecipeError as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
 
     try:
         params = EditPipelineParams(
@@ -278,9 +287,10 @@ def handle_edit(args: argparse.Namespace) -> int:
         return 1
 
     status = LiveStatus(live=False if args.no_live else None)
-    printer = EditProgressPrinter(status)
+    printer = EditProgressPrinter(status, recipe)
     pipeline = EditPipeline(
-        projects_root=Path(args.projects_dir), on_progress=printer, on_stage_progress=printer.progress
+        projects_root=Path(args.projects_dir), on_progress=printer, on_stage_progress=printer.progress,
+        recipe=recipe,
     )
     try:
         with status:
@@ -663,6 +673,13 @@ def build_parser() -> argparse.ArgumentParser:
         "edit", help="Remove as pausas de um vídeo falado (pasta de projeto com cache)"
     )
     edit_parser.add_argument("video", help="Caminho do vídeo a editar")
+    edit_parser.add_argument(
+        "--receita",
+        default=DEFAULT_RECIPE,
+        metavar="NOME",
+        help=f"Receita (combinação de etapas) a executar; disponíveis: {', '.join(recipe_names())} "
+        f"(padrão: {DEFAULT_RECIPE})",
+    )
     edit_parser.add_argument(
         "--threshold-db",
         type=_threshold_arg,
