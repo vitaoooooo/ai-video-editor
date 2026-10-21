@@ -128,8 +128,8 @@ Números dos relatórios gerados pelo editor (`edit_report.md`) e do [histórico
 
 Outras medições, todas no histórico:
 
-- **Diretor 158s → 5,7s** (28× mais rápido) ao tornar configurável o nível de raciocínio do modelo e repassar o timeout ao SDK, sem perder qualidade.
-- **Transcrição na GPU vs CPU:** 85,6s → 13,2s na aula de 5 min (6,5× mais rápido, mesmo texto). Na aula completa de 39min 49s do benchmark, com o `small`: 11min 40s na CPU contra 1min 36s na GPU.
+- **Diretor 158s → 5,7s** (28× mais rápido) na aula do MIT de 5 min (49 frases), trocando o raciocínio do `gemini-3.8-flash` do padrão para `low`, com o mesmo volume de entrada (~1.700 tokens) e sem perder qualidade.
+- **Transcrição na GPU vs CPU** (benchmark, aula do MIT de 39min 49s): com o `small`, 11min 40s na CPU contra 1min 36s na GPU (7,3× mais rápido); o `large-v3-turbo` na GPU leva 1min 22s. Ver [a tabela do benchmark](#benchmark-de-transcrição).
 - **Limite de silêncio adaptativo:** com o limite fixo de −35 dB, a palestra (sala com ruído) tinha **9 pausas detectadas em 57 min**; medindo o ruído de fundo de cada vídeo, passou a **458**. Na aula do MIT o limite escolhido foi −37,2 dB, com resultado praticamente igual ao que já tinha sido aprovado (40 vs 44 cortes).
 - **Testes:** a suíte completa caiu de 9min20s para 1min33s com marcador `slow`, fixtures reaproveitadas e execução paralela.
 
@@ -255,7 +255,7 @@ src/ai_video_editor/
 - **Foco em vídeo falado** (aula, tutorial, pessoa falando). Gameplay e vlog dependem de imagem e música e não são tratados ainda.
 - **O Diretor e o revisor dependem de uma API** (Gemini ou OpenAI). Sem chave, o editor faz só corte de silêncio; com ela, há custo e latência de rede, e a decisão pode variar entre execuções.
 - **Palavras curtas**: o tempo que o Whisper atribui a "Um" ou "By" inclui a pausa ao redor, então o corte às vezes tira só o silêncio e a palavra fica (aparece como remoção parcial no relatório).
-- **Nomes e termos em outro idioma** podem sair errados na transcrição e, portanto, na legenda.
+- **Nomes e termos em outro idioma** saem errados na transcrição e, portanto, na legenda. Na palestra, transcrita com `--language en`, "gnu.org" virou "canoe org", "software livre" virou "software leave me" e "Pato Branco" virou "Patu".
 - **Testado sobretudo em inglês.** A normalização do WER só tem regras para inglês, e ainda falta um teste com um vídeo em português com mais enrolação.
 - **O render é a etapa mais lenta** em vídeos longos (8min 45s dos 9min 59s da palestra) e ainda roda na CPU.
 - Cada versão guarda uma cópia do vídeo, então várias revisões ocupam bastante disco.
@@ -266,7 +266,7 @@ O projeto foi desenvolvido **com ajuda de IA**, e vale ser explícito sobre a di
 
 **Papel do autor:** definir o produto e o escopo (inclusive a mudança de rumo de "qualquer vídeo" para vídeo falado), tomar as decisões de arquitetura (a IA decide e o FFmpeg executa, frases por ID, provedores plugáveis), testar com vídeos reais (a aula do MIT, a palestra de 57 min), avaliar os resultados, encontrar os problemas que viraram as histórias acima e revisar e fazer o merge de cada mudança.
 
-**Implementação:** feita por múltiplos agentes de IA (Claude Code) orquestrados com o Orca, cada um num *git worktree* próprio e com uma tarefa focada, trabalhando em paralelo. O planejamento das tarefas e os prompts foram feitos em conversa com o Claude. O [`CLAUDE.md`](CLAUDE.md) guarda o contexto e as regras do projeto para os agentes (arquitetura, convenções, como rodar os testes, o que atualizar ao terminar), e o [`docs/HISTORICO.md`](docs/HISTORICO.md) registra cada decisão, o motivo e o resultado medido.
+**Implementação:** feita por múltiplos agentes de IA (Claude Code) orquestrados com o [Orca](https://github.com/stablyai/orca), cada um num *git worktree* próprio e com uma tarefa focada, trabalhando em paralelo. O planejamento das tarefas e os prompts foram feitos em conversa com o Claude. O [`CLAUDE.md`](CLAUDE.md) guarda o contexto e as regras do projeto para os agentes (arquitetura, convenções, como rodar os testes, o que atualizar ao terminar), e o [`docs/HISTORICO.md`](docs/HISTORICO.md) registra cada decisão, o motivo e o resultado medido.
 
 ## Próximos passos
 
