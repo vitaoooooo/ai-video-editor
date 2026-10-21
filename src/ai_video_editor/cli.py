@@ -9,6 +9,7 @@ from typing import Optional, get_args
 from ai_video_editor.analyzer.schema import FrameExtractionConfig
 from ai_video_editor.analyzer.service import VideoIngestService
 from ai_video_editor.core.schema import ClipSegment, EditPlan, LoudnessPreset
+from ai_video_editor.core.timeline import Timeline
 from ai_video_editor.director.schema import UserBrief
 from ai_video_editor.intelligence.retry import DEFAULT_API_RETRIES, RetryPolicy
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
@@ -30,6 +31,7 @@ from ai_video_editor.pipeline.timing import STAGE_LABELS, format_duration, summa
 from ai_video_editor.pipeline.versions import ensure_versions, parse_version_ref
 from ai_video_editor.planning import SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
+from ai_video_editor.renderer.timeline_executor import TimelineRenderExecutor
 from ai_video_editor.revision import RevisionError
 from ai_video_editor.subtitles import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
@@ -37,8 +39,13 @@ from ai_video_editor.transcription.schema import TranscriptionConfig
 LOUDNESS_CHOICES = list(get_args(LoudnessPreset))
 
 
+def is_timeline_document(data: object) -> bool:
+    """JSON de Timeline (tem `video_main` ou `schema_version`) ou de EditPlan (o resto)."""
+    return isinstance(data, dict) and ("video_main" in data or "schema_version" in data)
+
+
 def handle_plan_render(args: argparse.Namespace) -> int:
-    """Executa um EditPlan definido em arquivo JSON."""
+    """Executa um EditPlan ou uma Timeline definidos em arquivo JSON (detectado pelo conteúdo)."""
     plan_path = Path(args.plan_file)
     if not plan_path.is_file():
         print(f"Erro: arquivo de plano não encontrado: {plan_path}", file=sys.stderr)
@@ -46,6 +53,9 @@ def handle_plan_render(args: argparse.Namespace) -> int:
 
     with open(plan_path, "r", encoding="utf-8") as f:
         data = json.load(f)
+
+    if is_timeline_document(data):
+        return _render_timeline(Timeline.model_validate(data))
 
     plan = EditPlan.model_validate(data)
     print(f"Plano carregado: '{plan.title}' com {len(plan.segments)} segmentos.")
@@ -58,6 +68,28 @@ def handle_plan_render(args: argparse.Namespace) -> int:
     print(f"Arquivo gerado: {result.output_path}")
     print(f"Duração: {result.duration_sec:.2f}s | Resolução: {result.resolution[0]}x{result.resolution[1]}")
     print(f"Tamanho: {result.size_bytes} bytes")
+    return 0
+
+
+def _render_timeline(timeline: Timeline) -> int:
+    print(
+        f"Timeline carregada: '{timeline.title}' com {len(timeline.video_main)} itens na base, "
+        f"{len(timeline.video_overlay)} overlays e {len(timeline.audio_ambient)} áudios de ambiente "
+        f"({format_duration(timeline.duration_sec)})."
+    )
+    print(f"Destino: {timeline.resolution[0]}x{timeline.resolution[1]} @ {timeline.fps}fps")
+
+    result = TimelineRenderExecutor().execute(timeline)
+
+    print("Renderização concluída com sucesso!")
+    print(f"Arquivo gerado: {result.output_path}")
+    print(
+        f"Duração: {result.duration_sec:.2f}s ({result.frame_count} frames) | "
+        f"Resolução: {result.resolution[0]}x{result.resolution[1]}"
+    )
+    print(f"Tamanho: {result.size_bytes} bytes")
+    for warning in result.warnings:
+        print(f"Aviso: {warning}")
     return 0
 
 
@@ -561,8 +593,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Subcomando: render
-    render_parser = subparsers.add_parser("render", help="Renderiza um EditPlan a partir de JSON")
-    render_parser.add_argument("plan_file", help="Caminho do arquivo de plano JSON")
+    render_parser = subparsers.add_parser(
+        "render", help="Renderiza um EditPlan ou uma Timeline (com trilhas) a partir de JSON"
+    )
+    render_parser.add_argument("plan_file", help="Caminho do JSON de EditPlan ou de Timeline")
 
     # Subcomando: quick-cut
     cut_parser = subparsers.add_parser("quick-cut", help="Corta e concatena dois arquivos de vídeo")

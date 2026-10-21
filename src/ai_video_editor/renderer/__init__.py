@@ -3,5 +3,14 @@
 from ai_video_editor.renderer.compiler import FFmpegCompiler
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.renderer.ffmpeg_locator import get_ffmpeg_path, get_ffprobe_path
+from ai_video_editor.renderer.timeline_compiler import TimelineCompiler
+from ai_video_editor.renderer.timeline_executor import TimelineRenderExecutor
 
-__all__ = ["FFmpegCompiler", "RenderExecutor", "get_ffmpeg_path", "get_ffprobe_path"]
+__all__ = [
+    "FFmpegCompiler",
+    "RenderExecutor",
+    "TimelineCompiler",
+    "TimelineRenderExecutor",
+    "get_ffmpeg_path",
+    "get_ffprobe_path",
+]

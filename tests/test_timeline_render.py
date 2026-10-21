@@ -289,3 +289,38 @@ def test_edit_plan_and_timeline_render_equivalence(mixed_sources, tmp_path: Path
     assert int(old_video["nb_frames"]) == int(new_video["nb_frames"]) == tl.total_frames
     assert float(old_video["duration"]) == pytest.approx(float(new_video["duration"]), abs=1e-3)
     assert (old_video["width"], old_video["height"]) == (new_video["width"], new_video["height"])
+
+
+# --- comando render ---
+
+
+def test_render_command_detects_document_kind():
+    from ai_video_editor.cli import is_timeline_document
+
+    assert is_timeline_document({"output_path": "o.mp4", "video_main": []})
+    assert is_timeline_document({"schema_version": 1})
+    assert not is_timeline_document({"output_path": "o.mp4", "segments": []})
+
+
+@pytest.mark.slow
+def test_render_command_accepts_timeline_json(mixed_sources, tmp_path: Path, capsys):
+    import argparse
+
+    from ai_video_editor.cli import handle_plan_render
+
+    doc = {
+        "schema_version": 1,
+        "output_path": str(tmp_path / "cli.mp4"),
+        "resolution": [320, 180],
+        "video_main": [{"source_path": str(mixed_sources["main"]), "source_in": 0.0, "source_out": 1.0}],
+        "video_overlay": [
+            {"source_path": str(mixed_sources["small"]), "source_in": 0.0, "source_out": 0.5, "timeline_start": 0.25}
+        ],
+    }
+    plan_file = tmp_path / "timeline.json"
+    plan_file.write_text(json.dumps(doc), encoding="utf-8")
+
+    assert handle_plan_render(argparse.Namespace(plan_file=str(plan_file))) == 0
+    out = capsys.readouterr().out
+    assert "Timeline carregada" in out and "30 frames" in out
+    assert (tmp_path / "cli.mp4").is_file()
