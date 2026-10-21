@@ -150,6 +150,24 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   - 📊 Palestra, relatório atual (v5): 57:07 → 53:40, 259 cortes, 9min 59s (transcrição em cache; Diretor 1min 14s, render 8min 45s).
   - 📊 413 testes automatizados.
 
+## Timeline com trilhas e render multicâmera (2026-10-21)
+
+- ✅ **`Timeline`** (`core/timeline.py`): edição montada a partir de vários clipes de várias câmeras. Trilhas `video_main` (base contígua; a duração é a soma dos itens; áudio do próprio item ou silêncio com `use_audio: false`), `video_overlay` (substitui a imagem numa janela, o áudio da base continua) e `audio_ambient` (áudio posicionado no tempo da timeline, com volume 0–2 e fades próprios). Itens com `clip_id`/`label` livres para relatórios. Validação em português: tempos invertidos, item com menos de 1 frame, overlay ou ambiente além da duração, overlays sobrepostos, buraco/sobreposição na base (quando o item traz `timeline_start`), resolução ímpar, campos desconhecidos.
+  - Todos os tempos são quantizados em frames do fps de saída com a mesma regra do EditPlan (`round(segundos × fps)`), e as amostras de áudio (48 kHz) derivam das posições em frames, para áudio e vídeo não escorregarem.
+  - `timeline_from_edit_plan` converte um EditPlan em `video_main` com o áudio de cada item; o EditPlan não mudou.
+- ✅ **Achatamento** (`flatten`, função pura, sem FFmpeg): recorta a base onde há overlay e devolve pedaços de vídeo em sequência (fonte, in, out, frames) + plano de áudio (um pedaço por item da base e os itens de ambiente com posição absoluta em amostras).
+  - **Por quê:** achatar permite reaproveitar o render segmentado que já existe (um FFmpeg curto por pedaço, em paralelo, e concat demuxer com `-c:v copy`), em vez de montar um filtergraph de overlays que cresce com a timeline, é difícil de depurar e gasta memória. A lógica difícil (onde cada pedaço começa e termina) fica numa função pura testada com casos de borda e com 300 timelines aleatórias.
+- ✅ **Render da Timeline** (`renderer/timeline_compiler.py`, `renderer/timeline_executor.py`), ao lado do caminho do EditPlan: pedaços de vídeo sem áudio e padronizados (escala preservando a proporção + letterbox/pillarbox, fps de saída, `setsar=1`, `yuv420p` 8 bits); áudio principal em PCM 48 kHz estéreo com os micro fades em cada item; ambiente posicionado com `adelay` em amostras e mixado com `amix` sem normalizar volumes; mux com loudnorm em duas passadas (reaproveita `renderer/loudness.py`, com uma variante da medição para arquivo de áudio). A saída é validada por ffprobe (duração do vídeo com tolerância de 1 frame e fps).
+  - **Rotação:** o autorotate do FFmpeg já aplica o metadado de rotação na decodificação, inclusive com `filter_complex`, e a saída sai sem o metadado; conferido em teste com pixels (vídeo vertical vira pillarbox).
+  - **HDR:** fontes PQ/HLG são convertidas para 8 bits sem tonemapping e geram aviso (tonemapping de verdade ficou de fora). 10 bits SDR é convertido sem aviso.
+  - **Sem áudio:** origem sem trilha de áudio ou item com `use_audio: false` vira silêncio gerado do tamanho exato do item; a saída sempre tem áudio. Se nenhum item tem áudio, o loudnorm é pulado com motivo.
+  - Antes do render, cada origem é inspecionada uma vez; item que passa do fim da origem, base/overlay sem vídeo e ambiente sem áudio são recusados com o item identificado (ex.: `video_overlay[0] (D003)`).
+- 🔁 **`render`** aceita JSON de EditPlan (como antes) ou de Timeline (detectado por `video_main`/`schema_version`).
+- 🔄 O `edit` continua no EditPlan; a troca do pipeline para a Timeline fica para a rodada 2 (em paralelo, o worktree `multiclip-catalog` mexe em `pipeline/` e no catálogo de clipes).
+- 📊 Equivalência: o mesmo EditPlan (5 segmentos de 4 formatos) renderizado pelo caminho antigo e pela Timeline tem o mesmo número de frames e a mesma duração.
+- 📊 Render dos testes (isolado): Timeline mista de 4 s com 4 formatos, 2 overlays e ambiente ≈ 10 s; quase todo o tempo é a partida dos processos FFmpeg (~1,2 s cada nesta máquina Windows), não a codificação.
+- 📊 455 testes automatizados (42 novos); suíte completa em 4min 31s.
+
 ---
 
 ## 🔄 Em andamento

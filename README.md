@@ -222,10 +222,10 @@ src/ai_video_editor/
 ├── revision/     revisor de pedidos em linguagem natural (LLM e mock)
 ├── llm/          StructuredLLMClient, provedores gemini/openai/mock, cadeia de modelos, chaves e erros
 ├── planning/     corte de silêncio, aplicação dos cortes de frase e regra do pedaço de palavra
-├── renderer/     compilador e executor FFmpeg (um processo por trecho, em paralelo) e loudnorm
+├── renderer/     compilador e executor FFmpeg (um processo por trecho, em paralelo), render da Timeline e loudnorm
 ├── subtitles/    remapeamento de tempo e .srt do vídeo editado
 ├── benchmark/    WER, normalização, rescore e relatório do benchmark
-├── core/         EditPlan e ClipSegment
+├── core/         EditPlan, ClipSegment e Timeline (trilhas: base, overlay, ambiente)
 └── analyzer/, intelligence/   metadados, frames e análise visual (fases iniciais; opcional no perfil de vídeo falado)
 ```
 

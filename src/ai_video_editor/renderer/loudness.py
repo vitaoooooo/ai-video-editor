@@ -175,3 +175,24 @@ def measure_command(ffmpeg_bin: Path, concat_list_path: Path, target: LoudnessTa
         "null",
         "-",
     ]
+
+
+def measure_file_command(ffmpeg_bin: Path, audio_path: Path, target: LoudnessTarget) -> list[str]:
+    """Passada 1 sobre um arquivo de áudio já pronto (render da Timeline) e descarta a saída."""
+    return [
+        str(ffmpeg_bin),
+        "-nostdin",
+        "-hide_banner",
+        "-nostats",
+        "-loglevel",
+        "info",  # o loudnorm imprime a medição em nível info
+        "-i",
+        str(audio_path),
+        "-map",
+        "0:a:0",
+        "-af",
+        measure_filter(target),
+        "-f",
+        "null",
+        "-",
+    ]

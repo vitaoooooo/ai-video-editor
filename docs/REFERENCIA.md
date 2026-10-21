@@ -102,12 +102,55 @@ Corta trechos especificados de dois vídeos e concatena-os em um MP4 final:
   --output output/merged_output.mp4
 ```
 
-### Opção D: Renderização a partir de um `EditPlan` JSON (`render`)
-Renderiza um plano de edição completo a partir de um arquivo JSON estruturado:
+### Opção D: Renderização a partir de JSON (`render`): `EditPlan` ou `Timeline`
+Renderiza um plano de edição completo a partir de um arquivo JSON estruturado. O formato é detectado pelo conteúdo: com `video_main` ou `schema_version` é uma **Timeline** (várias trilhas); senão, um **EditPlan** (uma trilha só, caminho de sempre).
 
 ```bash
 .\.venv\Scripts\python.exe -m ai_video_editor.cli render output/sample_plan.json
+.\.venv\Scripts\python.exe -m ai_video_editor.cli render output/vlog_timeline.json
 ```
+
+#### Formato JSON da Timeline (`core/timeline.py`)
+
+```json
+{
+  "schema_version": 1,
+  "title": "Vlog na praia",
+  "output_path": "output/vlog.mp4",
+  "resolution": [1920, 1080],
+  "fps": 30,
+  "audio_fade_sec": 0.02,
+  "loudness": {"preset": "voz", "integrated_lufs": -16, "true_peak_dbtp": -1.5, "lra": 11},
+  "video_main": [
+    {"source_path": "cam/A001.mp4", "source_in": 12.0, "source_out": 20.5, "clip_id": "A001", "label": "abertura"},
+    {"source_path": "cam/A002.mp4", "source_in": 3.0, "source_out": 9.0, "clip_id": "A002"},
+    {"source_path": "pov/P001.mp4", "source_in": 0.0, "source_out": 4.0, "clip_id": "P001", "use_audio": false}
+  ],
+  "video_overlay": [
+    {"source_path": "drone/D003.mp4", "source_in": 30.0, "source_out": 33.0, "timeline_start": 5.0, "clip_id": "D003"}
+  ],
+  "audio_ambient": [
+    {"source_path": "pov/P001.mp4", "source_in": 0.0, "source_out": 4.0, "timeline_start": 14.5,
+     "volume": 0.6, "fade_in_sec": 0.3, "fade_out_sec": 0.5, "clip_id": "P001"}
+  ]
+}
+```
+
+- **`video_main`** (obrigatória, ≥ 1 item): base contígua; a duração da timeline é a soma dos itens. Cada item usa o próprio áudio (trilha de áudio principal), com `volume` (0–2); `use_audio: false` põe silêncio no lugar. `timeline_start` é opcional na base: se vier, precisa bater com o fim do item anterior (senão: "buraco na base" / "sobreposição na base").
+- **`video_overlay`**: substitui a **imagem** da base em `[timeline_start, timeline_start + duração)`; o áudio da base continua. Overlays não podem se sobrepor nem passar do fim da timeline; podem atravessar vários itens da base e ser adjacentes.
+- **`audio_ambient`**: áudio posicionado no tempo da timeline e mixado por cima do principal, com `volume` (0–2) e `fade_in_sec`/`fade_out_sec` próprios. Não pode passar do fim da timeline.
+- Todo item tem `source_path`, `source_in`, `source_out` (segundos da origem), `clip_id` e `label` opcionais (para relatórios).
+- Padrões: `resolution` 1920x1080 (largura e altura pares), `fps` 30, `audio_fade_sec` 0,02, `loudness` nulo (sem normalização). Campos desconhecidos são recusados.
+- **Quantização:** todos os tempos da timeline viram frames do fps de saída (`round(segundos × fps)`, a mesma regra do EditPlan); item com menos de 1 frame é recusado. As posições de áudio (48 kHz) são derivadas das posições em frames, então áudio e vídeo não escorregam.
+- Um EditPlan vira Timeline com `timeline_from_edit_plan(plan, source_durations)` (segmentos → `video_main` com o áudio de cada item).
+
+#### Como a Timeline é renderizada
+1. **Achatamento** (`flatten`, função pura): a base é recortada onde há overlay, gerando uma lista de pedaços de vídeo em sequência (fonte, in, out, frames), mais o plano de áudio (um pedaço por item da base + itens de ambiente com posição absoluta em amostras).
+2. **Pedaços em paralelo** (um FFmpeg cada): vídeo sem áudio, padronizado (rotação de metadados aplicada pelo autorotate do FFmpeg, escala preservando a proporção + letterbox/pillarbox, fps de saída, `setsar=1`, `yuv420p` 8 bits); áudio de cada item da base em PCM 48 kHz estéreo com os micro fades nos cortes (silêncio gerado se a origem não tem áudio ou o item está com `use_audio: false`).
+3. **Áudio final**: concat do áudio principal + itens de ambiente posicionados (`adelay` em amostras) e mixados com `amix` sem normalizar volumes.
+4. **Mux** do vídeo concatenado (`-c:v copy`) com o áudio (AAC 192k, 48 kHz), com loudnorm em duas passadas se `loudness` estiver definido. A saída é validada com ffprobe: duração da trilha de vídeo igual à da timeline (tolerância de 1 frame) e fps pedido.
+- Fontes HDR (PQ/HLG) são convertidas para 8 bits **sem tonemapping** e geram um aviso (cores podem ficar lavadas). Fontes de 10 bits SDR são convertidas sem aviso.
+- Antes do render, cada origem é inspecionada uma vez: item que passa do fim da origem (mais de 1 frame), overlay/base sem trilha de vídeo ou ambiente sem trilha de áudio são recusados com mensagem que identifica o item (ex.: `video_overlay[0] (D003)`).
 
 ### Opção E: Remover as pausas de um vídeo falado (`edit`)
 Fluxo completo: metadados → silêncios → transcrição (opcional) → Diretor de IA (opcional) → plano de corte → render → legendas (com transcrição) → relatório. Sem `--director`, é só corte de silêncio, sem IA. A resolução e o FPS da saída são os do vídeo de origem (FPS arredondado para inteiro).
@@ -311,6 +354,8 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 
 ### Módulo Core (Fase 1)
 * [`src/ai_video_editor/core/schema.py`](../src/ai_video_editor/core/schema.py): Modelos `ClipSegment`, `EditPlan` e `LoudnessTarget` (presets de normalização).
+* [`src/ai_video_editor/core/timeline.py`](../src/ai_video_editor/core/timeline.py): `Timeline` com trilhas (`video_main`, `video_overlay`, `audio_ambient`; áudio principal = áudio dos itens da base), validação quantizada em frames, `timeline_from_edit_plan` e `flatten` (achatamento puro em pedaços de vídeo + plano de áudio).
+* [`src/ai_video_editor/renderer/timeline_compiler.py`](../src/ai_video_editor/renderer/timeline_compiler.py) e [`timeline_executor.py`](../src/ai_video_editor/renderer/timeline_executor.py): render da Timeline (inspeção das origens, pedaços padronizados em paralelo, áudio 48 kHz com ambiente, mux, loudnorm e validação de duração/fps).
 * [`src/ai_video_editor/renderer/compiler.py`](../src/ai_video_editor/renderer/compiler.py): Compilação segura de filtros FFmpeg sem shell injection.
 * [`src/ai_video_editor/renderer/executor.py`](../src/ai_video_editor/renderer/executor.py): Execução isolada via `subprocess` e validação com FFprobe.
 * [`src/ai_video_editor/renderer/loudness.py`](../src/ai_video_editor/renderer/loudness.py): Normalização de loudness em duas passadas (medição com loudnorm, parse do JSON, filtro da segunda passada).
