@@ -203,7 +203,8 @@ def test_applied_removal_is_struck_with_reason_and_long_pauses_get_a_marker(tmp_
     # Ordem cronológica e JSON validado pelo modelo
     starts = [e.original_start_sec for e in diff.entries]
     assert starts == sorted(starts)
-    transcript_path, diff_path = write_edit_diff(diff, tmp_path)
+    transcript_path, diff_path, timeline_path = write_edit_diff(diff, tmp_path)
+    assert timeline_path.name == "edit_timeline.svg" and timeline_path.is_file()
     assert EditDiff.model_validate_json(diff_path.read_text(encoding="utf-8")) == diff
     assert transcript_path.read_text(encoding="utf-8") == md
 

@@ -138,6 +138,18 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   - **Por quê:** na pasta de usuário elas valem para todos os worktrees sem cópia por pasta, e deixam de poluir o repositório.
 - ❌ O Antigravity deixou de ser usado no projeto, então a cópia `.agents/skills/` e a regra das "duas cópias" perderam o sentido.
 
+## README de portfólio e linha do tempo dos cortes (2026-10-21)
+
+- ✅ **Linha do tempo dos cortes** (`edit_timeline.svg`, `pipeline/edit_timeline.py`): desenhada a partir do `EditDiff` na etapa do relatório, junto com o `edit_transcript.md`, na raiz do projeto e em `versions/vN/` (também no `revise`), e citada no `edit_report.md`. Uma barra representa o vídeo original, com cores para fala mantida, pausas removidas, frases removidas pelo Diretor/revisão, remoções parciais/não aplicadas e trechos sem fala; marcas de tempo, legenda e título com duração original → final e % removido. Vídeos de mais de 10 min quebram em uma linha por 10 min; cada item do diff é um grupo SVG com o texto e o motivo como dica. SVG escrito pelo próprio código (sem dependência nova), com fundo próprio para ficar legível em páginas claras e escuras.
+  - **Por quê:** a transcrição comparativa diz o que saiu, mas não mostra *onde* nem *quanto*; uma imagem da edição inteira serve ao usuário e ao README.
+  - 🔁 O formato do relatório mudou (`REPORT_FORMAT = report-v4-timeline`): na próxima execução do `edit`, projetos existentes refazem só o relatório; uma versão já registrada sem o SVG o recebe junto com o relatório refeito.
+  - 📊 Gerados a partir dos `edit_diff.json` existentes da aula do MIT e da palestra: `docs/img/timeline-aula-mit.svg` e `docs/img/timeline-palestra.svg` (6 linhas de 10 min).
+- 🔁 **README reescrito como README de portfólio** (problema, pipeline em Mermaid, demonstração com saída real, resultados medidos, benchmark, histórias de engenharia, limitações e como o projeto foi construído). Todos os números vêm deste histórico, de `benchmark/results/` e dos `edit_report.md` dos projetos.
+  - 🔁 A referência técnica detalhada (todas as opções, artefatos, regras e módulos) foi para `docs/REFERENCIA.md`, com as seções de instalação e testes atualizadas e os links `file:///` trocados por caminhos relativos.
+  - **Por quê:** o README antigo era um manual de opções; quem chega ao repositório (recrutadores e pessoas técnicas) precisa ver primeiro o que o editor faz, o resultado e as decisões.
+  - 📊 Palestra, relatório atual (v5): 57:07 → 53:40, 259 cortes, 9min 59s (transcrição em cache; Diretor 1min 14s, render 8min 45s).
+  - 📊 413 testes automatizados.
+
 ---
 
 ## 🔄 Em andamento
@@ -152,7 +164,6 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - **Provedor de transcrição Gemini** (alternativa para quem não tem GPU).
 - **Render na GPU (NVENC)**: o render é hoje a etapa mais lenta em vídeos longos.
 - **Teste com vídeo em português** com mais enrolação.
-- **README de portfólio**: antes/depois, números medidos, diagrama e decisões de engenharia.
 - Pequenos ajustes: cópia de vídeo por versão ocupa o dobro de disco; motivo do Diretor às vezes truncado.
 
 ## 🔮 V2 (futuro)

@@ -1,6 +1,7 @@
 """Orquestrador do comando `edit`: probe → silêncios → transcrição → Diretor → plano → render → legendas → relatório.
 
-O relatório vem com a transcrição comparativa (`edit_transcript.md` + `edit_diff.json`) quando há transcrição.
+O relatório vem com a transcrição comparativa (`edit_transcript.md` + `edit_diff.json`) e a linha do tempo
+dos cortes (`edit_timeline.svg`) quando há transcrição.
 
 Cada etapa grava um artefato na pasta do projeto e um fingerprint no `project.json`.
 Na execução seguinte, a etapa é pulada se o artefato existe e o fingerprint (hash das
@@ -33,6 +34,7 @@ from ai_video_editor.pipeline.project import (
     DIRECTOR_DECISION_FILE,
     EDIT_PLAN_FILE,
     EDIT_REPORT_FILE,
+    EDIT_TIMELINE_FILE,
     EDIT_TRANSCRIPT_FILE,
     MANIFEST_FILE,
     PROBE_FILE,
@@ -70,7 +72,7 @@ from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
 
 # Versão do formato do relatório; entra no fingerprint para refazer relatórios antigos.
-REPORT_FORMAT = "report-v3-loudness"
+REPORT_FORMAT = "report-v4-timeline"
 
 # (etapa, evento, detalhe). Eventos: "start", "done", "cached", "skipped", "failed", "retry" e
 # "notice" (aviso, ex: troca automática de modelo).
@@ -508,7 +510,7 @@ class EditPipeline:
                     partial=comparison.count("partial"),
                     not_applied=comparison.count("not_applied"),
                 )
-                detail += f", transcrição comparativa em {EDIT_TRANSCRIPT_FILE}"
+                detail += f", transcrição comparativa em {EDIT_TRANSCRIPT_FILE} e linha do tempo em {EDIT_TIMELINE_FILE}"
             return metrics, detail
 
         outcomes["report"] = run.stage("report", fp_report, EDIT_REPORT_FILE, do_report)

@@ -1,384 +1,280 @@
+# AI Video Editor
+
+**Editor de vídeo com IA que remove pausas, repetições e enrolação de aulas e tutoriais — e explica cada corte.**
+
 [![Tests](https://github.com/vitaoooooo/ai-video-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/vitaoooooo/ai-video-editor/actions/workflows/tests.yml)
+![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
+![FFmpeg](https://img.shields.io/badge/render-FFmpeg-007808?logo=ffmpeg&logoColor=white)
 
-# AI Video Editor — Core Editing, Ingestion & Multimodal AI Analysis Engine
+| Aula do MIT (5 min) | Palestra (57 min) | Testes automatizados |
+| --- | --- | --- |
+| **5:00 → 4:11** (−16,2%), processada em 1min 05s | **57:07 → 53:40** (−6,0%), 259 cortes | **413**, sem rede, com vídeos sintéticos |
 
-Motor de edição, ingestão técnica e análise visual com IA multimodal para o **AI Video Editor**, baseado em schemas Pydantic, FFmpeg determinístico e arquitetura multi-provedor (Google Gemini, Mock).
+![Linha do tempo dos cortes da aula do MIT](docs/img/timeline-aula-mit.svg)
 
-📜 [Histórico de decisões do projeto](docs/HISTORICO.md)
-
----
-
-## 1. Requisitos de Sistema
-
-* **Python 3.11+** (testado no Python 3.14.8).
-* **FFmpeg / FFprobe**: detectado automaticamente via:
-  1. Variáveis de ambiente `FFMPEG_PATH` e `FFPROBE_PATH`.
-  2. `PATH` do sistema operacional.
-  3. Locais padrão no Windows (ex: Stremio/WinGet/Chocolatey).
+*Linha do tempo gerada pelo próprio editor (`edit_timeline.svg`): azul é a fala mantida, amarelo as pausas removidas, vermelho as frases que o Diretor de IA removeu.*
 
 ---
 
-## 2. Instalação Local (Sem dependências globais)
+## O problema e a solução
 
-Criar o ambiente virtual e instalar o projeto em modo editável com dependências de desenvolvimento:
+Gravar uma aula ou um tutorial é rápido; editar não é. Boa parte do trabalho é mecânica: tirar silêncios, frases recomeçadas ("Let me, I can even say right away…"), repetições e muletas. Ferramentas de "corte de silêncio" resolvem só a primeira parte, e editores com IA costumam cortar sem dizer o quê nem por quê.
 
-```bash
-# 1. Criar ambiente virtual
+Este projeto faz as duas coisas e mostra o trabalho: mede as pausas no áudio, transcreve, deixa um modelo de linguagem decidir quais **frases** saem (com categoria e motivo), renderiza com FFmpeg e entrega relatórios que dizem exatamente o que saiu, o que ficou e se cada corte pedido foi de fato aplicado. Depois, dá para pedir ajustes em português ("corta menos") e cada pedido vira uma nova versão.
+
+## Como funciona
+
+```mermaid
+flowchart LR
+    A["Vídeo"] --> B["Probe<br/>(ffprobe)"]
+    B --> C["Silêncios adaptativos<br/>(ruído medido por vídeo)"]
+    C --> D["Transcrição<br/>(faster-whisper, GPU ou CPU)"]
+    D --> E["Diretor de IA<br/>(frases por ID)"]
+    E --> F["Plano de corte<br/>(EditPlan validado)"]
+    F --> G["Render FFmpeg<br/>(loudnorm 2 passadas)"]
+    G --> H["Legendas .srt<br/>(tempo do vídeo editado)"]
+    H --> I["Relatórios<br/>(report, transcrição, linha do tempo)"]
+    I -.->|"revise: pedido em português"| E
+```
+
+**A regra de ouro: a IA decide, o FFmpeg executa.** O modelo nunca corta o vídeo. Ele devolve dados estruturados (validados com Pydantic) e um motor determinístico transforma isso em comandos FFmpeg. Uma resposta inválida da IA é recusada, devolvida ao modelo com o erro e, se falhar de novo, o vídeo sai só com o corte de silêncio; o vídeo nunca fica corrompido por uma decisão ruim.
+
+**Por que a IA aponta frases pelo número, nunca por timestamps.** O Diretor recebe a transcrição como uma lista numerada de frases e responde "remova a 5, a 22 e a 25, por estes motivos". Os tempos ficam com o código, por dois motivos: modelos de linguagem inventam números com facilidade, e os tempos de palavra do Whisper não são confiáveis (ele estica palavras para dentro das pausas). Então os limites de cada corte são ajustados para dentro do silêncio medido mais próximo, e uma regra garante que nunca sobre meia palavra no vídeo.
+
+## Demonstração
+
+### `edit`
+
+```powershell
+python -m ai_video_editor.cli edit aula1_5min.mp4 --transcribe --language en --whisper-model small --director gemini
+```
+
+Saída real (aula do MIT, caminhos encurtados). Nesta execução o Diretor veio do cache; na execução original, a chamada levou 12,8s. As outras etapas rodaram de novo:
+
+```text
+[1/8] Metadados: ok — 300.10s, 480x360 @ 29.97fps (2,2s)
+[2/8] Silêncios: ok — 61 silêncios (61.31s), limite -37.2 dB (auto) (4,0s)
+[3/8] Transcrição: ok — 71 segmentos (en) (17,1s)
+[4/8] Diretor: em cache
+[5/8] Plano de corte: ok — 39 trechos mantidos (251.35s) (0,0s)
+[6/8] Renderização: ok — 251.50s, 16.0 MB (33,5s)
+[7/8] Legendas: ok — aula1_5min_edited.srt, 74 blocos (0,0s)
+[8/8] Relatório: ok — 39 cortes, transcrição comparativa em edit_transcript.md e linha do tempo em edit_timeline.svg (0,0s)
+
+Edição concluída!
+Projeto: output\projects\aula1_5min-e8fa518c2d
+...
+Versão: v5 (revise com: revise "output\projects\aula1_5min-e8fa518c2d" "pedido")
+Duração: 300.10s -> 251.50s (16.2% removido)
+5min de vídeo processados em 57,0s (0,19× o tempo real)
+```
+
+Num terminal, enquanto a etapa roda, a linha é reescrita a cada segundo com o andamento e uma estimativa, por exemplo `[6/8] Renderização... 48,0s — 118/258 trechos (45%), faltam ~58s`. Avisos (nova tentativa da API, troca de modelo, GPU indisponível) saem em linha própria acima.
+
+### O que saiu e por quê (`edit_transcript.md`)
+
+Trecho real da transcrição comparativa da aula. Frase mantida: `[tempo no original → tempo no vídeo editado]`; removida: riscada, com quem removeu, categoria e motivo.
+
+> `[00:26.120 → 00:16.635]` And the course web page, which has got a lot of exercises from the past, MATLAB codes, the syllabus for the course is web.mit.edu slash 18.06.
+>
+> ~~And this is the first lecture, lecture one.~~ `[00:44.360–00:47.200]` — removida pelo Diretor · repetition: Repetição da informação de abertura que já foi apresentada na frase [1].
+>
+> `[00:48.640 → 00:34.460]` And later we'll say which will give the web address for viewing these video tapes.
+>
+> ~~Let me, I can even say right away, what's the matrix~~ `[02:47.460–02:51.720]` — removida pelo Diretor · false_start: Início de frase reformulado na frase seguinte.
+>
+> ⏸ pausa de 1,4s removida `[02:51.720]`
+
+Quando o corte pedido não sai inteiro, o relatório diz (palestra de 57 min):
+
+> ◐ `[28:06.990 → 26:43.033]` Um — **remoção parcial**: saíram 0,48s de 0,80s (60%); corte limitado pelo silêncio mais próximo e pela folga das frases vizinhas.
+>
+> ⚠️ `[37:33.140 → 35:39.016]` anymore — **remoção não aplicada**, continua no vídeo: o corte ajustado aos silêncios não alcançou esta frase.
+
+### `revise`: ajustes em linguagem natural
+
+```powershell
+python -m ai_video_editor.cli revise output\projects\aula1_5min-e8fa518c2d "tira a parte em que ele fala do site do curso"
+```
+
+O revisor recebe as frases com o estado atual (mantida/removida) e devolve o novo conjunto completo de remoções. Neste pedido, que não diz onde o site é mencionado, ele achou sozinho as duas frases certas, e o vídeo foi de **4:11 para 3:45** (v1 → v2). Trecho do relatório da v2:
+
+| Frase | Texto | Antes | Depois | Motivo |
+| --- | --- | --- | --- | --- |
+| 3 | And the course web page, which has got a lot of exercises from the past, MATLAB codes, the syllabus for the course is web.mit.edu slash 18.06. | mantida | removida | Menciona o site do curso e recursos da página web, conforme solicitado para remoção. |
+| 5 | And later we'll say which will give the web address for viewing these videotapes. | mantida | removida | Continuação da menção ao endereço web do curso e vídeos. |
+
+Em seguida, `"corta menos, deixa o ritmo mais natural"` (v2 → v3, 4:06) restaurou três frases curtas, mudou o ritmo das pausas de `normal` para `natural` e **manteve o pedido anterior**: "mantendo fora as menções ao site ([3], [5])", segundo o resumo do próprio revisor. Pedido impossível, ambíguo ou sem efeito não cria versão. `versions <projeto>` lista o histórico.
+
+## Resultados medidos
+
+Números dos relatórios gerados pelo editor (`edit_report.md`) e do [histórico do projeto](docs/HISTORICO.md). Máquina: GPU NVIDIA RTX 2060.
+
+| | Aula do MIT 18.06, aula 1 (trecho) | Palestra de Richard Stallman |
+| --- | --- | --- |
+| Duração | 5:00 → **4:11** (−16,2%) | 57:07 → **53:40** (−6,0%) |
+| Cortes | 39 | 259 |
+| Frases removidas pelo Diretor | 4 pedidas, 4 aplicadas | 11 pedidas: 6 aplicadas, 4 parciais, 1 não aplicada |
+| Pausas removidas | 38,4s | 198,2s |
+| Tempo total | **1min 05s** (0,22× o tempo real) | **9min 59s** (0,17× o tempo real; transcrição em cache) |
+| Etapa mais lenta | render, 31,9s | render, 8min 45s |
+
+<details>
+<summary>Linha do tempo dos cortes da palestra (uma linha por 10 minutos)</summary>
+
+![Linha do tempo dos cortes da palestra](docs/img/timeline-palestra.svg)
+
+</details>
+
+Outras medições, todas no histórico:
+
+- **Diretor 158s → 5,7s** (28× mais rápido) ao tornar configurável o nível de raciocínio do modelo e repassar o timeout ao SDK, sem perder qualidade.
+- **Transcrição na GPU vs CPU:** 85,6s → 13,2s na aula de 5 min (6,5× mais rápido, mesmo texto). Na aula completa de 39min 49s do benchmark, com o `small`: 11min 40s na CPU contra 1min 36s na GPU.
+- **Limite de silêncio adaptativo:** com o limite fixo de −35 dB, a palestra (sala com ruído) tinha **9 pausas detectadas em 57 min**; medindo o ruído de fundo de cada vídeo, passou a **458**. Na aula do MIT o limite escolhido foi −37,2 dB, com resultado praticamente igual ao que já tinha sido aprovado (40 vs 44 cortes).
+- **Testes:** a suíte completa caiu de 9min20s para 1min33s com marcador `slow`, fixtures reaproveitadas e execução paralela.
+
+## Benchmark de transcrição
+
+`benchmark transcription` mede velocidade e WER (taxa de erro de palavras) de configurações do faster-whisper contra a transcrição oficial do MIT. Aula 1 de Álgebra Linear, 39min 49s, RTX 2060, `--language en` ([resultados completos](benchmark/results/2026-10-20-mit-1806-lecture01/results.md)):
+
+| Configuração | Tempo | Tempo real | WER bruto | WER normalizado | S / D / I (normalizado) |
+| --- | --- | --- | --- | --- | --- |
+| `small:cpu:int8` | 11min 40s | 0,293× | 8,9% | **5,6%** | 61 / 98 / 116 |
+| `small:cuda:float16` | 1min 36s | 0,040× | 9,9% | 6,8% | 62 / 98 / 178 |
+| `large-v3-turbo:cuda:float16` | **1min 22s** | **0,035×** | 8,5% | 7,4% | 63 / **70** / 235 |
+
+S, D e I são substituições, omissões e inserções. O tempo não inclui a carga do modelo (medida à parte).
+
+**Normalização.** O WER bruto só põe em minúsculas e tira pontuação. Mais de 130 "erros" do `small` eram grafia, não escuta: "1" no lugar de "one", "ok" no lugar de "okay". O WER normalizado aplica nos dois textos as mesmas regras (números por extenso → dígitos, okay → ok, x's → xs), implementadas no projeto sem dependência nova. Palavras que a transcrição tem a mais depois do fim da referência (que termina no meio de uma frase) são contadas à parte.
+
+**Por que o modelo com WER "pior" é o padrão.** Normalizado, o `large-v3-turbo` tem o maior WER (7,4%). Mas o excesso vem quase todo das inserções (235 contra 116): ele é mais literal e escreve o que a transcrição humana limpou, como "uh" e repetições. Ao mesmo tempo, é o que **menos perde palavras** (70 omissões contra 98) e o mais rápido. Para um editor que precisa *ver* a enrolação para cortá-la, uma transcrição literal é uma vantagem. Por isso `--whisper-model auto` usa o `large-v3-turbo` na GPU e o `small` na CPU.
+
+## Histórias de engenharia
+
+**1. O limite de silêncio que funcionava na aula e falhou na palestra.**
+*Problema:* com o limite fixo de −35 dB, a palestra de 57 min teve só 9 silêncios detectados. *Investigação:* a gravação é de uma sala com ruído de fundo (piso medido em −27,4 dB): o "silêncio" da palestra fica acima de −35 dB, então o limite fixo não via as pausas. *Solução:* medir o áudio em janelas de 50 ms, estimar o piso de ruído (percentil 10) e o nível da fala (percentil 90) e pôr o limite entre os dois, com travas e um aviso quando a medição é pouco confiável. *Resultado:* 9 → 458 pausas na palestra, e a aula do MIT praticamente igual à versão já aprovada (40 vs 44 cortes).
+
+**2. Palavras que sumiam da legenda, mas continuavam no áudio.**
+*Problema:* "first" e "rectangular" faltavam na legenda, embora fossem ditas no vídeo. *Investigação:* a legenda decidia se uma palavra ficava pelo ponto médio dela; o Whisper inflava a duração dessas palavras para dentro de uma pausa cortada, e o ponto médio caía na pausa. *Solução:* a palavra entra se uma fração mínima dela se sobrepõe a um trecho mantido, usando a mesma conta de frames do render. *Resultado:* as palavras voltaram, e a legenda bate com o vídeo editado.
+
+**3. O relatório que dizia ter cortado "anymore" sem ter cortado.**
+*Problema:* na palestra, o relatório listava "anymore" como removida, mas a palavra continuava no vídeo. *Investigação:* a trava que protege a folga das frases vizinhas anulava o corte, e o relatório só repetia o que a IA tinha pedido. *Solução:* medir no plano final quanto de cada frase realmente saiu: aplicada (≥ 90%), parcial (com segundos e %) ou não aplicada (com o motivo). Junto veio a regra do pedaço de palavra: se sobraria menos de 0,25s de uma frase removida, o corte vai até o limite da frase ou é desfeito. *Resultado:* `edit_transcript.md`/`edit_diff.json` e um resumo no topo do relatório ("11 remoções pedidas, 6 aplicadas, 4 parciais, 1 não aplicada"), e nunca meia palavra no vídeo.
+
+**4. Frases longas demais para o Diretor.**
+*Problema:* a palestra virou só 125 "frases" de ~27s em média, grandes demais para o Diretor cortar só a enrolação sem levar conteúdo junto. *Investigação:* em fala corrida o Whisper pontua pouco, e as frases eram montadas até o próximo ponto final ou pausa longa. *Solução:* tamanho máximo de 12s / 40 palavras, fechando a frase no melhor ponto (vírgula, depois a maior pausa), sem nunca dividir um segmento do Whisper. *Resultado:* 125 → 411 frases (média de 7,4s).
+
+**5. O modelo "pior" do benchmark era o melhor para o editor.**
+*Problema:* depois de normalizar o WER, o ranking inverteu, e o `large-v3-turbo`, que parecia o mais preciso, virou o de maior erro. *Investigação:* o excesso era de inserções, palavras que ele transcreve e a referência humana omitiu ("uh", repetições), e não de cauda após o fim da referência (só 14–19 palavras); ele também era o que menos omitia. *Solução:* em vez de seguir o número, olhar o que o produto precisa: o Diretor só corta a enrolação que aparece na transcrição. *Resultado:* `--whisper-model auto` usa o turbo na GPU (o mais rápido, 0,035× o tempo real) e o `small` na CPU.
+
+## Como usar
+
+**Requisitos:** Python 3.11+ e FFmpeg/ffprobe (no `PATH`, em `FFMPEG_PATH`/`FFPROBE_PATH` ou nos locais comuns do Windows). GPU NVIDIA com CUDA 12 é opcional.
+
+```powershell
 python -m venv .venv
-
-# 2. Ativar o ambiente (PowerShell no Windows)
 .\.venv\Scripts\Activate.ps1
 
-# 3. Instalar o pacote e dependências
-pip install -e .
-pip install pytest
+pip install -e ".[transcription]"   # CPU
+pip install -e ".[gpu]"             # GPU NVIDIA: faster-whisper + cuBLAS/cuDNN (CUDA 12)
+pip install -e ".[openai]"          # opcional: Diretor/revisor na OpenAI
+pip install -e ".[dev]"             # testes
 ```
 
----
+**Chave de API** (só para o Diretor e o revisor; corte de silêncio e transcrição rodam localmente), por variável de ambiente ou num `.env` local:
 
-## 3. Executando os Testes Automatizados
-
-O projeto inclui suíte completa de testes unitários e de integração utilizando **vídeos sintéticos** (FFmpeg) e **provedor Mock** para IA, sem necessidade de chamadas de rede externas ou chaves reais de API:
-
-```bash
-.\.venv\Scripts\python.exe -m pytest -v
-```
-
----
-
-## 4. Uso via Linha de Comando (CLI)
-
-### Opção A: Ingestão Técnica e Extração de Frames (`analyze`)
-Inspeciona metadados com `ffprobe` e extrai frames representativos com timestamps rastreáveis:
-
-```bash
-# Extração por intervalo (ex: a cada 2.0s, máx 50 frames)
-.\.venv\Scripts\python.exe -m ai_video_editor.cli analyze video1.mp4 video2.mp4 `
-  --strategy interval --interval 2.0 --max-frames 50 --output-dir output/analysis
-
-# Extração por contagem fixa (ex: exatamente 5 frames equidistantes)
-.\.venv\Scripts\python.exe -m ai_video_editor.cli analyze video1.mp4 `
-  --strategy fixed_count --count 5 --output-dir output/analysis --json
-```
-
-### Opção B: Análise Multimodal com IA e Relatório Markdown (`report-ai`)
-Interpreta os frames extraídos com IA multimodal e gera um relatório Markdown (`ai_report.md`) com linha do tempo visual e dados estruturados (`ai_analysis.json`). Cada execução também grava `ai_run_metrics.json` (provedor, modelo, frames enviados, latência, tokens quando o provedor informa, `success` e `error_type`), inclusive em caso de falha, e o relatório inclui a seção "Métricas da execução":
-
-#### 1. Configuração Segura da API Key (Google Gemini)
-Defina a chave via variável de ambiente (nunca passada em argumentos de linha de comando ou versionada no Git):
 ```powershell
-$env:GEMINI_API_KEY = "sua_chave_do_google_ai_studio"
-# Opcional, para o Diretor/revisor na OpenAI (pip install -e ".[openai]"):
-$env:OPENAI_API_KEY = "sua_chave_da_openai"
-```
-As duas também podem ficar num `.env` local (ignorado pelo Git).
-
-#### 2. Executando com o Google Gemini
-```bash
-.\.venv\Scripts\python.exe -m ai_video_editor.cli report-ai `
-  --report output/analysis/<id_da_sessao>/analysis_report.json `
-  --provider gemini `
-  --model gemini-3.8-flash `
-  --max-images 15 `
-  --proxy-dim 1024
+$env:GEMINI_API_KEY = "..."   # Gemini (padrão)
+$env:OPENAI_API_KEY = "..."   # OpenAI (opcional)
 ```
 
-> **Modelos Gemini Compatíveis:**
-> Os modelos recomendados suportam entrada multimodal e saídas estruturadas em JSON (ex: `gemini-3.8-flash` para custo/velocidade, ou `gemini-3.8-pro` para raciocínio visual aprofundado). Consulte os modelos multimodais atualizados na [documentação oficial do Google AI Studio](https://ai.google.dev/gemini-api/docs/models/gemini).
+**Comandos principais:**
 
-#### 3. Executando em Modo Simulado / Teste Offline (`mock`)
-Permite validar o fluxo E2E e geração de relatórios Markdown sem gastar tokens ou depender de conexão de rede:
-```bash
-.\.venv\Scripts\python.exe -m ai_video_editor.cli report-ai `
-  --report output/analysis/<id_da_sessao>/analysis_report.json `
-  --provider mock
+```powershell
+# Só corte de silêncio (sem IA)
+python -m ai_video_editor.cli edit aula.mp4
+
+# Edição completa: transcrição + Diretor de IA
+python -m ai_video_editor.cli edit aula.mp4 --transcribe --language pt --director gemini --intensity light
+
+# Diretor na OpenAI, com Gemini de reserva
+python -m ai_video_editor.cli edit aula.mp4 --transcribe --director openai --director-fallback "gemini:gemini-3.8-flash"
+
+# Ajustes e versões
+python -m ai_video_editor.cli revise output\projects\aula-<hash> "corta menos"
+python -m ai_video_editor.cli revise output\projects\aula-<hash> "mantém a frase sobre o livro" --from v1
+python -m ai_video_editor.cli versions output\projects\aula-<hash>
+
+# Benchmark de transcrição
+python -m ai_video_editor.cli benchmark transcription --audio aula.webm --reference ref.txt --language en --configs small:cpu:int8 large-v3-turbo:cuda:float16
+python -m ai_video_editor.cli benchmark rescore benchmark/results/<data>-<nome>
 ```
 
-### Opção C: Corte Rápido de Dois Vídeos (`quick-cut`)
-Corta trechos especificados de dois vídeos e concatena-os em um MP4 final:
-
-```bash
-.\.venv\Scripts\python.exe -m ai_video_editor.cli quick-cut `
-  --video1 clip1.mp4 --start1 1.0 --end1 3.0 `
-  --video2 clip2.mp4 --start2 0.5 --end2 2.5 `
-  --output output/merged_output.mp4
-```
-
-### Opção D: Renderização a partir de um `EditPlan` JSON (`render`)
-Renderiza um plano de edição completo a partir de um arquivo JSON estruturado:
-
-```bash
-.\.venv\Scripts\python.exe -m ai_video_editor.cli render output/sample_plan.json
-```
-
-### Opção E: Remover as pausas de um vídeo falado (`edit`)
-Fluxo completo: metadados → silêncios → transcrição (opcional) → Diretor de IA (opcional) → plano de corte → render → legendas (com transcrição) → relatório. Sem `--director`, é só corte de silêncio, sem IA. A resolução e o FPS da saída são os do vídeo de origem (FPS arredondado para inteiro).
-
-```bash
-.\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4"
-
-# Ajustando a detecção e as folgas, e gerando a transcrição (requer pip install -e ".[transcription]")
-.\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4" `
-  --threshold-db -40 --min-silence-sec 0.6 `
-  --padding-before 0.15 --padding-after 0.25 --min-gap 0.3 --min-keep 0.1 `
-  --transcribe --language pt --whisper-model small   # o padrão é auto: large-v3-turbo na GPU, small na CPU
-
-# Com o Diretor de IA removendo frases repetidas, recomeçadas e enrolação (requer GEMINI_API_KEY)
-.\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4" `
-  --transcribe --language pt --director-provider gemini --intensity light
-
-# Diretor na OpenAI (pip install -e ".[openai]" e OPENAI_API_KEY), com o Gemini de reserva
-.\.venv\Scripts\python.exe -m ai_video_editor.cli edit "C:\videos\aula.mp4" `
-  --transcribe --language pt --director-provider openai --director-fallback "gemini:gemini-3.8-flash"
-```
+Opções mais úteis do `edit`:
 
 | Opção | Padrão | Efeito |
 | --- | --- | --- |
-| `--threshold-db` | auto | `auto` mede o ruído de cada vídeo e escolhe o limite; um número (ex: `-40`) usa esse limite fixo em dB |
-| `--min-silence-sec` | 0.5 | Duração mínima de um silêncio detectado |
-| `--padding-before` / `--padding-after` | 0.15 / 0.20 | Folga mantida antes/depois de cada fala |
-| `--min-gap` | 0.30 | Pausas menores que isso (após o padding) não são cortadas, inclusive no início/fim |
-| `--min-keep` | 0.10 | Falas mais curtas que isso são tratadas como ruído |
-| `--transcribe` | desligado | Gera `transcript.json` (necessário para o Diretor) |
-| `--director-provider` (ou `--director`) | `none` | Diretor de IA: `none`, `mock` (remove frases repetidas, sem rede), `gemini` (`GEMINI_API_KEY`) ou `openai` (`OPENAI_API_KEY`, extra `.[openai]`). Só roda com `--transcribe` |
-| `--director-model` | o do provedor | Modelo principal: `gemini-3.8-flash` no Gemini, `gpt-6-luna` na OpenAI |
-| `--director-fallback` | no Gemini: `gemini-3.6-flash`, `gemini-3.5-flash-lite` | Modelos de reserva, em ordem: `"provedor:modelo,..."` (pode misturar provedores; sem `provedor:` usa o do Diretor). `none` desliga. Veja "Troca automática de modelo" abaixo |
-| `--director-thinking` | `low` | Raciocínio do Diretor: `off`, `low` ou `high`. Cada provedor traduz (Gemini: `thinking_level` MINIMAL/LOW/HIGH, ou `thinking_budget` na família 2.5; OpenAI: `reasoning.effort` none/low/high; modelos sem raciocínio ignoram e o relatório diz isso). Se a API recusar o nível, sobe sozinho (off → low → high); o nível pedido e o efetivo aparecem no relatório e no `director_decision.json` |
-| `--director-timeout` | 120 | Tempo limite (s) da chamada ao Diretor |
-| `--api-retries` | 4 | Novas tentativas da API de IA em falhas temporárias (503, 504, 429 por minuto, conexão), com espera de 2s, 4s, 8s, 16s + jitter (respeita `Retry-After`); `0` desliga. Erros permanentes (autenticação, 400, 404) nunca são repetidos. Cada tentativa aparece no terminal (`[4/8] Diretor: Gemini indisponível (503), nova tentativa em 4s (2/5)`), o erro final traz o detalhe original da API e o relatório registra as chamadas à API de cada tentativa. Vale também para `revise` e `report-ai` |
-| `--intensity` | `light` | Quanto o Diretor corta: `light`, `medium` ou `aggressive` |
-| `--target-duration` | — | Duração final desejada em segundos |
-| `--instructions` | — | Pedido livre ao Diretor (ex: `"corte as piadas"`) |
-| `--keep-fillers` | desligado | Impede o Diretor de remover frases só por serem enrolação |
-| `--no-subtitles` | desligado | Não gera o `.srt` (por padrão ele é gerado quando há `--transcribe`) |
-| `--subtitle-max-chars` | 42 | Máximo de caracteres por linha da legenda |
-| `--transcript-min-pause` | 1.0 | Pausas removidas a partir desta duração (s) ganham marcador na transcrição comparativa |
-| `--loudness` | `voz` | Normalização de volume do vídeo final (EBU R128, loudnorm em duas passadas): `voz` (-16 LUFS), `youtube` (-14 LUFS), `broadcast` (-23 LUFS), todos com true peak -1,5 dBTP e LRA 11; `off` mantém o volume original. Veja "Normalização de volume" abaixo |
-| `--force` | desligado | Refaz todas as etapas, ignorando o cache |
-| `--no-live` | desligado | Sem linha de andamento ao vivo: só as linhas finais de cada etapa (automático quando a saída não é um terminal, ex: redirecionada para arquivo). Vale também para `revise` |
-| `--projects-dir` | `output/projects` | Diretório base dos projetos |
+| `--transcribe` | desligado | Transcreve (necessário para Diretor, legendas e relatórios comparativos) |
+| `--director {none,mock,gemini,openai}` | `none` | Diretor de IA que remove frases |
+| `--intensity {light,medium,aggressive}` | `light` | Quanto o Diretor corta |
+| `--instructions "..."` / `--target-duration S` | — | Pedido livre ao Diretor / duração final desejada |
+| `--keep-fillers` | desligado | Proíbe remover frases só por serem enrolação |
+| `--threshold-db` | `auto` | Limite de silêncio medido por vídeo, ou um número fixo em dB |
+| `--whisper-model` | `auto` | `large-v3-turbo` na GPU, `small` na CPU, ou um modelo explícito |
+| `--loudness {voz,youtube,broadcast,off}` | `voz` | Normalização de volume (−16 / −14 / −23 LUFS) |
+| `--director-fallback` | 3.6-flash, 3.5-flash-lite | Cadeia de modelos de reserva `provedor:modelo,...` |
+| `--force` | desligado | Ignora o cache |
 
-Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
+Cada vídeo ganha uma pasta `output/projects/<nome>-<hash>/` com o vídeo editado, a legenda `.srt`, `edit_report.md`, `edit_transcript.md`, `edit_diff.json`, `edit_timeline.svg` e as versões em `versions/vN/`. Todas as opções, artefatos e regras estão na **[referência técnica](docs/REFERENCIA.md)**.
 
-* `project.json`: manifesto com caminho do vídeo, parâmetros e status/fingerprint/métricas de cada etapa.
-* `probe.json`, `audio_analysis.json`, `transcript.json` (se pedido), `director_decision.json` (se pedido), `edit_plan.json`.
-* `edit_report.md`: duração original e final, % removido, número de cortes, parâmetros, a lista dos trechos removidos e, com o Diretor, a seção "Decisões do Diretor" (tempo, texto, categoria, motivo e **aplicação** de cada frase removida, latência e tokens). Com o Diretor, o relatório abre com `Diretor: N remoções pedidas, X aplicadas, Y parciais, Z não aplicadas`. A seção "Volume" traz o loudness medido do áudio editado (I, TP, LRA), o alvo aplicado e o tempo da passada de medição.
-* **Status de aplicação das remoções:** medido no plano final pela interseção da frase com o que saiu do vídeo. `aplicada` = saiu ≥ 90%; `parcial` = saiu uma parte (segundos e %); `não aplicada` = a frase continua no vídeo, com o motivo (ex.: `protegida pela folga das frases vizinhas`, quando o padding das frases mantidas coladas anula o corte).
-* `edit_transcript.md` e `edit_diff.json` (só com transcrição; sem ela, aparecem como pulados no relatório): **transcrição comparativa** com a fala original inteira em ordem cronológica. Frase mantida: `` `[tempo no original → tempo no vídeo editado]` texto``; removida: ~~riscada~~ com tempo no original, quem removeu, categoria e motivo; ◐ parcial (quanto saiu); ⚠️ não aplicada (não riscada, com o motivo); ⏸ pausas removidas de 1s ou mais (`--transcript-min-pause`; as menores só entram no total do cabeçalho); em revisões, ✅ restaurada e 🆕 removida nesta revisão, com o pedido. O tempo no editado usa o mesmo remapeamento das legendas, então bate com o `.srt` e o player. O `edit_diff.json` traz o mesmo conteúdo validado pelo modelo `EditDiff`. Os dois arquivos são copiados para `versions/vN/`.
-* **Tempo de processamento**: cada etapa mostra o tempo de relógio no terminal (`[3/8] Transcrição: ok — 49 frases (12min 34s)`; etapas em cache aparecem como `em cache`, sem tempo) e, ao final, `57min de vídeo processados em 21min (0,37× o tempo real)`. Os tempos ficam em `last_run` no `project.json`, em `timings` no `version.json` e na seção "Tempo de processamento" do `edit_report.md` (o `revise` também mede suas etapas; probe, silêncios e transcrição contam como cache).
-* **Andamento ao vivo** (só em terminal): enquanto uma etapa roda, a mesma linha é reescrita a cada segundo com o tempo decorrido e, quando há como medir, o progresso e o tempo restante: `[3/8] Transcrição... 2min 13s — 41% (23min de 57min), faltam ~3min` (fim do último trecho transcrito / duração do áudio) e `[6/8] Renderização... 48,0s — 118/258 trechos (45%), faltam ~58s`. No Diretor (e no revisor), a linha mostra o modelo atual e a tentativa (`gemini:gemini-3.8-flash, tentativa 2/5`). A estimativa só aparece a partir de 10% concluídos. Avisos (nova tentativa, troca de modelo, GPU indisponível) saem em linha própria acima e não são apagados; ao fim, a linha vira a linha final da etapa. Funciona no cmd e no PowerShell (`\r` + espaços, sem códigos ANSI); em erro ou Ctrl+C a linha é fechada como `FALHOU`/`interrompida`.
-* `<nome-do-video>_edited.mp4`: o vídeo final.
-* `<nome-do-video>_edited.srt`: legenda sincronizada com o vídeo editado (só com `--transcribe`), ao lado do vídeo e com o mesmo nome base, então players como o VLC a carregam sozinhos. Usa as palavras da transcrição, os mesmos trechos e o FPS do plano final (já com os cortes do Diretor). Sem transcrição, ou com `--no-subtitles`, a etapa "Legendas" aparece como pulada e um `.srt` antigo é removido da pasta. O relatório cita o arquivo e o número de blocos.
+## Arquitetura
 
-**Diretor de IA:** a transcrição é agrupada em frases (segmentos unidos até `.`, `?`, `!` ou uma pausa maior que 1s; se passar de 12s ou 40 palavras, a frase fecha no melhor ponto: fim de segmento com vírgula/`;`/`:`, depois a maior pausa, depois qualquer fim de segmento, sem nunca dividir um segmento do Whisper. Os limites são `EditPipelineParams.sentences` e entram no fingerprint do Diretor; o relatório mostra quantidade, duração média e máxima das frases). O Diretor recebe as frases numeradas e o briefing e devolve só os IDs das frases a remover, com categoria (`repetition`, `false_start`, `filler`, `off_topic`, `other`) e motivo em português; nunca timestamps. A decisão é validada (IDs existentes e únicos; no máximo 40% do tempo de fala, ou mais se `--target-duration` exigir). Se for inválida, o modelo recebe o erro e tenta mais uma vez; se falhar de novo, o vídeo sai só com o corte de silêncio e o relatório traz um aviso. Os limites de cada corte vão para dentro do silêncio detectado mais próximo (até 0,5s); sem silêncio por perto, usa-se o limite da frase sem invadir o padding das frases mantidas. **Pedaço de palavra:** se o corte ajustado deixar de um lado uma sobra da frase removida menor que 0,25s, o corte é estendido até o limite da frase quando esse limite não cai dentro de uma frase mantida; se cair (frases do Whisper sobrepostas), o corte é desfeito e a frase aparece como `não aplicada` — nunca fica meia palavra no vídeo.
-
-**Limite de silêncio automático:** com `--threshold-db auto` (padrão), o áudio é medido em janelas de 50 ms (FFmpeg `astats`, pico por janela). O **piso de ruído** é o percentil 10 dos níveis e o **nível de fala** o percentil 90; o limite é `piso + 35% da distância até a fala`, nunca acima de `fala - 6 dB` e dentro de `[-60, -20] dB`. Isso faz gravações com ruído de fundo (plateia, sala) detectarem pausas que o `-35 dB` fixo nunca via. Modo, piso, fala e limite escolhido ficam no `audio_analysis.json` e no relatório. Quando o ruído está muito próximo da fala, o áudio não tem pausas ou é quase todo silêncio, o relatório traz um aviso de detecção pouco confiável (nesses casos o limite fica abaixo do ruído e poucos cortes são feitos, ou todo o áudio vira silêncio, respectivamente).
-
-**Troca automática de modelo:** o Diretor (e o revisor) usa uma cadeia ordenada `provedor:modelo`; o padrão é `gemini:gemini-3.8-flash` → `gemini:gemini-3.6-flash` → `gemini:gemini-3.5-flash-lite`. Se o modelo atual continuar falhando depois das novas tentativas com erro temporário (503, 504, 429 por minuto, conexão) ou com a cota diária/de cobrança esgotada, a etapa passa para o próximo da cadeia e avisa no terminal (`[4/8] Diretor: gemini-3.8-flash indisponível (503) após 5 tentativas → trocando para gemini-3.6-flash`). Erros de autenticação ou de requisição inválida (400/404) não trocam de modelo. Provedores sem chave configurada são pulados com um aviso. Depois de uma troca, as chamadas seguintes da mesma execução continuam no modelo que funcionou. O relatório ("Cadeia de modelos", "Modelo usado", "Troca de modelo") e o `director_decision.json` (`model_chain`, `effective_provider`, `effective_model_id`, `model_switches`) registram o pedido, o usado e cada troca com o motivo. O cache do Diretor usa a cadeia **pedida**: uma troca de modelo durante a execução não muda o fingerprint.
-
-**Normalização de volume:** com `--loudness` diferente de `off`, o render faz duas passadas do filtro `loudnorm` sobre o áudio já concatenado: a primeira mede (I, TP, LRA, limiar e offset, lidos do JSON que o FFmpeg imprime) e a segunda aplica o ganho no concat final com os valores medidos e `linear=true` (ganho único, sem "bombear" a fala; o vídeo continua com `-c:v copy` e o AAC é codificado uma única vez). Se o áudio original já chega a 0 dBTP ou mais de true peak, o relatório e o terminal avisam: a gravação provavelmente saiu distorcida, e a normalização só abaixa o volume, não desfaz a distorção. Áudio todo em silêncio (loudness `-inf` ou inválido) ou vídeo sem áudio: a normalização é pulada com aviso, sem falhar. A medição fica nas métricas `loudness_*` da etapa render no `project.json`. O `EditPlan` tem o campo opcional `loudness` (padrão `null` = sem normalização), então `render` e `quick-cut` continuam como antes.
-
-**Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` (ou alternar entre `auto` e um número) refaz silêncios, plano, render e relatório; mudar só um padding ou o `--loudness` refaz a partir do plano; sem Diretor, a transcrição nunca força novo render. As legendas dependem do plano, da transcrição e de `--subtitle-max-chars`: mudar só esse limite refaz apenas legendas e relatório, sem novo render. O Diretor é refeito quando mudam a transcrição, o briefing ou o modelo. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
-
-
-### Opção F: Revisar uma edição com pedidos em linguagem natural (`revise` e `versions`)
-Depois do `edit`, peça ajustes sem refazer as etapas caras (probe, silêncios e transcrição vêm do cache da pasta do projeto; nada é refeito). Cada edição vira uma **versão numerada**: o resultado do `edit` é a `v1`, e cada `revise` gera a próxima, sem tocar nas anteriores.
-
-```bash
-.\.venv\Scripts\python.exe -m ai_video_editor.cli revise "output\projects\aula-1a2b3c4d5e" "corta menos"
-.\.venv\Scripts\python.exe -m ai_video_editor.cli revise "output\projects\aula-1a2b3c4d5e" "tira a parte em que ele fala do site"
-.\.venv\Scripts\python.exe -m ai_video_editor.cli revise "output\projects\aula-1a2b3c4d5e" "mantém a frase sobre o livro" --from v1
-.\.venv\Scripts\python.exe -m ai_video_editor.cli versions "output\projects\aula-1a2b3c4d5e"
+```text
+src/ai_video_editor/
+├── cli.py, live_status.py   CLI e linha de andamento ao vivo
+├── pipeline/     orquestração do edit e do revise, cache por etapa, versões, relatórios, transcrição comparativa, linha do tempo
+├── audio/        silêncios (silencedetect) e limite adaptativo (níveis em janelas de 50 ms)
+├── transcription/  interface de transcrição; faster-whisper (GPU/CPU) e mock
+├── director/     frases a partir da transcrição, prompt, validação e Diretor (LLM e mock)
+├── revision/     revisor de pedidos em linguagem natural (LLM e mock)
+├── llm/          StructuredLLMClient, provedores gemini/openai/mock, cadeia de modelos, chaves e erros
+├── planning/     corte de silêncio, aplicação dos cortes de frase e regra do pedaço de palavra
+├── renderer/     compilador e executor FFmpeg (um processo por trecho, em paralelo) e loudnorm
+├── subtitles/    remapeamento de tempo e .srt do vídeo editado
+├── benchmark/    WER, normalização, rescore e relatório do benchmark
+├── core/         EditPlan e ClipSegment
+└── analyzer/, intelligence/   metadados, frames e análise visual (fases iniciais; opcional no perfil de vídeo falado)
 ```
 
-| Opção do `revise` | Padrão | Efeito |
-| --- | --- | --- |
-| `--from vN` | versão atual | Versão em que a revisão se baseia (as frases removidas/mantidas partem dela) |
-| `--reviser-provider` (ou `--reviser`) | o do Diretor do projeto (ou `gemini`) | `gemini`, `openai` ou `mock` (determinístico, sem rede) |
-| `--reviser-model` / `--reviser-fallback` / `--reviser-thinking` / `--reviser-timeout` | os do Diretor do projeto | Mesma configuração do Diretor: modelo, cadeia de reserva com troca automática, raciocínio (com subida automática de nível se a API recusar) e timeout. Trocando o provedor, o modelo e a reserva passam a ser os padrões dele |
-| `--loudness` | o da versão base | Normalização de volume da versão nova: `voz`, `youtube`, `broadcast` ou `off` (fica registrada no `version.json`) |
-| `--api-retries` | 4 | Novas tentativas em falhas temporárias da API (`0` desliga); mesma regra do `edit` |
-| `--no-live` | desligado | Sem linha de andamento ao vivo (mesma regra do `edit`) |
+- **Provedores de IA plugáveis.** O Diretor e o revisor só conhecem a interface `StructuredLLMClient` (prompt + schema Pydantic → objeto validado + métricas). Um provedor novo é uma classe em `llm/providers/` com o cliente do SDK, o mapeamento de erros (temporário, cota esgotada, permanente) e a tradução do nível de raciocínio, mais uma linha em `llm/registry.py`; ele passa a valer em `--director`, `--reviser` e nas cadeias `provedor:modelo`. A cadeia troca de modelo sozinha quando um fica indisponível ou sem cota, e nunca em erro de autenticação ou requisição inválida.
+- **Cache por etapa.** Cada etapa tem um fingerprint das entradas que a afetam; só é refeita se ele mudar. Mudar um padding refaz do plano em diante, mudar o limite da legenda refaz só legendas e relatório, e o `revise` reaproveita probe, silêncios e transcrição.
+- **Versões.** O resultado do `edit` é a v1; cada `revise` cria `versions/vN/` com vídeo, legenda, plano, decisão e relatórios, sem tocar nas anteriores. `--from vN` revisa a partir de qualquer versão.
+- **Qualidade.** Todo dado trocado com a IA ou entre módulos é um modelo Pydantic. FFmpeg sempre por lista de argumentos, nunca `shell=True`. Os testes não usam rede: vídeos sintéticos gerados com FFmpeg e provedores mock. Os rápidos (`pytest -m "not slow"`) rodam em segundos durante o desenvolvimento; os `slow` renderizam vídeo; a suíte completa roda em paralelo (pytest-xdist) e no GitHub Actions a cada push, em Python 3.11 e 3.12.
 
-* O revisor usa as frases gravadas na versão base (`director_decision.json`), não uma remontagem: projetos criados antes do limite de tamanho continuam abrindo e revisando com os mesmos IDs.
-* O revisor recebe as frases numeradas com o estado atual na versão base (mantida ou removida, com categoria e motivo), o briefing original, os últimos pedidos e o pedido novo. Devolve o **novo conjunto completo** de frases removidas (pode restaurar frases removidas antes), o motivo de cada restauração, um resumo e, opcionalmente, o ritmo das pausas: `natural` (mais folga), `normal` (o do `edit`) ou `tight` (menos folga). Nunca timestamps.
-* A resposta passa pela mesma validação do Diretor (IDs existentes e únicos, limite de remoção, enrolação proibida com `--keep-fillers`) mais a coerência das restaurações, com uma nova tentativa enviando o erro ao modelo. **Se o pedido for impossível, ambíguo, não mudar nada ou a resposta continuar inválida, nenhuma versão é criada** e o comando explica o motivo (código de saída 1). Se o render falhar, nada fica pela metade.
-* O comando mostra as frases removidas e restauradas, o ritmo e a duração antes e depois.
-* `versions` lista cada versão (`*` = atual) com duração, número de cortes e o pedido que a originou. Projetos criados antes do versionamento são migrados sozinhos: o resultado atual vira a `v1`.
+## Limitações conhecidas
 
-Estrutura (o `project.json` guarda o histórico em `versions` e a versão em `current_version`):
+- **Foco em vídeo falado** (aula, tutorial, pessoa falando). Gameplay e vlog dependem de imagem e música e não são tratados ainda.
+- **O Diretor e o revisor dependem de uma API** (Gemini ou OpenAI). Sem chave, o editor faz só corte de silêncio; com ela, há custo e latência de rede, e a decisão pode variar entre execuções.
+- **Palavras curtas**: o tempo que o Whisper atribui a "Um" ou "By" inclui a pausa ao redor, então o corte às vezes tira só o silêncio e a palavra fica (aparece como remoção parcial no relatório).
+- **Nomes e termos em outro idioma** podem sair errados na transcrição e, portanto, na legenda.
+- **Testado sobretudo em inglês.** A normalização do WER só tem regras para inglês, e ainda falta um teste com um vídeo em português com mais enrolação.
+- **O render é a etapa mais lenta** em vídeos longos (8min 45s dos 9min 59s da palestra) e ainda roda na CPU.
+- Cada versão guarda uma cópia do vídeo, então várias revisões ocupam bastante disco.
 
-```
-<projeto>/
-  project.json, probe.json, audio_analysis.json, transcript.json   # compartilhados por todas as versões
-  edit_plan.json, <video>_edited.mp4, ...                          # resultado do último `edit` (cache)
-  versions/
-    v1/  director_decision.json, edit_plan.json, <video>_edited.mp4, <video>_edited.srt, edit_report.md,
-         edit_transcript.md, edit_diff.json, version.json
-    v2/  ...                                                       # version.json guarda o pedido, o resumo e as métricas
-```
+## Como este projeto foi construído
 
-O `edit_report.md` de uma revisão traz a seção "Revisão": pedido, ritmo das pausas, resumo e uma tabela de mudanças (frase, texto, antes, depois, aplicação, motivo), com a contagem `Revisão vN: N remoções pedidas, X aplicadas...` no topo. A transcrição comparativa da versão marca as frases restauradas (✅) e as removidas nesta revisão (🆕, com o pedido). Rodar o `edit` de novo com os mesmos parâmetros não cria versão; com parâmetros que mudam o resultado, cria uma nova versão atual.
+O projeto foi desenvolvido **com ajuda de IA**, e vale ser explícito sobre a divisão do trabalho.
 
-### Opção G: Benchmark de transcrição (`benchmark transcription`)
+**Papel do autor:** definir o produto e o escopo (inclusive a mudança de rumo de "qualquer vídeo" para vídeo falado), tomar as decisões de arquitetura (a IA decide e o FFmpeg executa, frases por ID, provedores plugáveis), testar com vídeos reais (a aula do MIT, a palestra de 57 min), avaliar os resultados, encontrar os problemas que viraram as histórias acima e revisar e fazer o merge de cada mudança.
 
-Mede velocidade e precisão (WER, taxa de erro de palavras) de configurações do faster-whisper contra uma transcrição de referência. Cada configuração é `modelo:dispositivo:compute_type`; o modelo é carregado uma vez antes de medir (o tempo de carga sai separado), e uma configuração que falha (ex.: sem GPU) é registrada e as demais seguem.
+**Implementação:** feita por múltiplos agentes de IA (Claude Code) orquestrados com o Orca, cada um num *git worktree* próprio e com uma tarefa focada, trabalhando em paralelo. O planejamento das tarefas e os prompts foram feitos em conversa com o Claude. O [`CLAUDE.md`](CLAUDE.md) guarda o contexto e as regras do projeto para os agentes (arquitetura, convenções, como rodar os testes, o que atualizar ao terminar), e o [`docs/HISTORICO.md`](docs/HISTORICO.md) registra cada decisão, o motivo e o resultado medido.
 
-```bash
-# Um áudio, com referência (sem --reference, mede só velocidade e o WER aparece como "—")
-python -m ai_video_editor.cli benchmark transcription --audio benchmark/data/mit_1806_lecture01.webm --reference benchmark/data/mit_1806_lecture01_reference.txt --language en --configs small:cpu:int8 small:cuda:float16 large-v3-turbo:cuda:float16
+## Próximos passos
 
-# Vários itens, todas as configurações em todos os itens
-python -m ai_video_editor.cli benchmark transcription --manifest benchmark/manifest.json --configs small:cpu:int8,small:cuda:float16
-```
+Cortar palavras curtas pela energia do áudio, um status próprio para "só a pausa saiu", provedor de transcrição Gemini (para quem não tem GPU) e Gemini no benchmark, render na GPU (NVENC) e um teste com vídeo em português. Na V2, perfis de edição para gameplay e vlog e uma aplicação web. Detalhes em [docs/HISTORICO.md](docs/HISTORICO.md).
 
-Saída em `benchmark/results/<data>-<nome>/`: `results.json` (validado por Pydantic: versão do projeto, CPU/GPU, configurações e medições), `results.md` (uma tabela por item, a tabela de **média geral** quando há mais de um item, as 10 substituições mais frequentes por configuração, as palavras após o fim da referência e as falhas) e `hypotheses/` com o texto gerado por cada configuração (`hypotheses/<config>.txt`, com `:` trocado por `_`; com vários itens, `hypotheses/<item>/<config>.txt`). Os áudios de `benchmark/data/` não são versionados; o texto de referência (`*_reference.txt`) é.
+## Créditos e licença
 
-Resultado (aula 1 de Álgebra Linear do MIT, 39min 49s, RTX 2060; `benchmark/results/2026-10-20-mit-1806-lecture01/`, com o texto gerado em `hypotheses/`):
-
-| Configuração | Carga | Tempo | Tempo real | WER bruto | S/D/I (bruto) | WER norm. | S/D/I (norm.) | Após a ref. |
-|---|---|---|---|---|---|---|---|---|
-| `small:cpu:int8` | 2,5s | 11min 40s | 0,293x | 8,9% | 227/98/116 | 5,6% | 61/98/116 | 14 |
-| `small:cuda:float16` | 1,1s | 1min 36s | 0,040x | 9,9% | 216/96/176 | 6,8% | 62/98/178 | 18 |
-| `large-v3-turbo:cuda:float16` | 2,9s | 1min 22s | 0,035x | 8,5% | 118/70/235 | 7,4% | 63/70/235 | 19 |
-
-A normalização tira mais de 130 "substituições" do `small` que eram só grafia (one→1, okay→ok, ys→y's...): as substituições caem de ~220 para ~62. Com isso, o `large-v3-turbo` deixa de ser o mais preciso: as inserções (235 contra 116 do `small` na CPU) são palavras que ele escreve e a referência omite (artigos, "uh", repetições), então ele é mais literal, não pior. A cauda após o fim da referência existe (a referência termina em "...to a system of any size and", e a fala segue com "find out because elimination fails, find out when there isn't a solution. Okay, thanks."), mas são só 14–19 palavras e não explicam as inserções. Os tempos foram medidos de novo nesta execução (a carga do turbo caiu de 58s para 2,9s porque o modelo já estava baixado).
-
-**Manifesto** (`--manifest arquivo.json`): objeto com a lista `items` (ou a própria lista). Caminhos relativos valem a partir da pasta do manifesto; `name` é obrigatório e único.
-
-```json
-{
-  "items": [
-    {
-      "name": "mit-aula-1",
-      "audio": "data/mit_1806_lecture01.webm",
-      "reference": "data/mit_1806_lecture01_reference.txt",
-      "language": "en"
-    },
-    { "name": "so-velocidade", "audio": "data/outro.wav" }
-  ]
-}
-```
-
-| Campo | Obrigatório | Significado |
-|---|---|---|
-| `name` | sim | Nome do item (título da tabela); único no manifesto |
-| `audio` | sim | Áudio ou vídeo a transcrever |
-| `reference` | não | Texto de referência (linhas iniciadas por `#` são ignoradas); sem ele, o item só mede velocidade |
-| `language` | não | Código do idioma (ex.: `en`, `pt`); sem ele, detecção automática |
-
-Como ler as colunas: *Tempo* é a transcrição (inclui decodificar o áudio com FFmpeg, não inclui a carga do modelo); *Tempo real* é tempo ÷ duração do áudio (0,1x = 10 vezes mais rápido que o áudio); S/D/I são substituições, omissões (palavras da referência que faltam) e inserções; *WER bruto* e *WER norm.* trazem cada um os seus S/D/I; *Após a ref.* são as palavras do fim da transcrição sem correspondência na referência (ver abaixo). Na média geral, o tempo real é o tempo total ÷ áudio total e o WER é agregado (erros somados ÷ palavras de referência somadas, só dos itens com referência).
-
-**WER bruto × normalizado.** O *bruto* usa só a normalização básica: minúsculas, apóstrofos unificados, pontuação e hífens viram espaço, espaços colapsados. O *normalizado* aplica, nos dois textos (referência e transcrição), as regras do idioma do item (`benchmark/normalize.py`, sem dependência nova; hoje só `en`, e idioma sem regras mostra "—" no normalizado). Regras do inglês:
-
-* números por extenso viram dígitos: 0–999 e milhares simples ("zero" → 0, "twenty one" → 21, "a hundred" → 100, "two hundred and five" → 205, "two thousand five" → 2005); sequências como "one two three" continuam separadas ("1 2 3"), e dígitos que já estão escritos não mudam;
-* "okay" → "ok";
-* apóstrofo antes do "s" final some: "x's" → "xs", "y's" → "ys" (outras contrações, como "don't", ficam);
-* hífens já viram espaço na normalização básica ("twenty-one" → "twenty one" → 21) e o separador de milhar entre dígitos é removido ("1,000" → "1000").
-
-Para outro idioma (ex.: `pt`), escreva uma função `texto -> palavras` e registre em `NORMALIZERS`.
-
-**Palavras após o fim da referência.** A referência pode terminar antes da fala (a do MIT parece parar no meio de uma frase). Se a transcrição gerada continua além do último trecho que casa com a referência, as palavras a mais no final (pelo menos 5) são contadas à parte em *Após a ref.* e **não** entram nas inserções nem no WER (bruto ou normalizado); o `results.md` mostra por onde a cauda começa, para conferir. Cauda menor que 5 palavras continua sendo inserção comum.
-
-**Recalcular sem transcrever** (`benchmark rescore`): a partir do `results.json` e de `hypotheses/`, recalcula os dois WERs, a cauda e as médias, mantendo os tempos medidos, e regenera `results.json` e `results.md`. Serve para mudar a normalização ou a referência sem repetir os 15 minutos de transcrição. Execuções sem `hypotheses/` (anteriores a esta versão) precisam ser rodadas de novo.
-
-```bash
-python -m ai_video_editor.cli benchmark rescore benchmark/results/2026-10-20-mit-1806-lecture01
-# --reference outro.txt troca a referência (execuções de um item)
-```
-
-**Limitações do WER**: a comparação continua textual. Mesmo normalizado, "gonna" × "going to", hesitações ("uh", "um") que só um dos textos registra, símbolos falados ("x" × "ex") e erros da própria referência contam como erro. Compare configurações entre si com a mesma referência; o valor absoluto tem esse piso de ruído.
-
-Para incluir outro provedor de transcrição (ex.: Gemini), registre uma fábrica com `register_benchmark_provider("nome", fabrica)` em `benchmark/runner.py` e use `nome/modelo:dispositivo:compute_type` nas configurações (o `mock/...` existe para testes).
-
-### Usando a GPU
-A transcrição usa a GPU NVIDIA automaticamente quando ela existe e as bibliotecas CUDA estão instaladas (`--whisper-device auto`, o padrão); senão, volta para a CPU com um aviso. Para instalar as bibliotecas (cuBLAS para CUDA 12 e cuDNN 9, compatíveis com o ctranslate2 4.x do faster-whisper) no Windows:
-
-```bash
-.\.venv\Scripts\python.exe -m pip install -e ".[gpu]"
-```
-
-Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são registradas pelo próprio programa (não precisa mexer no PATH).
-
-- `--whisper-device {auto,cpu,cuda}`: `cuda` falha com instruções se a GPU não puder ser usada; `cpu` ignora a GPU.
-- `--whisper-compute-type`: `auto` = `float16` na GPU e `int8` na CPU; aceita valores explícitos (ex.: `int8_float16`).
-- `--whisper-model {auto,<modelo>}`: `auto` (padrão) escolhe pelo dispositivo efetivo: `large-v3-turbo` na GPU (CUDA) e `small` na CPU; um nome explícito (`small`, `medium`...) é respeitado. Se a GPU falhar e o programa voltar para a CPU, o `auto` passa a usar o `small`.
-- O modelo, o dispositivo e o compute_type efetivos aparecem no `transcript.json` (`model_used`, ex.: `faster-whisper:large-v3-turbo (cuda, float16)`), no relatório e entram no cache da transcrição.
-- **Atenção ao atualizar:** o padrão mudou de `small` para `auto`. Em máquina com GPU, projetos já transcritos serão transcritos de novo na próxima execução do `edit` (o modelo efetivo mudou e faz parte do cache), com o download único do `large-v3-turbo`. Na CPU o `auto` resolve para `small`, igual ao padrão antigo, e o cache continua válido. Para manter o cache de antes numa máquina com GPU, passe `--whisper-model small`.
-
----
-
-## 5. Estrutura dos Módulos
-
-### Módulo Core (Fase 1)
-* [`src/ai_video_editor/core/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/core/schema.py): Modelos `ClipSegment`, `EditPlan` e `LoudnessTarget` (presets de normalização).
-* [`src/ai_video_editor/renderer/compiler.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/renderer/compiler.py): Compilação segura de filtros FFmpeg sem shell injection.
-* [`src/ai_video_editor/renderer/executor.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/renderer/executor.py): Execução isolada via `subprocess` e validação com FFprobe.
-* [`src/ai_video_editor/renderer/loudness.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/renderer/loudness.py): Normalização de loudness em duas passadas (medição com loudnorm, parse do JSON, filtro da segunda passada).
-* [`src/ai_video_editor/renderer/ffmpeg_locator.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/renderer/ffmpeg_locator.py): Descoberta resiliente de executáveis FFmpeg/FFprobe.
-
-### Módulo Analyzer (Fase 2)
-* [`src/ai_video_editor/analyzer/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/analyzer/schema.py): Schemas Pydantic (`VideoMetadata`, `VideoStreamInfo`, `AudioStreamInfo`, `ExtractedFrame`, `VideoAnalysisResult`, `BatchAnalysisResult`).
-* [`src/ai_video_editor/analyzer/exceptions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/analyzer/exceptions.py): Exceções de domínio (`VideoNotFoundError`, `InvalidMediaFormatError`, `NoVideoStreamError`, `FrameExtractionError`).
-* [`src/ai_video_editor/analyzer/probe.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/analyzer/probe.py): Extração de metadados e conversão segura de FPS fracionário via `fractions.Fraction`.
-* [`src/ai_video_editor/analyzer/extractor.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/analyzer/extractor.py): Extração determinística de frames com timestamps rastreáveis.
-* [`src/ai_video_editor/analyzer/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/analyzer/service.py): Orquestrador de análise técnica em lote.
-
-### Módulo Intelligence (Fase 3)
-* [`src/ai_video_editor/intelligence/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/schema.py): Modelos Pydantic (`VisualObservation`, `SceneTransitionHypothesis`, `VisualAnalysisResponse`, `AIAnalysisConfig`, `CompleteAIReport`).
-* [`src/ai_video_editor/intelligence/exceptions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/exceptions.py): Exceções padronizadas de IA (`AIAuthenticationError`, `AIRateLimitError`, `AITimeoutError`, `AIUnavailableError`, `AIResponseValidationError`).
-* [`src/ai_video_editor/intelligence/retry.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/retry.py): `RetryPolicy` e `call_with_retry` (nova tentativa com espera exponencial, jitter e `Retry-After`; `sleep` injetável).
-* [`src/ai_video_editor/intelligence/provider.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/provider.py): Interface abstrata `MultimodalAIProvider`.
-* [`src/ai_video_editor/intelligence/image_proxy.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/image_proxy.py): Otimizador e downscaler de imagens 4K para proxies leves (JPEG / 1024px) com Pillow.
-* [`src/ai_video_editor/intelligence/reporter.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/reporter.py): Compilador de relatório Markdown rico com caminhos relativos e ressalvas anti-alucinação.
-* [`src/ai_video_editor/intelligence/providers/gemini.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/providers/gemini.py): Adaptador oficial do Google Gemini via SDK `google-genai`.
-* [`src/ai_video_editor/intelligence/providers/mock.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/providers/mock.py): Provedor simulado para testes offline rápidos e determinísticos.
-* [`src/ai_video_editor/intelligence/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/intelligence/service.py): Orquestrador de análise multimodal e geração de relatórios.
-
-### Módulo Planning (corte de silêncio)
-* [`src/ai_video_editor/planning/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/schema.py): `SilenceCutParams` (paddings, `min_gap_to_cut_sec`, `min_keep_sec`), `TimeRange` e os presets de pausa (`PausePreset`, `apply_pause_preset`).
-* [`src/ai_video_editor/planning/silence_cut.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/silence_cut.py): `plan_silence_cuts` (trechos a manter a partir da `AudioAnalysisResult`), `removed_ranges` e `build_edit_plan` (lista de trechos → `EditPlan` na resolução/FPS da origem).
-* [`src/ai_video_editor/planning/sentence_cut.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/sentence_cut.py): `apply_sentence_cuts` (subtrai as frases removidas pelo Diretor dos trechos mantidos e devolve o destino de cada corte, `SentenceCutResult`: aplicado, estendido, protegido ou desfeito), `snap_cut` (leva os limites do corte para dentro dos silêncios), a regra do pedaço de palavra (`MIN_FRAGMENT_SEC`) e `subtract_ranges`.
-* [`src/ai_video_editor/planning/exceptions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/planning/exceptions.py): `PlanningError`, `NoSpeechDetectedError`.
-
-### Módulo Director (Diretor de IA)
-* [`src/ai_video_editor/director/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/schema.py): `Sentence`, `UserBrief`, `DirectorContext`, `SentenceRemoval`, `DirectorDecision` e `DirectorRun` (conteúdo do `director_decision.json`).
-* [`src/ai_video_editor/director/sentences.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/sentences.py): `build_sentences` (transcrição → frases) e `split_by_removal` (frases → intervalos a cortar e a proteger).
-* [`src/ai_video_editor/director/provider.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/provider.py): Interface `EditDirector` (`decide(sentences, brief, context)`).
-* [`src/ai_video_editor/director/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/service.py): `validate_decision` e `run_director` (nova tentativa com o erro, fallback e métricas `AIRunMetrics`).
-* [`src/ai_video_editor/director/prompt.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/prompt.py): `build_director_prompt` (independente do provedor).
-* [`src/ai_video_editor/director/providers/llm.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/providers/llm.py): `LLMDirector` (pede `DirectorDecision` a uma `ModelChain`); `providers/gemini.py` tem o atalho `GeminiDirector` (um único modelo Gemini).
-* [`src/ai_video_editor/director/providers/mock.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/director/providers/mock.py): `MockDirector` determinístico (remoções fixas, sequência de respostas ou frases repetidas).
-
-### Módulo Revision (Revisor de IA)
-* [`src/ai_video_editor/revision/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/schema.py): `SentenceState`, `RevisionContext`, `RevisionDecision` (conjunto completo de remoções, restaurações com motivo, ritmo, `feasible`/`problem`) e `RevisionRun`.
-* [`src/ai_video_editor/revision/provider.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/provider.py): Interface `EditReviser` (`revise(states, brief, context)`).
-* [`src/ai_video_editor/revision/service.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/service.py): `validate_revision` (regras do Diretor + restaurações) e `run_reviser` (nova tentativa; sem versão se falhar).
-* [`src/ai_video_editor/revision/prompt.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/prompt.py): `build_reviser_prompt`.
-* [`src/ai_video_editor/revision/providers/`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/revision/providers): `LLMReviser` (cadeia de modelos, como o Diretor), o atalho `GeminiReviser` e `MockReviser` determinístico.
-
-### Módulo LLM (provedores de IA com saída estruturada)
-* [`src/ai_video_editor/llm/client.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/client.py): interface `StructuredLLMClient` (`generate(prompt, schema, config, retry)` → objeto validado + `LLMCallMetrics`), com novas tentativas, subida do nível de raciocínio e métricas já implementadas.
-* [`src/ai_video_editor/llm/registry.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/registry.py): `register_provider`/`create_client` (`gemini`, `openai`, `mock`, com import tardio).
-* [`src/ai_video_editor/llm/chain.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/chain.py): `ModelChain` (troca automática de modelo) e `resolve_chain`/`parse_chain` (`provedor:modelo,...`).
-* [`src/ai_video_editor/llm/providers/`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/providers): `GeminiLLMClient` (`google-genai`, `response_schema`), `OpenAILLMClient` (SDK `openai`, Responses API com `text_format` / JSON schema estrito; as novas tentativas do SDK ficam desligadas) e `MockLLMClient`.
-* [`src/ai_video_editor/llm/keys.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/keys.py) e [`errors.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/llm/errors.py): chaves por variável de ambiente/`.env` e utilitários de erro (remove chaves `AIza…`/`sk-…` das mensagens).
-
-### Módulo Benchmark (comando `benchmark transcription`)
-* [`src/ai_video_editor/benchmark/wer.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/wer.py): normalização básica e WER por distância de edição entre palavras (S/D/I, substituições mais frequentes e palavras após o fim da referência), sem dependências.
-* [`src/ai_video_editor/benchmark/normalize.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/normalize.py): normalização por idioma (inglês: números, okay/ok, x's) para o WER normalizado.
-* [`src/ai_video_editor/benchmark/rescore.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/rescore.py): `benchmark rescore`, que recalcula as métricas a partir de `hypotheses/`.
-* [`src/ai_video_editor/benchmark/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/runner.py): `run_benchmark` (configurações × itens, carga do modelo medida à parte, falhas registradas) e o registro extensível de provedores.
-* [`src/ai_video_editor/benchmark/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/schema.py) e [`report.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/benchmark/report.py): modelos Pydantic (`BenchmarkRun`, manifesto) e o `results.md`.
-
-### Módulo Pipeline (comandos `edit` e `revise`)
-* [`src/ai_video_editor/pipeline/runner.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que orquestra as etapas com cache por fingerprint e callbacks de eventos (`on_progress`) e de andamento da etapa em curso (`on_stage_progress`, com `StageProgress`); `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis. O transcriber (`transcribe(..., on_progress)`) e o executor (`execute(plan, on_progress)`) informam o progresso; o pipeline só repassa, sem depender do terminal.
-* [`src/ai_video_editor/live_status.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/live_status.py): `LiveStatus`, a linha de andamento ao vivo da CLI (thread de atualização a cada 1s, avisos acima da linha, modo sem terminal só com linhas finais).
-* [`src/ai_video_editor/pipeline/schema.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/schema.py): `EditPipelineParams`, `ProjectManifest` (`project.json`), `StageRecord`, `RunTimings`/`StageTiming`, `EditPipelineResult`.
-* [`src/ai_video_editor/pipeline/project.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/project.py): Hash curto do vídeo, nome da pasta do projeto, nomes dos artefatos e fingerprints.
-* [`src/ai_video_editor/pipeline/timing.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/timing.py): `TimingRecorder` (medição com `time.perf_counter`), formatação (`8,4s`, `12min 34s`) e a seção "Tempo de processamento".
-* [`src/ai_video_editor/pipeline/report.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/report.py): Geração do `edit_report.md` (e da seção "Revisão").
-* [`src/ai_video_editor/pipeline/versions.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/versions.py): versões em `versions/vN/`, registro após o `edit` e migração de projetos antigos.
-* [`src/ai_video_editor/pipeline/revise.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/revise.py): `ProjectReviser` (revisor → plano → render → legendas → relatório numa versão nova).
-* [`src/ai_video_editor/pipeline/cutting.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/cutting.py): `plan_keep_ranges`, compartilhado por `edit` e `revise`.
-* [`src/ai_video_editor/pipeline/edit_diff.py`](file:///C:/Users/vitor/Projects/ai-video-editor/src/ai_video_editor/pipeline/edit_diff.py): status de aplicação das remoções e transcrição comparativa (`build_edit_diff` → `EditDiff`/`DiffEntry`, `edit_transcript.md` e `edit_diff.json`).
+- Aula de teste: **MIT OpenCourseWare 18.06 Linear Algebra**, Prof. Gilbert Strang, licença [CC BY-NC-SA](https://creativecommons.org/licenses/by-nc-sa/4.0/). A transcrição de referência do benchmark (`benchmark/data/mit_1806_lecture01_reference.txt`) vem do mesmo curso.
+- Palestra de teste: **Richard Stallman**, GNU Project, licença [CC BY-ND](https://creativecommons.org/licenses/by-nd/4.0/).
+- Os vídeos e áudios de teste **não são distribuídos** neste repositório.
+- Licença do código: **a definir**.

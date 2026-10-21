@@ -1,4 +1,4 @@
-"""Transcrição comparativa (`edit_transcript.md`) e diff estruturado (`edit_diff.json`).
+"""Transcrição comparativa (`edit_transcript.md`), diff estruturado (`edit_diff.json`) e linha do tempo (`edit_timeline.svg`).
 
 Parte do plano final: cada frase marcada para remoção recebe o status de aplicação medido
 pela interseção dela com os trechos que saíram do vídeo (aplicada se saiu >= 90%). Os tempos
@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Optional
 
 from ai_video_editor.director.schema import Sentence, SentenceRemoval
-from ai_video_editor.pipeline.project import EDIT_DIFF_FILE, EDIT_TRANSCRIPT_FILE
+from ai_video_editor.pipeline.edit_timeline import write_edit_timeline
+from ai_video_editor.pipeline.project import EDIT_DIFF_FILE, EDIT_TIMELINE_FILE, EDIT_TRANSCRIPT_FILE
 from ai_video_editor.pipeline.report import format_timestamp
 from ai_video_editor.pipeline.schema import (
     DiffEntry,
@@ -271,16 +272,16 @@ def render_edit_transcript(diff: EditDiff) -> str:
     return "\n".join(lines)
 
 
-def write_edit_diff(diff: EditDiff, directory: Path) -> tuple[Path, Path]:
-    """Grava `edit_transcript.md` e `edit_diff.json` em `directory`."""
+def write_edit_diff(diff: EditDiff, directory: Path) -> tuple[Path, Path, Path]:
+    """Grava `edit_transcript.md`, `edit_diff.json` e `edit_timeline.svg` em `directory`."""
     transcript_path = directory / EDIT_TRANSCRIPT_FILE
     diff_path = directory / EDIT_DIFF_FILE
     transcript_path.write_text(render_edit_transcript(diff), encoding="utf-8")
     diff_path.write_text(diff.model_dump_json(indent=2), encoding="utf-8")
-    return transcript_path, diff_path
+    return transcript_path, diff_path, write_edit_timeline(diff, directory)
 
 
 def remove_edit_diff(directory: Path) -> None:
     """Apaga a transcrição comparativa de uma execução anterior (ficou obsoleta)."""
-    for name in (EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE):
+    for name in (EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE, EDIT_TIMELINE_FILE):
         (directory / name).unlink(missing_ok=True)

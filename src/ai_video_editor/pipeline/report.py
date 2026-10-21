@@ -7,7 +7,7 @@ from ai_video_editor.audio import AudioAnalysisResult
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.director.schema import DirectorRun
 from ai_video_editor.revision.schema import RevisionRun
-from ai_video_editor.pipeline.project import EDIT_DIFF_FILE, EDIT_TRANSCRIPT_FILE
+from ai_video_editor.pipeline.project import EDIT_DIFF_FILE, EDIT_TIMELINE_FILE, EDIT_TRANSCRIPT_FILE
 from ai_video_editor.pipeline.schema import EditDiff, EditPipelineParams, RunTimings
 from ai_video_editor.pipeline.timing import build_timings_section
 from ai_video_editor.planning.schema import TimeRange
@@ -109,7 +109,8 @@ def build_edit_report(
     )
 
     comparison_row = (
-        f"| Transcrição comparativa | `{EDIT_TRANSCRIPT_FILE}` e `{EDIT_DIFF_FILE}` |"
+        f"| Transcrição comparativa | `{EDIT_TRANSCRIPT_FILE}` e `{EDIT_DIFF_FILE}` |\n"
+        f"| Linha do tempo dos cortes | `{EDIT_TIMELINE_FILE}` |"
         if comparison is not None
         else "| Transcrição comparativa | pulada (requer --transcribe) |"
     )

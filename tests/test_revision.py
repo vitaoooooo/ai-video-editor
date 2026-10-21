@@ -179,6 +179,8 @@ def test_revise_restores_one_sentence_and_removes_another_keeping_v1_intact(edit
     assert "| 3 | Obrigado por assistir. | mantida | removida | aplicada | Despedida desnecessária. |" in report
     assert "> **Revisão v2:** 1 remoção pedida, 1 aplicada, 0 parciais, 0 não aplicadas" in report
     assert "| Transcrição comparativa | `edit_transcript.md` e `edit_diff.json` |" in report
+    assert "| Linha do tempo dos cortes | `edit_timeline.svg` |" in report
+    assert (v2_dir / "edit_timeline.svg").is_file()
 
     # Transcrição comparativa da v2: frase restaurada marcada, removida nesta revisão com o pedido
     assert result.transcript_path == v2_dir / "edit_transcript.md"
