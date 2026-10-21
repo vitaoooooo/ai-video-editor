@@ -49,15 +49,15 @@ flowchart LR
 python -m ai_video_editor.cli edit aula1_5min.mp4 --transcribe --language en --whisper-model small --director gemini
 ```
 
-Saída real (aula do MIT, caminhos encurtados). Nesta execução o Diretor veio do cache; na execução original, a chamada levou 12,8s. As outras etapas rodaram de novo:
+Saída real de uma execução completa na aula do MIT (caminhos encurtados):
 
 ```text
-[1/8] Metadados: ok — 300.10s, 480x360 @ 29.97fps (2,2s)
-[2/8] Silêncios: ok — 61 silêncios (61.31s), limite -37.2 dB (auto) (4,0s)
-[3/8] Transcrição: ok — 71 segmentos (en) (17,1s)
-[4/8] Diretor: em cache
+[1/8] Metadados: ok — 300.10s, 480x360 @ 29.97fps (2,1s)
+[2/8] Silêncios: ok — 61 silêncios (61.31s), limite -37.2 dB (auto) (3,8s)
+[3/8] Transcrição: ok — 71 segmentos (en) (14,2s)
+[4/8] Diretor: ok — 4 de 48 frases removidas (10.36s) com gemini:gemini-3.6-flash (12,8s)
 [5/8] Plano de corte: ok — 39 trechos mantidos (251.35s) (0,0s)
-[6/8] Renderização: ok — 251.50s, 16.0 MB (33,5s)
+[6/8] Renderização: ok — 251.50s, 16.0 MB (31,9s)
 [7/8] Legendas: ok — aula1_5min_edited.srt, 74 blocos (0,0s)
 [8/8] Relatório: ok — 39 cortes, transcrição comparativa em edit_transcript.md e linha do tempo em edit_timeline.svg (0,0s)
 
@@ -66,30 +66,16 @@ Projeto: output\projects\aula1_5min-e8fa518c2d
 ...
 Versão: v5 (revise com: revise "output\projects\aula1_5min-e8fa518c2d" "pedido")
 Duração: 300.10s -> 251.50s (16.2% removido)
-5min de vídeo processados em 57,0s (0,19× o tempo real)
+5min de vídeo processados em 1min 05s (0,22× o tempo real)
 ```
+
+Nessa execução a cota diária do `gemini-3.8-flash` tinha acabado, e o editor trocou sozinho para o `gemini-3.6-flash` (veja [Arquitetura](#arquitetura)).
 
 Num terminal, enquanto a etapa roda, a linha é reescrita a cada segundo com o andamento e uma estimativa, por exemplo `[6/8] Renderização... 48,0s — 118/258 trechos (45%), faltam ~58s`. Avisos (nova tentativa da API, troca de modelo, GPU indisponível) saem em linha própria acima.
 
-### O que saiu e por quê (`edit_transcript.md`)
+### Transcrição comparativa (`edit_transcript.md`)
 
-Trecho real da transcrição comparativa da aula. Frase mantida: `[tempo no original → tempo no vídeo editado]`; removida: riscada, com quem removeu, categoria e motivo.
-
-> `[00:26.120 → 00:16.635]` And the course web page, which has got a lot of exercises from the past, MATLAB codes, the syllabus for the course is web.mit.edu slash 18.06.
->
-> ~~And this is the first lecture, lecture one.~~ `[00:44.360–00:47.200]` — removida pelo Diretor · repetition: Repetição da informação de abertura que já foi apresentada na frase [1].
->
-> `[00:48.640 → 00:34.460]` And later we'll say which will give the web address for viewing these video tapes.
->
-> ~~Let me, I can even say right away, what's the matrix~~ `[02:47.460–02:51.720]` — removida pelo Diretor · false_start: Início de frase reformulado na frase seguinte.
->
-> ⏸ pausa de 1,4s removida `[02:51.720]`
-
-Quando o corte pedido não sai inteiro, o relatório diz (palestra de 57 min):
-
-> ◐ `[28:06.990 → 26:43.033]` Um — **remoção parcial**: saíram 0,48s de 0,80s (60%); corte limitado pelo silêncio mais próximo e pela folga das frases vizinhas.
->
-> ⚠️ `[37:33.140 → 35:39.016]` anymore — **remoção não aplicada**, continua no vídeo: o corte ajustado aos silêncios não alcançou esta frase.
+Cada edição também gera um `edit_transcript.md`: a fala original inteira, em ordem, com o tempo de cada frase no original e no vídeo editado, as frases removidas riscadas com o motivo e as pausas longas que saíram. Quando uma remoção não pode ser aplicada por inteiro, ela aparece marcada como parcial ou não aplicada, então o relatório nunca diz que cortou algo que continua no vídeo. A mesma informação sai em `edit_diff.json` e numa linha do tempo visual (`edit_timeline.svg`).
 
 ### `revise`: ajustes em linguagem natural
 
@@ -148,23 +134,6 @@ S, D e I são substituições, omissões e inserções. O tempo não inclui a ca
 **Normalização.** O WER bruto só põe em minúsculas e tira pontuação. Mais de 130 "erros" do `small` eram grafia, não escuta: "1" no lugar de "one", "ok" no lugar de "okay". O WER normalizado aplica nos dois textos as mesmas regras (números por extenso → dígitos, okay → ok, x's → xs), implementadas no projeto sem dependência nova. Palavras que a transcrição tem a mais depois do fim da referência (que termina no meio de uma frase) são contadas à parte.
 
 **Por que o modelo com WER "pior" é o padrão.** Normalizado, o `large-v3-turbo` tem o maior WER (7,4%). Mas o excesso vem quase todo das inserções (235 contra 116): ele é mais literal e escreve o que a transcrição humana limpou, como "uh" e repetições. Ao mesmo tempo, é o que **menos perde palavras** (70 omissões contra 98) e o mais rápido. Para um editor que precisa *ver* a enrolação para cortá-la, uma transcrição literal é uma vantagem. Por isso `--whisper-model auto` usa o `large-v3-turbo` na GPU e o `small` na CPU.
-
-## Histórias de engenharia
-
-**1. O limite de silêncio que funcionava na aula e falhou na palestra.**
-*Problema:* com o limite fixo de −35 dB, a palestra de 57 min teve só 9 silêncios detectados. *Investigação:* a gravação é de uma sala com ruído de fundo (piso medido em −27,4 dB): o "silêncio" da palestra fica acima de −35 dB, então o limite fixo não via as pausas. *Solução:* medir o áudio em janelas de 50 ms, estimar o piso de ruído (percentil 10) e o nível da fala (percentil 90) e pôr o limite entre os dois, com travas e um aviso quando a medição é pouco confiável. *Resultado:* 9 → 458 pausas na palestra, e a aula do MIT praticamente igual à versão já aprovada (40 vs 44 cortes).
-
-**2. Palavras que sumiam da legenda, mas continuavam no áudio.**
-*Problema:* "first" e "rectangular" faltavam na legenda, embora fossem ditas no vídeo. *Investigação:* a legenda decidia se uma palavra ficava pelo ponto médio dela; o Whisper inflava a duração dessas palavras para dentro de uma pausa cortada, e o ponto médio caía na pausa. *Solução:* a palavra entra se uma fração mínima dela se sobrepõe a um trecho mantido, usando a mesma conta de frames do render. *Resultado:* as palavras voltaram, e a legenda bate com o vídeo editado.
-
-**3. O relatório que dizia ter cortado "anymore" sem ter cortado.**
-*Problema:* na palestra, o relatório listava "anymore" como removida, mas a palavra continuava no vídeo. *Investigação:* a trava que protege a folga das frases vizinhas anulava o corte, e o relatório só repetia o que a IA tinha pedido. *Solução:* medir no plano final quanto de cada frase realmente saiu: aplicada (≥ 90%), parcial (com segundos e %) ou não aplicada (com o motivo). Junto veio a regra do pedaço de palavra: se sobraria menos de 0,25s de uma frase removida, o corte vai até o limite da frase ou é desfeito. *Resultado:* `edit_transcript.md`/`edit_diff.json` e um resumo no topo do relatório ("11 remoções pedidas, 6 aplicadas, 4 parciais, 1 não aplicada"), e nunca meia palavra no vídeo.
-
-**4. Frases longas demais para o Diretor.**
-*Problema:* a palestra virou só 125 "frases" de ~27s em média, grandes demais para o Diretor cortar só a enrolação sem levar conteúdo junto. *Investigação:* em fala corrida o Whisper pontua pouco, e as frases eram montadas até o próximo ponto final ou pausa longa. *Solução:* tamanho máximo de 12s / 40 palavras, fechando a frase no melhor ponto (vírgula, depois a maior pausa), sem nunca dividir um segmento do Whisper. *Resultado:* 125 → 411 frases (média de 7,4s).
-
-**5. O modelo "pior" do benchmark era o melhor para o editor.**
-*Problema:* depois de normalizar o WER, o ranking inverteu, e o `large-v3-turbo`, que parecia o mais preciso, virou o de maior erro. *Investigação:* o excesso era de inserções, palavras que ele transcreve e a referência humana omitiu ("uh", repetições), e não de cauda após o fim da referência (só 14–19 palavras); ele também era o que menos omitia. *Solução:* em vez de seguir o número, olhar o que o produto precisa: o Diretor só corta a enrolação que aparece na transcrição. *Resultado:* `--whisper-model auto` usa o turbo na GPU (o mais rápido, 0,035× o tempo real) e o `small` na CPU.
 
 ## Como usar
 
@@ -264,7 +233,7 @@ src/ai_video_editor/
 
 O projeto foi desenvolvido **com ajuda de IA**, e vale ser explícito sobre a divisão do trabalho.
 
-**Papel do autor:** definir o produto e o escopo (inclusive a mudança de rumo de "qualquer vídeo" para vídeo falado), tomar as decisões de arquitetura (a IA decide e o FFmpeg executa, frases por ID, provedores plugáveis), testar com vídeos reais (a aula do MIT, a palestra de 57 min), avaliar os resultados, encontrar os problemas que viraram as histórias acima e revisar e fazer o merge de cada mudança.
+**Papel do autor:** definir o produto e o escopo (inclusive a mudança de rumo de "qualquer vídeo" para vídeo falado), tomar as decisões de arquitetura (a IA decide e o FFmpeg executa, frases por ID, provedores plugáveis), testar com vídeos reais (a aula do MIT, a palestra de 57 min), avaliar os resultados, encontrar os problemas e revisar e fazer o merge de cada mudança.
 
 **Implementação:** feita por múltiplos agentes de IA (Claude Code) orquestrados com o [Orca](https://github.com/stablyai/orca), cada um num *git worktree* próprio e com uma tarefa focada, trabalhando em paralelo. O planejamento das tarefas e os prompts foram feitos em conversa com o Claude. O [`CLAUDE.md`](CLAUDE.md) guarda o contexto e as regras do projeto para os agentes (arquitetura, convenções, como rodar os testes, o que atualizar ao terminar), e o [`docs/HISTORICO.md`](docs/HISTORICO.md) registra cada decisão, o motivo e o resultado medido.
 
