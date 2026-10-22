@@ -1,5 +1,6 @@
 """Cadeia ordenada de modelos (`provedor:modelo`) com troca automática quando um fica indisponível."""
 
+import threading
 from typing import Callable, Optional, Sequence
 
 from ai_video_editor.intelligence.exceptions import (
@@ -10,11 +11,11 @@ from ai_video_editor.intelligence.exceptions import (
 )
 from ai_video_editor.intelligence.retry import RetryPolicy
 from ai_video_editor.llm.client import StructuredLLMClient
+from ai_video_editor.llm.per_thread import PerThread
 from ai_video_editor.llm.registry import create_client, default_fallback, default_model, provider_names
 from ai_video_editor.llm.schema import (
     ImageInput,
     LLMCallConfig,
-    LLMCallMetrics,
     ModelSpec,
     ModelSwitch,
     StructuredResult,
@@ -105,7 +106,14 @@ class ModelChain:
     por `on_event` e passa ao próximo. A troca é persistente: chamadas seguintes (ex: a
     correção de uma resposta inválida) continuam no modelo que funcionou. Provedores sem
     chave são pulados, com um aviso por provedor.
+
+    Pode ser usada por várias threads ao mesmo tempo (lotes do `visual`): a troca é feita
+    sob trava e uma só vez por modelo; `last_metrics` e `last_switches` são da thread.
     """
+
+    # Resumo da última chamada desta thread e quantas trocas de modelo ela fez.
+    last_metrics = PerThread(None)
+    last_switches = PerThread(0)
 
     def __init__(
         self,
@@ -129,7 +137,7 @@ class ModelChain:
         self._index = 0
         self._warned_keys: set[str] = set()
         self.switches: list[ModelSwitch] = []
-        self.last_metrics: Optional[LLMCallMetrics] = None
+        self._lock = threading.RLock()
 
     @property
     def requested(self) -> ModelSpec:
@@ -162,9 +170,11 @@ class ModelChain:
         client = self.client_for(spec.provider)
         if client.has_credentials():
             return True
-        if spec.provider not in self._warned_keys:
+        with self._lock:
+            if spec.provider in self._warned_keys:
+                return False
             self._warned_keys.add(spec.provider)
-            self._notify(f"{spec.provider} sem chave configurada ({client.api_key_env}) → pulando {spec.label}")
+        self._notify(f"{spec.provider} sem chave configurada ({client.api_key_env}) → pulando {spec.label}")
         return False
 
     def _next_usable(self, start: int) -> Optional[int]:
@@ -199,14 +209,17 @@ class ModelChain:
             AIAuthenticationError: nenhum provedor restante da cadeia tem chave.
             AIProviderError: erro que não permite troca, ou o último modelo da cadeia falhou.
         """
-        index = self._next_usable(self._index)
-        if index is None:
-            raise self._missing_key_error()
-        self._index = index
+        with self._lock:
+            index = self._next_usable(self._index)
+            if index is None:
+                raise self._missing_key_error()
+            self._index = index
+        self.last_switches = 0
         total_calls = 0
         latency = 0.0
         while True:
-            spec = self.current
+            index = self._index
+            spec = self.specs[index]
             client = self.client_for(spec.provider)
             config = LLMCallConfig(
                 model_id=spec.model_id, thinking=self.thinking,
@@ -219,19 +232,25 @@ class ModelChain:
             except AIProviderError as error:
                 if not is_switchable(error):
                     raise
-                following = self._next_usable(self._index + 1)
-                if following is None:
-                    raise
-                to = self.specs[following]
-                reason = describe_failure(error)
-                self.switches.append(
-                    ModelSwitch(
-                        from_model=spec.label, to_model=to.label, reason=reason,
-                        status_code=error.status_code, api_attempts=error.api_attempts,
+                with self._lock:
+                    if self._index != index:
+                        # Outra thread já trocou de modelo enquanto esta esperava: segue no novo.
+                        self.last_switches += 1
+                        continue
+                    following = self._next_usable(index + 1)
+                    if following is None:
+                        raise
+                    to = self.specs[following]
+                    reason = describe_failure(error)
+                    self.switches.append(
+                        ModelSwitch(
+                            from_model=spec.label, to_model=to.label, reason=reason,
+                            status_code=error.status_code, api_attempts=error.api_attempts,
+                        )
                     )
-                )
+                    self._index = following
+                self.last_switches += 1
                 self._notify(f"{spec.model_id} {reason} → trocando para {self._switch_label(spec, to)}")
-                self._index = following
             finally:
                 metrics = client.last_metrics
                 if metrics is not None:

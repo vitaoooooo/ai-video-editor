@@ -139,6 +139,52 @@ class ClipVisual(BaseModel):
     error: Optional[str] = None
 
 
+class VisualBatchStat(BaseModel):
+    """Medição de um lote: separa a demora do provedor (duração) da espera na fila (início)."""
+
+    number: int = Field(ge=1, description="Ordem do lote (não a de término)")
+    shots: int = Field(ge=0)
+    images: int = Field(ge=0)
+    started_sec: float = Field(ge=0.0, description="Espera desde o início da etapa até o lote começar")
+    duration_sec: float = Field(ge=0.0, description="Do envio à resposta final, com novas tentativas")
+    api_calls: int = Field(default=0, ge=0, description="Chamadas à API, incluindo novas tentativas e correções")
+    corrections: int = Field(default=0, ge=0, description="Tentativas a mais por resposta recusada")
+    model_switches: int = Field(default=0, ge=0)
+    model: Optional[str] = None
+    failed_shots: int = Field(default=0, ge=0)
+    rate_limited: bool = False
+
+    @property
+    def retries(self) -> int:
+        """Novas tentativas: chamadas além da primeira (da API e de correção)."""
+        return max(0, self.api_calls - 1)
+
+
+class BatchTimingSummary(BaseModel):
+    batches: int
+    mean_sec: float
+    min_sec: float
+    max_sec: float
+    retries: int
+    model_switches: int
+
+
+def summarize_batches(stats: list[VisualBatchStat]) -> Optional[BatchTimingSummary]:
+    """Média, mínimo e máximo da duração por lote; None sem lotes enviados."""
+    sent = [s for s in stats if s.api_calls > 0]
+    if not sent:
+        return None
+    durations = [s.duration_sec for s in sent]
+    return BatchTimingSummary(
+        batches=len(sent),
+        mean_sec=round(sum(durations) / len(durations), 3),
+        min_sec=min(durations),
+        max_sec=max(durations),
+        retries=sum(s.retries for s in sent),
+        model_switches=sum(s.model_switches for s in sent),
+    )
+
+
 class VisualAIRun(BaseModel):
     """Como a IA foi chamada nesta execução (somando os lotes)."""
 
@@ -154,6 +200,10 @@ class VisualAIRun(BaseModel):
     output_tokens: Optional[int] = None
     cached_shots: int = Field(default=0, description="Análises reaproveitadas do cache")
     model_switches: list[ModelSwitch] = Field(default_factory=list)
+    parallel: int = Field(default=1, ge=1, description="Lotes ao mesmo tempo pedidos (--visual-paralelo)")
+    parallel_final: int = Field(default=1, ge=1, description="Depois das reduções por limite do provedor")
+    wall_sec: float = Field(default=0.0, ge=0.0, description="Duração da etapa de IA")
+    batch_stats: list[VisualBatchStat] = Field(default_factory=list)
 
 
 class ProjectVisual(BaseModel):

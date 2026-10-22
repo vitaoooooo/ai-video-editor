@@ -36,6 +36,7 @@ from ai_video_editor.pipeline.spine_schema import (
 from ai_video_editor.pipeline.timing import STAGE_LABELS, format_duration, summarize_run
 from ai_video_editor.pipeline.versions import ensure_versions, parse_version_ref
 from ai_video_editor.planning import SilenceCutParams
+from ai_video_editor.visual.builder import DEFAULT_AI_PARALLEL
 from ai_video_editor.recipes import (
     DEFAULT_FOLDER_RECIPE,
     DEFAULT_RECIPE,
@@ -868,6 +869,7 @@ def handle_visual(args: argparse.Namespace) -> int:
     from ai_video_editor.visual import VisualBuilder
     from ai_video_editor.visual.builder import VISUAL_DIR, VISUAL_JSON, VISUAL_MD
     from ai_video_editor.visual.describer import BATCH_MAX_IMAGES, BATCH_MAX_SHOTS, IMAGE_TOKENS
+    from ai_video_editor.visual.report import batch_timing_line
 
     folder = Path(args.folder)
     if not folder.is_dir():
@@ -891,6 +893,7 @@ def handle_visual(args: argparse.Namespace) -> int:
         on_progress=printer,
         on_stage_progress=printer.progress,
         catalog_builder=CatalogBuilder(projects_root=Path(args.projects_dir)),
+        ai_parallel=args.visual_paralelo,
     )
     try:
         with status:
@@ -942,6 +945,9 @@ def handle_visual(args: argparse.Namespace) -> int:
               f"tokens {_thousands(ai.input_tokens)} de entrada / {_thousands(ai.output_tokens)} de saída")
         for switch in ai.model_switches:
             print(f"Troca de modelo: {switch.from_model} → {switch.to_model} ({switch.reason})")
+        timing = batch_timing_line(ai)
+        if timing:
+            print(timing)
     for warning in visual.warnings:
         print(f"Aviso: {warning}")
     print(f"Tempo total: {format_duration(visual.total_sec)}")
@@ -952,6 +958,13 @@ def _non_negative_int(value: str) -> int:
     number = int(value)
     if number < 0:
         raise argparse.ArgumentTypeError("deve ser 0 ou maior")
+    return number
+
+
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("deve ser 1 ou maior")
     return number
 
 
@@ -1385,6 +1398,11 @@ def build_parser() -> argparse.ArgumentParser:
     visual_parser.add_argument(
         "--detalhe-imagem", choices=["low", "auto", "high"], default="auto",
         help="Resolução com que a IA lê as miniaturas: low = ~4x menos tokens no Gemini 3 (padrão: auto)",
+    )
+    visual_parser.add_argument(
+        "--visual-paralelo", type=_positive_int, default=DEFAULT_AI_PARALLEL, metavar="N",
+        help=f"Lotes enviados à IA ao mesmo tempo; 1 = um por vez; cai pela metade se o provedor limitar "
+        f"(padrão: {DEFAULT_AI_PARALLEL})",
     )
     visual_parser.add_argument(
         "--api-retries", type=_non_negative_int, default=DEFAULT_API_RETRIES, metavar="N",
