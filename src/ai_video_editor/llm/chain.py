@@ -152,9 +152,11 @@ class ModelChain:
         return [spec.label for spec in self.specs]
 
     def client_for(self, provider: str) -> StructuredLLMClient:
-        if provider not in self._clients:
-            self._clients[provider] = create_client(provider)
-        return self._clients[provider]
+        """Cliente do provedor, criado uma única vez (sob a trava: threads chamam em paralelo)."""
+        with self._lock:
+            if provider not in self._clients:
+                self._clients[provider] = create_client(provider)
+            return self._clients[provider]
 
     def thinking_label(self, spec: Optional[ModelSpec] = None) -> str:
         spec = spec or self.requested
