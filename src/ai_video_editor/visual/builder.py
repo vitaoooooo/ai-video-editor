@@ -55,7 +55,7 @@ from ai_video_editor.visual.schema import (
 )
 from ai_video_editor.visual.shots import (
     ShotSpan,
-    extract_frame,
+    extract_frames,
     frame_times,
     measure_shot,
     scan_clip,
@@ -354,12 +354,8 @@ class VisualBuilder:
         shots: list[CachedShot] = []
         for index, span in enumerate(split_shots(duration, scan.cuts), start=1):
             times = frame_times(span, duration)
-            files = []
-            for position, at in enumerate(times, start=1):
-                name = f"T{index:02d}_F{position}.jpg"
-                if extract_frame(path, at, cache_dir / name):
-                    files.append(name)
-            if len(files) != len(times):
+            files = [f"T{index:02d}_F{position}.jpg" for position in range(1, len(times) + 1)]
+            if not extract_frames(path, times, [cache_dir / name for name in files]):
                 raise RuntimeError(f"falha ao extrair miniaturas da tomada {index}")
             shots.append(CachedShot(
                 index=index, start_sec=span.start_sec, end_sec=span.end_sec, boundary=span.boundary,

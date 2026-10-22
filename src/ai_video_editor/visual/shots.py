@@ -209,17 +209,21 @@ def measure_shot(span: ShotSpan, samples: list[Sample]) -> ShotMeasures:
     )
 
 
-def extract_frame(path: Path, at_sec: float, output: Path) -> bool:
-    """Grava a miniatura (FRAME_WIDTH px de largura, JPEG de qualidade moderada); False se falhar."""
-    args = [
-        str(get_ffmpeg_path()), "-hide_banner", "-nostdin", "-v", "error", "-y",
-        "-ss", f"{at_sec:.3f}", "-i", str(path),
-        "-frames:v", "1", "-an",
-        "-vf", f"scale={FRAME_WIDTH}:-2",
-        "-q:v", str(FRAME_QUALITY), str(output),
-    ]
+def extract_frames(path: Path, times: list[float], outputs: list[Path]) -> bool:
+    """Grava as miniaturas de uma tomada num só FFmpeg (uma entrada com busca por tempo para cada).
+
+    FRAME_WIDTH px de largura, JPEG de qualidade moderada. False se alguma falhar.
+    """
+    args = [str(get_ffmpeg_path()), "-hide_banner", "-nostdin", "-v", "error", "-y"]
+    for at_sec in times:
+        args += ["-ss", f"{at_sec:.3f}", "-i", str(path)]
+    for index, output in enumerate(outputs):
+        args += [
+            "-map", f"{index}:v:0", "-frames:v", "1",
+            "-vf", f"scale={FRAME_WIDTH}:-2", "-q:v", str(FRAME_QUALITY), str(output),
+        ]
     proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", shell=False)
-    return proc.returncode == 0 and output.is_file()
+    return proc.returncode == 0 and all(output.is_file() for output in outputs)
 
 
 def shot_params() -> dict[str, float]:
