@@ -346,9 +346,11 @@ class VisualBuilder:
         return results, cached_ids, errors
 
     def _analyze_clip(self, path: Path, duration: float, cache_dir: Path) -> ClipShotsCache:
-        if cache_dir.exists():
-            shutil.rmtree(cache_dir)
-        cache_dir.mkdir(parents=True)
+        # As análises da IA (`ai-*.json`) ficam: a mesma chave gera as mesmas tomadas.
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for old in cache_dir.iterdir():
+            if old.is_file() and not old.name.startswith("ai-"):
+                old.unlink()
         scan = scan_clip(path)
         stat = path.stat()
         shots: list[CachedShot] = []

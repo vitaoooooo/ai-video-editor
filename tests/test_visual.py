@@ -384,6 +384,19 @@ def test_visual_cache_skips_ffmpeg_and_ai(tmp_path, scene_folder, monkeypatch):
 
 
 @pytest.mark.slow
+def test_visual_force_redoes_shots_but_keeps_ai_analyses(tmp_path, scene_folder):
+    root = tmp_path / "projects"
+    _visual_builder(root)[0].build(scene_folder)
+
+    again, mock = _visual_builder(root)
+    result = again.build(scene_folder, force=True)
+
+    assert not result.visual.clips[0].cached
+    assert mock.calls == []
+    assert all(s.status == "analisada" for s in result.visual.all_shots())
+
+
+@pytest.mark.slow
 def test_visual_unanswered_shot_is_retried_on_next_run(tmp_path, scene_folder):
     root = tmp_path / "projects"
 
