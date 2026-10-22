@@ -40,9 +40,11 @@ from ai_video_editor.visual.shots import (
     MAX_SHOT_SEC,
     Sample,
     ShotSpan,
+    extract_frames,
     frame_times,
     measure_shot,
     parse_metadata_file,
+    scan_clip,
     split_shots,
 )
 
@@ -361,6 +363,70 @@ def test_visual_end_to_end_shots_measures_frames_and_report(tmp_path, scene_fold
     markdown = (visual_dir / "visual.md").read_text(encoding="utf-8")
     assert "## Atenção" in markdown and "P001.T02–T03" in markdown
     assert "frames/P001.T01.F1.jpg" in markdown
+
+
+def _make_clip(path: Path, video: str, duration: float, audio_sec: float | None = None) -> Path:
+    """Clipe sintético de uma fonte lavfi, sem cortes; com áudio de `audio_sec` s, se pedido."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    args = [str(get_ffmpeg_path()), "-v", "error", "-y", "-f", "lavfi", "-i", f"{video}:duration={duration}"]
+    if audio_sec is not None:
+        args += ["-f", "lavfi", "-i", f"sine=frequency=300:duration={audio_sec}", "-c:a", "aac"]
+    args += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(path)]
+    subprocess.run(args, capture_output=True, check=True)
+    os.utime(path, (FIXED_MTIME, FIXED_MTIME))
+    return path
+
+
+@pytest.mark.slow
+def test_visual_continuous_clip_without_scene_change(tmp_path):
+    """Tomada contínua (o caso comum do vlog): o ramo de cenas não pode ficar sem quadros."""
+    folder = tmp_path / "Trilha"
+    _make_clip(folder / "Principal" / "continua.mp4", "testsrc2=size=480x270:rate=25", 18, audio_sec=18)
+    builder, _ = _visual_builder(tmp_path / "projects")
+
+    result = builder.build(folder)
+
+    clip = result.visual.clips[0]
+    assert clip.error is None and result.visual.warnings == []
+    shots = clip.shots
+    assert [s.boundary for s in shots] == ["inicio", "janela", "janela"]
+    assert [(s.start_sec, s.end_sec) for s in shots] == [(0.0, 6.0), (6.0, 12.0), (12.0, 18.0)]
+    for shot in shots:
+        assert shot.measures.samples == 12 and shot.measures.blur is not None
+        assert shot.measures.brightness > 0 and not shot.measures.uniform
+        assert all((result.project_dir / "visual" / f.file).is_file() for f in shot.frames)
+
+
+@pytest.mark.slow
+def test_visual_very_short_clip(tmp_path):
+    folder = tmp_path / "Trilha"
+    _make_clip(folder / "Principal" / "curto.mp4", "testsrc2=size=480x270:rate=25", 0.4)
+    builder, _ = _visual_builder(tmp_path / "projects")
+
+    clip = builder.build(folder).visual.clips[0]
+
+    assert clip.error is None
+    assert len(clip.shots) == 1 and clip.shots[0].measures.samples == 1
+    assert clip.shots[0].measures.blur is not None
+
+
+@pytest.mark.slow
+def test_scan_clip_without_scene_change_has_no_cuts(tmp_path):
+    clip = _make_clip(tmp_path / "parede.mp4", "color=c=yellow:size=320x240:rate=25", 3)
+
+    scan = scan_clip(clip)
+
+    assert scan.cuts == [] and len(scan.samples) == 6
+
+
+@pytest.mark.slow
+def test_extract_frames_after_last_video_frame_uses_last_frame(tmp_path):
+    """Áudio mais longo que o vídeo: a duração do contêiner passa do último quadro."""
+    clip = _make_clip(tmp_path / "a.mp4", "testsrc2=size=320x240:rate=10", 3, audio_sec=3.6)
+    outputs = [tmp_path / f"F{i}.jpg" for i in range(1, 4)]
+
+    assert extract_frames(clip, [0.3, 1.5, 3.5], outputs)
+    assert all(o.is_file() for o in outputs)
 
 
 @pytest.mark.slow
