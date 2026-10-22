@@ -8,12 +8,14 @@ avisando o erro; se persistir, a tomada fica `sem_analise` sem derrubar o resto.
 """
 
 import math
+import threading
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from ai_video_editor.intelligence.exceptions import (
     AIAuthenticationError,
     AIProviderError,
+    AIRateLimitError,
     AIResponseValidationError,
 )
 from ai_video_editor.llm.chain import ModelChain
@@ -69,6 +71,15 @@ class BatchOutcome:
     images_sent: int = 0
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
+    corrections: int = 0  # tentativas além da 1ª por resposta recusada
+    model_switches: int = 0
+    model: Optional[str] = None  # `provedor:modelo` da última resposta
+    rate_limited: bool = False  # falhou por cota esgotada ou limite de requisições (429)
+
+
+def is_rate_limit(error: AIProviderError) -> bool:
+    """Cota esgotada ou limite de requisições: sinal para pedir menos lotes ao mesmo tempo."""
+    return error.quota_exhausted or error.status_code == 429 or isinstance(error, AIRateLimitError)
 
 
 def make_batches(requests: list[ShotRequest]) -> list[list[ShotRequest]]:
@@ -215,7 +226,11 @@ def _add(total: Optional[int], value: Optional[int]) -> Optional[int]:
 
 
 class VisualDescriber(ChainBackedStage):
-    """Pede `VisualBatchResponse` à cadeia de modelos, lote a lote, com validação e correção."""
+    """Pede `VisualBatchResponse` à cadeia de modelos, lote a lote, com validação e correção.
+
+    `describe_batch` pode ser chamado por várias threads (lotes em paralelo); "lotes seguidos
+    com erro" conta pela ordem de término.
+    """
 
     def __init__(
         self,
@@ -227,6 +242,7 @@ class VisualDescriber(ChainBackedStage):
         self.detail = detail
         self.on_retry = on_retry
         self._consecutive_failures = 0
+        self._failures_lock = threading.Lock()
 
     @property
     def gave_up(self) -> bool:
@@ -246,6 +262,7 @@ class VisualDescriber(ChainBackedStage):
                 outcome.failed[request.shot.id] = "não enviada: a IA falhou nos lotes anteriores"
             return outcome
         for attempt in range(1, MAX_BATCH_ATTEMPTS + 1):
+            outcome.corrections = attempt - 1
             images = batch_images(pending, self.detail)
             try:
                 response = self._generate(build_visual_prompt(pending, error), VisualBatchResponse, images)
@@ -257,7 +274,9 @@ class VisualDescriber(ChainBackedStage):
                 error = f"JSON inválido: {getattr(e, 'details', '') or _short(str(e))}"
             except AIProviderError as e:
                 self._account(outcome, len(images))
-                self._consecutive_failures += 1
+                outcome.rate_limited = is_rate_limit(e)
+                with self._failures_lock:
+                    self._consecutive_failures += 1
                 reason = f"erro da IA: {_short(str(e))}"
                 for request in pending:
                     outcome.failed[request.shot.id] = reason
@@ -274,7 +293,8 @@ class VisualDescriber(ChainBackedStage):
                 self.on_retry(
                     f"resposta recusada ({len(pending)} tomada(s)); nova tentativa {attempt + 1}/{MAX_BATCH_ATTEMPTS}"
                 )
-        self._consecutive_failures = 0
+        with self._failures_lock:
+            self._consecutive_failures = 0
         for request in pending:
             outcome.failed[request.shot.id] = (
                 f"resposta inválida após {MAX_BATCH_ATTEMPTS} tentativas: {_short(error or '')}"
@@ -286,6 +306,10 @@ class VisualDescriber(ChainBackedStage):
         outcome.images_sent += images
         outcome.input_tokens = _add(outcome.input_tokens, self.last_input_tokens)
         outcome.output_tokens = _add(outcome.output_tokens, self.last_output_tokens)
+        outcome.model_switches += self.last_model_switches
+        metrics = self.chain.last_metrics
+        if metrics is not None:
+            outcome.model = f"{metrics.provider}:{metrics.model_id}"
 
 
 def _short(text: str, limit: int = 200) -> str:

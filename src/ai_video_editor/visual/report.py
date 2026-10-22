@@ -1,7 +1,17 @@
 """Relatório legível da análise visual (`visual/visual.md`)."""
 
+from typing import Optional
+
 from ai_video_editor.catalog.schema import ROLES
-from ai_video_editor.visual.schema import ISSUE_LABELS, ClipVisual, ProjectVisual, Shot
+from ai_video_editor.pipeline.timing import format_duration
+from ai_video_editor.visual.schema import (
+    ISSUE_LABELS,
+    ClipVisual,
+    ProjectVisual,
+    Shot,
+    VisualAIRun,
+    summarize_batches,
+)
 
 # Problemas que, numa tomada do principal com fala, pedem cobertura obrigatória.
 ATTENTION_ISSUES = {"obstruida", "borrao_movimento"}
@@ -102,6 +112,21 @@ def _summary(visual: ProjectVisual) -> list[str]:
     return lines
 
 
+def batch_timing_line(ai: VisualAIRun) -> Optional[str]:
+    """Tempo por lote (média, mínimo, máximo) e da etapa: lote lento = provedor; etapa lenta com lotes
+    rápidos = fila. None sem lotes enviados."""
+    summary = summarize_batches(ai.batch_stats)
+    if summary is None:
+        return None
+    parallel = str(ai.parallel) if ai.parallel_final == ai.parallel else f"{ai.parallel} → {ai.parallel_final}"
+    return (
+        f"Lotes: {summary.batches} em {format_duration(ai.wall_sec)} (paralelo {parallel}); por lote: "
+        f"média {format_duration(summary.mean_sec)}, mín {format_duration(summary.min_sec)}, "
+        f"máx {format_duration(summary.max_sec)}; novas tentativas {summary.retries}, "
+        f"trocas de modelo {summary.model_switches}"
+    )
+
+
 def build_visual_markdown(visual: ProjectVisual) -> str:
     shots = visual.all_shots()
     lines = [
@@ -127,6 +152,9 @@ def build_visual_markdown(visual: ProjectVisual) -> str:
             lines.append(f"- Análises reaproveitadas do cache: {ai.cached_shots}")
         for switch in ai.model_switches:
             lines.append(f"- Troca de modelo: {switch.from_model} → {switch.to_model} ({switch.reason})")
+        timing = batch_timing_line(ai)
+        if timing:
+            lines.append(f"- {timing}")
     missing = sum(1 for s in shots if s.status == "sem_analise")
     if missing:
         lines.append(f"- **{missing} tomada(s) sem análise** (serão pedidas de novo na próxima execução)")

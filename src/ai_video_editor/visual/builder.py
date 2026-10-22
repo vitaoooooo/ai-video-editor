@@ -8,14 +8,19 @@ Cache por clipe em `<projects>/_cache/clips/visual-<chave>/` (chave = caminho + 
 parâmetros das tomadas): `shots.json`, as miniaturas e as análises da IA (`ai-<fingerprint>.json`,
 fingerprint = cadeia pedida + raciocínio + detalhe da imagem + versão do prompt). Uma tomada
 `sem_analise` é pedida de novo na execução seguinte; as analisadas não.
+
+Os lotes da IA rodam em paralelo (`ai_parallel`); cada lote grava as análises do clipe no
+cache assim que termina (com trava por clipe), então um Ctrl+C mantém o que já terminou.
+Se o provedor limitar (cota ou 429), o paralelismo cai pela metade para os lotes seguintes.
 """
 
 import hashlib
 import json
 import os
 import shutil
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -37,6 +42,7 @@ from ai_video_editor.pipeline.schema import StageProgress
 from ai_video_editor.pipeline.timing import format_duration
 from ai_video_editor.visual.describer import (
     PROMPT_VERSION,
+    BatchOutcome,
     ShotRequest,
     VisualDescriber,
     estimate_tokens,
@@ -51,6 +57,7 @@ from ai_video_editor.visual.schema import (
     ShotBoundary,
     ShotFrame,
     VisualAIRun,
+    VisualBatchStat,
 )
 from ai_video_editor.visual.shots import (
     ShotSpan,
@@ -73,6 +80,9 @@ VISUAL_JSON = "visual.json"
 VISUAL_MD = "visual.md"
 FRAMES_DIR = "frames"
 SHOTS_FILE = "shots.json"
+
+# Lotes da IA ao mesmo tempo no comando `visual` (--visual-paralelo); a classe usa 1 se não for dito.
+DEFAULT_AI_PARALLEL = 3
 
 VISUAL_STAGES = ("catalog", "shots", "ai", "report")
 VISUAL_STAGE_LABELS = {
@@ -185,6 +195,7 @@ class VisualBuilder:
         on_stage_progress: Optional[VisualStageProgress] = None,
         catalog_builder: Optional[CatalogBuilder] = None,
         workers: Optional[int] = None,
+        ai_parallel: int = 1,
     ):
         self.projects_root = Path(projects_root)
         self.describer = describer
@@ -193,6 +204,7 @@ class VisualBuilder:
         self.on_stage_progress = on_stage_progress
         self.catalog_builder = catalog_builder
         self.workers = workers or max(1, min(4, os.cpu_count() or 2))
+        self.ai_parallel = max(1, ai_parallel)
 
     # --- eventos ---
 
@@ -490,6 +502,7 @@ class VisualBuilder:
             provider=describer.provider_name, model_chain=describer.model_chain,
             thinking=describer.thinking_label, image_detail=describer.detail,
             cached_shots=sum(1 for v in visuals for s in v.shots if s.status == "analisada"),
+            parallel=self.ai_parallel, parallel_final=self.ai_parallel,
         )
         by_shot: dict[str, tuple[ClipVisual, Shot]] = {}
         requests: list[ShotRequest] = []
@@ -505,35 +518,103 @@ class VisualBuilder:
         batches = make_batches(requests)
         if not batches:
             self._emit("ai", "notice", "todas as tomadas já analisadas (cache)")
-        for number, batch in enumerate(batches, start=1):
-            model = describer.chain.current.label
-            self._progress("ai", StageProgress(note=f"lote {number}/{len(batches)} · {model}"))
+        locks = {visual.clip_id: threading.Lock() for visual in visuals}
+        started = time.perf_counter()
+
+        def work(number: int, batch: list[ShotRequest]) -> tuple[BatchOutcome, VisualBatchStat]:
+            began = time.perf_counter()
             outcome = describer.describe_batch(batch)
-            run.batches += 1
-            run.api_calls += outcome.api_calls
-            run.images_sent += outcome.images_sent
-            if outcome.input_tokens is not None:
-                run.input_tokens = (run.input_tokens or 0) + outcome.input_tokens
-            if outcome.output_tokens is not None:
-                run.output_tokens = (run.output_tokens or 0) + outcome.output_tokens
-            touched: set[str] = set()
-            for shot_id, analysis in outcome.analyses.items():
-                visual, shot = by_shot[shot_id]
-                shot.analysis, shot.status, shot.note = analysis, "analisada", ""
-                touched.add(visual.clip_id)
-            for shot_id, reason in outcome.failed.items():
-                _, shot = by_shot[shot_id]
-                shot.status, shot.note = "sem_analise", reason
-            for clip_id in touched:
-                self._save_analyses(next(v for v in visuals if v.clip_id == clip_id),
-                                    cache_root / caches[clip_id][0], fingerprint)
-            if outcome.failed:
-                self._emit("ai", "notice", f"lote {number}: {len(outcome.failed)} tomada(s) sem análise")
-        if describer.effective_provider is not None:
-            run.effective_model = f"{describer.effective_provider}:{describer.effective_model_id}"
+            elapsed = time.perf_counter() - began
+            self._apply_outcome(outcome, by_shot, locks, caches, cache_root, fingerprint)
+            stat = VisualBatchStat(
+                number=number, shots=len(batch), images=sum(len(r.image_paths) for r in batch),
+                started_sec=round(began - started, 3), duration_sec=round(elapsed, 3),
+                api_calls=outcome.api_calls, corrections=outcome.corrections,
+                model_switches=outcome.model_switches, model=outcome.model,
+                failed_shots=len(outcome.failed), rate_limited=outcome.rate_limited,
+            )
+            return outcome, stat
+
+        limit = self.ai_parallel
+        queue = list(enumerate(batches, start=1))
+        running: dict[Future, int] = {}
+        stats: list[VisualBatchStat] = []
+        reduced = False
+        pool = ThreadPoolExecutor(max_workers=limit)
+        try:
+            while queue or running:
+                while queue and len(running) < limit:
+                    number, batch = queue.pop(0)
+                    running[pool.submit(work, number, batch)] = number
+                self._progress("ai", StageProgress(
+                    note=f"lotes {len(stats)}/{len(batches)} · {len(running)} em andamento · "
+                    f"{describer.chain.current.label}"
+                ))
+                finished, _ = wait(running, return_when=FIRST_COMPLETED)
+                for future in sorted(finished, key=running.__getitem__):
+                    number = running.pop(future)
+                    outcome, stat = future.result()  # AIAuthenticationError sobe daqui
+                    stats.append(stat)
+                    self._add_outcome(run, outcome)
+                    if outcome.rate_limited and limit > 1:
+                        limit = max(1, limit // 2)
+                        if not reduced:
+                            reduced = True
+                            self._emit("ai", "notice", f"limite do provedor no lote {number}: "
+                                       f"{limit} lote(s) ao mesmo tempo daqui em diante")
+                    if outcome.failed:
+                        self._emit("ai", "notice", f"lote {number}: {len(outcome.failed)} tomada(s) sem análise")
+        except BaseException:
+            # Erro fatal ou Ctrl+C: os lotes da fila não começam; os em andamento terminam e gravam o cache.
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+        pool.shutdown(wait=True)
+        run.parallel_final = limit
+        run.batch_stats = sorted(stats, key=lambda stat: stat.number)
+        run.wall_sec = round(time.perf_counter() - started, 3)
+        # Modelo do último lote pela ordem dos lotes (não a de término).
+        last = next((stat.model for stat in reversed(run.batch_stats) if stat.model), None)
+        if last is not None:
+            run.effective_model = last
             run.thinking = describer.effective_thinking_label
         run.model_switches = list(describer.model_switches)
         return run
+
+    @staticmethod
+    def _add_outcome(run: VisualAIRun, outcome: BatchOutcome) -> None:
+        run.batches += 1
+        run.api_calls += outcome.api_calls
+        run.images_sent += outcome.images_sent
+        if outcome.input_tokens is not None:
+            run.input_tokens = (run.input_tokens or 0) + outcome.input_tokens
+        if outcome.output_tokens is not None:
+            run.output_tokens = (run.output_tokens or 0) + outcome.output_tokens
+
+    def _apply_outcome(
+        self,
+        outcome: BatchOutcome,
+        by_shot: dict[str, tuple[ClipVisual, Shot]],
+        locks: dict[str, threading.Lock],
+        caches: dict[str, tuple[str, ClipShotsCache]],
+        cache_root: Path,
+        fingerprint: str,
+    ) -> None:
+        """Aplica o lote às tomadas e grava o cache de cada clipe tocado (um lote por vez por clipe)."""
+        clip_ids = sorted({by_shot[shot_id][0].clip_id for shot_id in [*outcome.analyses, *outcome.failed]})
+        for clip_id in clip_ids:
+            with locks[clip_id]:
+                analysed: Optional[ClipVisual] = None
+                for shot_id, analysis in outcome.analyses.items():
+                    visual, shot = by_shot[shot_id]
+                    if visual.clip_id == clip_id:
+                        shot.analysis, shot.status, shot.note = analysis, "analisada", ""
+                        analysed = visual
+                for shot_id, reason in outcome.failed.items():
+                    visual, shot = by_shot[shot_id]
+                    if visual.clip_id == clip_id:
+                        shot.status, shot.note = "sem_analise", reason
+                if analysed is not None:
+                    self._save_analyses(analysed, cache_root / caches[clip_id][0], fingerprint)
 
     @staticmethod
     def _save_analyses(visual: ClipVisual, cache_dir: Path, fingerprint: str) -> None:
@@ -542,5 +623,8 @@ class VisualBuilder:
             for shot in visual.shots if shot.status == "analisada" and shot.analysis is not None
         }
         path = cache_dir / f"ai-{fingerprint}.json"
-        path.write_text(CachedAnalyses(fingerprint=fingerprint, analyses=analyses).model_dump_json(indent=2),
+        # Temporário + troca: um Ctrl+C no meio da escrita não corrompe o cache.
+        temp = path.with_suffix(".tmp")
+        temp.write_text(CachedAnalyses(fingerprint=fingerprint, analyses=analyses).model_dump_json(indent=2),
                         encoding="utf-8")
+        os.replace(temp, path)
