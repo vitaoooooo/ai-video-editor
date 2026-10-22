@@ -59,6 +59,8 @@ class MockDirector(EditDirector):
                 removals=list(self.removals), summary=f"{len(self.removals)} frase(s) removida(s)."
             )
 
+        if any(s.clip_id is not None for s in sentences):
+            return self._remove_retakes(sentences)
         removals: list[SentenceRemoval] = []
         first_seen: dict[str, int] = {}
         for sentence in sentences:
@@ -75,4 +77,26 @@ class MockDirector(EditDirector):
                 first_seen[key] = sentence.id
         return DirectorDecision(
             removals=removals, summary=f"{len(removals)} frase(s) repetida(s) removida(s)."
+        )
+
+    @staticmethod
+    def _remove_retakes(sentences: list[Sentence]) -> DirectorDecision:
+        """Vários clipes: de cada fala repetida fica a última tomada; as anteriores saem como `retake`."""
+        removals: list[SentenceRemoval] = []
+        last_seen: dict[str, int] = {}
+        for sentence in reversed(sentences):
+            key = _normalize(sentence.text)
+            if key in last_seen:
+                removals.append(
+                    SentenceRemoval(
+                        sentence_id=sentence.id,
+                        category="retake",
+                        reason=f"Tomada repetida; fica a frase {last_seen[key]}.",
+                    )
+                )
+            else:
+                last_seen[key] = sentence.id
+        removals.reverse()
+        return DirectorDecision(
+            removals=removals, summary=f"{len(removals)} tomada(s) repetida(s) removida(s)."
         )

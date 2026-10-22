@@ -3,6 +3,8 @@
 from ai_video_editor.recipes.schema import Recipe, RecipeError
 
 DEFAULT_RECIPE = "fala"
+# Receita padrão de `edit <pasta>` (projeto com vários clipes).
+DEFAULT_FOLDER_RECIPE = "vlog"
 
 _RECIPES: dict[str, Recipe] = {}
 
@@ -32,9 +34,36 @@ register_recipe(
         description="Vídeo falado: corta pausas e, com o Diretor, frases repetidas ou recomeçadas",
         steps=["probe", "silences", "transcription", "director", "plan", "render", "subtitles", "report"],
         requires={
+            "silences": ["probe"],
+            "transcription": ["probe"],
             # O plano aplica as remoções do Diretor (quando ele roda).
             "plan": ["director"],
+            "render": ["plan"],
+            "subtitles": ["plan"],
             # O relatório compara a transcrição e as decisões com o plano final.
+            "report": ["transcription", "director", "subtitles"],
+        },
+    )
+)
+
+
+# Vlog / pasta de clipes: a espinha falada (clipes principais com fala, em ordem, cada um sem pausas e
+# sem frases ruins) montada numa Timeline. Cobertura (drone/b-roll por cima) ainda não entra.
+register_recipe(
+    Recipe(
+        name="vlog",
+        description=(
+            "Pasta de clipes (vlog, viagem, evento): junta os clipes principais com fala, na ordem do "
+            "catálogo, cortando pausas, frases ruins e tomadas repetidas; sem cobertura de b-roll/drone"
+        ),
+        steps=["catalog", "silences", "transcription", "director", "timeline", "render", "subtitles", "report"],
+        requires={
+            "silences": ["catalog"],
+            "transcription": ["catalog"],
+            # A Timeline aplica as remoções do Diretor (quando ele roda).
+            "timeline": ["director"],
+            "render": ["timeline"],
+            "subtitles": ["timeline"],
             "report": ["transcription", "director", "subtitles"],
         },
     )

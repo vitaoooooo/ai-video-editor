@@ -1,6 +1,6 @@
 """Prompt do Diretor de IA (independente do provedor)."""
 
-from ai_video_editor.director.schema import DirectorContext, Sentence, UserBrief
+from ai_video_editor.director.schema import DirectorClip, DirectorContext, Sentence, UserBrief
 from ai_video_editor.director.service import allowed_removal_ratio, speech_duration
 
 _INTENSITY_GUIDE = {
@@ -20,7 +20,13 @@ _INTENSITY_GUIDE = {
 
 
 def build_director_prompt(sentences: list[Sentence], brief: UserBrief, context: DirectorContext) -> str:
-    """Monta o prompt do Diretor: regras, briefing do usuário e frases numeradas."""
+    """Monta o prompt do Diretor: regras, briefing do usuário e frases numeradas.
+
+    Com `context.clips` (projeto com vários clipes), as frases vêm em seções por clipe e entra a
+    categoria `retake`; sem clipes, o prompt é o de um vídeo só.
+    """
+    if context.clips:
+        return _build_clips_prompt(sentences, brief, context)
     total = speech_duration(sentences)
     limit = allowed_removal_ratio(sentences, brief)
     lines = [
@@ -48,6 +54,17 @@ def build_director_prompt(sentences: list[Sentence], brief: UserBrief, context: 
         "abandonada ou refeita logo depois), filler (enrolação sem conteúdo), off_topic "
         "(fora do assunto do vídeo), other (outro motivo; explique).",
         "",
+        *_brief_lines(brief, context),
+    ]
+    lines += ["", "FRASES (ID, duração e texto):"]
+    lines += [f"[{s.id}] ({s.duration:.1f}s) {s.text}" for s in sentences]
+    lines += ["", "Responda em JSON com 'removals' (pode ser vazia) e 'summary'."]
+    return "\n".join(lines)
+
+
+def _brief_lines(brief: UserBrief, context: DirectorContext) -> list[str]:
+    """Briefing do usuário e, numa nova tentativa, o erro da resposta anterior."""
+    lines = [
         "BRIEFING DO USUÁRIO:",
         f"- Intensidade: {_INTENSITY_GUIDE[brief.intensity]}",
     ]
@@ -67,7 +84,67 @@ def build_director_prompt(sentences: list[Sentence], brief: UserBrief, context: 
             f"{context.previous_error}",
             "Corrija o problema nesta nova resposta.",
         ]
-    lines += ["", "FRASES (ID, duração e texto):"]
-    lines += [f"[{s.id}] ({s.duration:.1f}s) {s.text}" for s in sentences]
+    return lines
+
+
+def _clock(seconds: float) -> str:
+    """`34.2` -> `0:34`; `3725` -> `1:02:05`."""
+    total = int(round(seconds))
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def _clip_header(clip: DirectorClip) -> str:
+    return f"Clipe {clip.id} ({_clock(clip.duration_sec)}) — {clip.name}"
+
+
+def _build_clips_prompt(sentences: list[Sentence], brief: UserBrief, context: DirectorContext) -> str:
+    """Prompt da espinha falada: vários clipes em sequência, cada um como uma seção com suas frases."""
+    total = speech_duration(sentences)
+    limit = allowed_removal_ratio(sentences, brief)
+    lines = [
+        "Você é um editor de vídeo experiente montando um vlog a partir de vários clipes gravados "
+        "em sequência (a pessoa fala para a câmera em cada um).",
+        f"Projeto: '{context.video_name}', {len(context.clips)} clipes na ordem da história, "
+        f"{_clock(context.duration_sec)} de material, idioma {context.language or 'desconhecido'}. "
+        f"Tempo de fala nas frases: {total:.1f}s.",
+        "",
+        "TAREFA: escolha quais frases devem ser REMOVIDAS. Os clipes ficam na ordem em que estão; "
+        "as pausas silenciosas já são cortadas automaticamente por outra etapa.",
+        "",
+        "REGRAS OBRIGATÓRIAS:",
+        "1. Seja conservador. Na dúvida, MANTENHA a frase.",
+        "2. Nunca remova uma frase que carrega informação nova (um lugar, um fato, uma opinião, "
+        "um momento da história), mesmo que esteja mal falada.",
+        "3. Tomadas repetidas (retake): quando a mesma fala foi gravada de novo, no mesmo clipe ou "
+        "em clipes seguidos, mantenha a melhor (normalmente a última, completa) e remova as "
+        "anteriores com a categoria 'retake', dizendo no motivo qual frase ficou no lugar.",
+        "4. Não remova todas as frases de um clipe, a menos que todas sejam 'retake' (a fala foi "
+        "regravada em outro clipe) ou 'off_topic'.",
+        "5. Referencie as frases SOMENTE pelo ID entre colchetes. Os IDs são únicos no projeto "
+        "inteiro. Não invente IDs e não escreva tempos ou timestamps.",
+        "6. Cada ID pode aparecer no máximo uma vez.",
+        f"7. Não remova mais que {limit:.0%} do tempo de fala.",
+        "8. Escreva 'reason' e 'summary' em português, de forma curta e específica.",
+        "",
+        "CATEGORIAS: retake (tomada repetida: a mesma fala gravada de novo), repetition (repete "
+        "uma ideia já dita), false_start (frase começada e abandonada ou refeita logo depois), "
+        "filler (enrolação sem conteúdo), off_topic (fora do assunto do vídeo), other (outro "
+        "motivo; explique).",
+        "",
+        *_brief_lines(brief, context),
+        "",
+        "CLIPES E FRASES (ID, duração e texto), na ordem do vídeo:",
+    ]
+    by_clip: dict[str, list[Sentence]] = {}
+    for sentence in sentences:
+        by_clip.setdefault(sentence.clip_id or "", []).append(sentence)
+    for clip in context.clips:
+        lines += ["", _clip_header(clip)]
+        clip_sentences = by_clip.get(clip.id, [])
+        if not clip_sentences:
+            lines.append("(sem frases transcritas)")
+        lines += [f"[{s.id}] ({s.duration:.1f}s) {s.text}" for s in clip_sentences]
     lines += ["", "Responda em JSON com 'removals' (pode ser vazia) e 'summary'."]
     return "\n".join(lines)

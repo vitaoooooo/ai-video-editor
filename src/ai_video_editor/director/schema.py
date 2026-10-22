@@ -8,7 +8,10 @@ from ai_video_editor.intelligence.schema import AIRunMetrics
 from ai_video_editor.llm.schema import ModelSwitch, ThinkingLevel
 
 Intensity = Literal["light", "medium", "aggressive"]
-RemovalCategory = Literal["repetition", "false_start", "filler", "off_topic", "other"]
+# `retake` (tomada repetida) só aparece no prompt de projetos com vários clipes.
+RemovalCategory = Literal["repetition", "false_start", "filler", "off_topic", "retake", "other"]
+# Categorias que justificam remover todas as frases de um clipe.
+WHOLE_CLIP_CATEGORIES: frozenset[str] = frozenset({"retake", "off_topic"})
 
 
 class Sentence(BaseModel):
@@ -19,6 +22,10 @@ class Sentence(BaseModel):
     end_sec: float = Field(..., ge=0.0)
     text: str
     segment_ids: list[int] = Field(..., min_length=1, description="IDs dos segmentos de origem")
+    clip_id: Optional[str] = Field(
+        default=None,
+        description="Clipe de origem em projetos com vários clipes (tempos relativos ao clipe); None em um vídeo só",
+    )
 
     @model_validator(mode="after")
     def _check_range(self) -> "Sentence":
@@ -56,12 +63,23 @@ class UserBrief(BaseModel):
     instructions: Optional[str] = Field(default=None, description="Pedido livre do usuário")
 
 
+class DirectorClip(BaseModel):
+    """Um clipe da espinha falada, como o Diretor o vê (seção do prompt)."""
+
+    id: str = Field(..., description="ID do catálogo (P006)")
+    name: str = Field(..., description="Nome do arquivo")
+    duration_sec: float = Field(..., ge=0.0)
+
+
 class DirectorContext(BaseModel):
     """Informações do vídeo passadas ao Diretor junto com as frases."""
 
     video_name: str
     duration_sec: float = Field(..., ge=0.0)
     language: Optional[str] = None
+    clips: list[DirectorClip] = Field(
+        default_factory=list, description="Clipes em ordem (projetos com vários clipes); vazio em um vídeo só"
+    )
     previous_error: Optional[str] = Field(
         default=None, description="Erro da resposta anterior, enviado ao modelo na nova tentativa"
     )

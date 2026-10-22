@@ -2,6 +2,7 @@
 
 from ai_video_editor.director.provider import EditDirector
 from ai_video_editor.director.schema import (
+    DirectorClip,
     DirectorContext,
     DirectorDecision,
     DirectorRun,
@@ -10,10 +11,11 @@ from ai_video_editor.director.schema import (
     SentenceRemoval,
     UserBrief,
 )
-from ai_video_editor.director.sentences import build_sentences
+from ai_video_editor.director.sentences import build_clip_sentences, build_sentences
 from ai_video_editor.director.service import run_director, validate_decision
 
 __all__ = [
+    "DirectorClip",
     "DirectorContext",
     "DirectorDecision",
     "DirectorRun",
@@ -22,6 +24,7 @@ __all__ = [
     "SentenceParams",
     "SentenceRemoval",
     "UserBrief",
+    "build_clip_sentences",
     "build_sentences",
     "run_director",
     "validate_decision",
