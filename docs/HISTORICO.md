@@ -264,6 +264,13 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 🔁 **Camada `llm/` segura para threads:** métricas da última chamada por thread (`llm/per_thread.py`: cliente, cadeia e etapa), chamadas à API contadas na própria chamada (não em `RetryPolicy.attempts_made`, compartilhado) e troca de modelo uma vez só sob trava (duas threads que falham juntas no mesmo modelo não pulam o seguinte).
 - 📊 Testes novos (sem rede, IA simulada com atraso de 0,2 s, sem FFmpeg): 6 lotes em paralelo 3 bem mais rápidos que em sequência e com resultado e cache idênticos; cache gravado a cada lote e mantido num Ctrl+C no 3º lote; 429 reduz o paralelismo de 4 para 2 com um aviso; trava do cache com dois lotes do mesmo clipe; 2 lotes seguidos com erro ainda param o resto; cadeia troca uma vez só com duas threads falhando juntas; opção da CLI.
 
+## Correção: corrida na criação do cliente do SDK com lotes em paralelo (2026-10-22)
+
+- 🐛 **Sintoma (material real, vlog, 200 tomadas, `visual --visual-provider gemini --detalhe-imagem low --visual-thinking off`, paralelo 3):** só o 1º lote (P001–P004) foi analisado; os outros falharam com "Cannot send a request, as the client has been closed." e, depois de 2 falhas seguidas, os lotes restantes não foram enviados (5 chamadas, 192 tomadas sem análise).
+- 🔍 **Causa (confirmada no código e reproduzida em teste):** `StructuredLLMClient.get_client` criava o cliente do SDK sob demanda sem trava. As 3 threads viam `_client` vazio, criavam um `genai.Client` cada e sobrescreviam o atributo; o SDK fecha a conexão HTTP no `__del__` do cliente, e o cliente descartado era coletado enquanto a thread dele ainda chamava `.models.generate_content`. O SDK da OpenAI faz o mesmo. Os testes não pegaram porque injetavam o cliente pronto.
+- ✅ **`get_client` seguro para threads** na base (trava com verificação dupla: o cliente é criado uma única vez e todas as threads recebem o mesmo objeto); nenhum provedor mudou. `ModelChain.client_for` tinha a mesma corrida no dicionário de clientes por provedor e agora cria sob a trava da cadeia. `thinking_label` não guarda estado e ficou como estava.
+- 📊 Testes novos (sem rede; falham sem a correção): 8 threads em `get_client` com criação lenta → 1 cliente; o mesmo para `ModelChain.client_for`; `visual` com 6 lotes em paralelo 3 e cliente criado sob demanda (o falso "fecha" quando é substituído, como o SDK) → 1 cliente e todas as tomadas analisadas.
+
 ---
 
 ## 🔄 Em andamento

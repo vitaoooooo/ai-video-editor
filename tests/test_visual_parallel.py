@@ -266,6 +266,51 @@ def test_chain_switches_once_when_parallel_calls_fail_together():
     assert sorted(results) == [("b", 2, 1), ("b", 2, 1)]
 
 
+class _LazySdk:
+    """Cliente do SDK falso: fecha quando um cliente mais novo o substitui (como o `__del__` do SDK)."""
+
+    def __init__(self):
+        self.closed = False
+
+
+class _LazyClientMock(MockLLMClient):
+    """Provedor sem cliente injetado: o cliente do SDK é criado na 1ª chamada, devagar."""
+
+    def __init__(self, responder):
+        super().__init__(responses=[responder])
+        self._client = None
+        self.created: list[_LazySdk] = []
+
+    def _create_client(self):
+        time.sleep(0.05)
+        for old in self.created:
+            old.closed = True
+        sdk = _LazySdk()
+        self.created.append(sdk)
+        return sdk
+
+    def _request(self, prompt, schema, config, level, images=()):
+        sdk = self.get_client()
+        time.sleep(0.01)
+        if sdk.closed:
+            raise AIProviderError("Cannot send a request, as the client has been closed.", provider="mock")
+        return super()._request(prompt, schema, config, level, images)
+
+
+def test_parallel_batches_with_lazy_sdk_client(tmp_path):
+    """Regressão: com o cliente criado sob demanda, as threads não podem criar um cliente cada."""
+    provider = _LazyClientMock(mock_visual_responder)
+    chain = ModelChain([ModelSpec(provider="mock", model_id="mock")],
+                       retry=RetryPolicy(max_retries=0, sleep=lambda _: None), clients={"mock": provider})
+    builder = VisualBuilder(projects_root=tmp_path, describer=VisualDescriber(chain), ai_parallel=3)
+    visuals, caches, cache_root = _project(tmp_path, {"B001": 24, "B002": 24})
+    run = builder._describe(visuals, [], caches, cache_root, ai_fingerprint(builder.describer))
+
+    assert len(provider.created) == 1
+    assert run.batches == 6 and run.api_calls == 6
+    assert all(shot.analysis is not None for visual in visuals for shot in visual.shots)
+
+
 def test_cli_visual_parallel_option():
     args = cli.build_parser().parse_args(["visual", "pasta"])
     assert args.visual_paralelo == 3

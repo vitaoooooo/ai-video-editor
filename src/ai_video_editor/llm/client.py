@@ -1,5 +1,6 @@
 """Interface comum dos provedores de IA com saída estruturada (Diretor, revisor e futuros usos)."""
 
+import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Sequence
@@ -41,6 +42,7 @@ class StructuredLLMClient(ABC):
     def __init__(self, api_key: Optional[str] = None, client: Any = None):
         self._api_key = api_key
         self._client = client
+        self._client_lock = threading.Lock()
 
     # --- credenciais e cliente do SDK ---
 
@@ -51,10 +53,20 @@ class StructuredLLMClient(ABC):
         return find_api_key(self.api_key_env) is not None
 
     def get_client(self) -> Any:
-        """Cliente do SDK, criado sob demanda (import tardio)."""
-        if self._client is None:
-            self._client = self._create_client()
-        return self._client
+        """Cliente do SDK, criado sob demanda (import tardio) uma única vez, mesmo com threads.
+
+        Sem a trava, threads paralelas (lotes do `visual`) criavam um cliente cada e
+        sobrescreviam `_client`; o SDK (Gemini e OpenAI) fecha a conexão no `__del__` do
+        cliente descartado, e a chamada da thread que ainda o usava falhava com
+        "client has been closed".
+        """
+        client = self._client
+        if client is not None:
+            return client
+        with self._client_lock:
+            if self._client is None:
+                self._client = self._create_client()
+            return self._client
 
     @abstractmethod
     def _create_client(self) -> Any:
