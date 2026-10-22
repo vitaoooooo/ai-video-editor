@@ -50,12 +50,14 @@ from ai_video_editor.visual.schema import (
     ShotAnalysis,
     ShotBoundary,
     ShotFrame,
-    ShotMeasures,
     VisualAIRun,
 )
 from ai_video_editor.visual.shots import (
     ShotSpan,
+    Sample,
+    ShotSpan,
     extract_frames,
+    mark_shaky,
     frame_times,
     measure_shot,
     scan_clip,
@@ -64,7 +66,7 @@ from ai_video_editor.visual.shots import (
 )
 
 # Sobe quando muda o que é guardado no cache de tomadas.
-VISUAL_CACHE_VERSION = 1
+VISUAL_CACHE_VERSION = 2
 
 VISUAL_DIR = "visual"
 VISUAL_JSON = "visual.json"
@@ -96,7 +98,6 @@ class CachedShot(BaseModel):
     boundary: ShotBoundary
     frame_times: list[float]
     frame_files: list[str] = Field(description="Na pasta do cache do clipe")
-    measures: ShotMeasures
 
 
 class ClipShotsCache(BaseModel):
@@ -107,6 +108,7 @@ class ClipShotsCache(BaseModel):
     params: dict[str, float]
     duration_sec: float
     shots: list[CachedShot] = Field(default_factory=list)
+    samples: list[Sample] = Field(default_factory=list, description="Medidas brutas; as marcas saem delas a cada execução")
 
 
 class CachedAnalyses(BaseModel):
@@ -248,6 +250,8 @@ class VisualBuilder:
         caches, cached_ids, errors = self._shots(clips, Path(catalog.source_dir), cache_root, force)
         visuals = [self._clip_visual(clip, caches.get(clip.id), clip.id in cached_ids, errors.get(clip.id))
                    for clip in clips]
+        # Tremor é relativo ao projeto: só depois de medir todos os clipes.
+        motion_limit = mark_shaky([s.measures for v in visuals for s in v.shots if s.measures])
         total_shots = sum(len(v.shots) for v in visuals)
         detail = f"{total_shots} tomadas em {len(clips)} clipe(s), {len(cached_ids)} do cache"
         if errors:
@@ -291,6 +295,7 @@ class VisualBuilder:
             clips=visuals,
             ai=ai_run,
             warnings=warnings,
+            motion_threshold=motion_limit,
         )
         stage_times.append(StageTime(name="report", elapsed_sec=round(time.perf_counter() - t0, 3)))
         visual.stage_times = stage_times
@@ -361,11 +366,11 @@ class VisualBuilder:
                 raise RuntimeError(f"falha ao extrair miniaturas da tomada {index}")
             shots.append(CachedShot(
                 index=index, start_sec=span.start_sec, end_sec=span.end_sec, boundary=span.boundary,
-                frame_times=times, frame_files=files, measures=measure_shot(span, scan.samples),
+                frame_times=times, frame_files=files,
             ))
         cache = ClipShotsCache(
             format_version=VISUAL_CACHE_VERSION, path=path, size_bytes=stat.st_size, mtime_ns=stat.st_mtime_ns,
-            params=shot_params(), duration_sec=duration, shots=shots,
+            params=shot_params(), duration_sec=duration, shots=shots, samples=scan.samples,
         )
         (cache_dir / SHOTS_FILE).write_text(cache.model_dump_json(indent=2), encoding="utf-8")
         return cache
@@ -400,7 +405,9 @@ class VisualBuilder:
         )
         if entry is None:
             return visual
-        for item in entry[1].shots:
+        cache = entry[1]
+        for item in cache.shots:
+            span = ShotSpan(start_sec=item.start_sec, end_sec=item.end_sec, boundary=item.boundary)
             shot_id = f"{clip.id}.T{item.index:02d}"
             frames = [
                 ShotFrame(id=f"{shot_id}.F{n}", position=n, time_sec=t, file=f"{FRAMES_DIR}/{shot_id}.F{n}.jpg")
@@ -408,7 +415,7 @@ class VisualBuilder:
             ]
             visual.shots.append(Shot(
                 id=shot_id, index=item.index, start_sec=item.start_sec, end_sec=item.end_sec,
-                boundary=item.boundary, frames=frames, measures=item.measures,
+                boundary=item.boundary, frames=frames, measures=measure_shot(span, cache.samples),
                 has_speech=speech_overlap(clip, item.start_sec, item.end_sec),
             ))
         return visual

@@ -5,6 +5,9 @@ arquivos de metadados: (1) mudanças de cena (`select` com o `scene` score) e (2
 quadros amostrados (`blurdetect` e `signalstats`). As mudanças de cena dividem o clipe em
 tomadas; tomadas longas viram janelas (para achar o trecho ruim dentro de um clipe longo).
 Depois, três miniaturas por tomada.
+
+As amostras brutas vão para o cache; as marcas (uniforme, borrão, tremida...) são recalculadas a
+cada execução, e a de tremor depende do projeto inteiro (`mark_shaky`).
 """
 
 import math
@@ -34,11 +37,18 @@ ANALYSIS_WIDTH = 480
 # Quadros por segundo amostrados para as medidas.
 MEASURE_FPS = 2.0
 # blurdetect em ANALYSIS_WIDTH: imagem nítida fica perto de 5; desfoque forte passa de 10.
+# Pega foco errado/lente suja, mas NÃO o borrão de movimento: no material real (P023, câmera
+# chacoalhando) ele ficou em 4,6–5,8, igual a imagem nítida. Borrão de movimento fica a cargo da IA.
 BLUR_HIGH = 9.0
-# Diferença média de luma entre amostras (0–1) acima disso = movimento/tremor alto.
-MOTION_HIGH = 0.08
+# Tremida = movimento (mediana do YDIF, 0–1) acima deste percentil das tomadas do projeto...
+MOTION_PERCENTILE = 90
+# ...e nunca abaixo deste piso. Relativo porque o vlog é todo de câmera na mão: com 0,08 fixo,
+# 95 de 200 tomadas do material real saíam tremidas. Mesmo raciocínio do limite de silêncio `auto`.
+MOTION_FLOOR = 0.08
 # Faixa de luma (YHIGH − YLOW, 0–1) abaixo disso = quadro quase uniforme (parede, câmera tapada).
-UNIFORM_SPREAD = 0.10
+# 0,14 porque a parede amarela real (P007) fica entre 0,09 e 0,12 (textura e ruído do sensor);
+# imagem com conteúdo fica acima de 0,25.
+UNIFORM_SPREAD = 0.14
 # Fração mínima de amostras quase uniformes para marcar a tomada como uniforme.
 UNIFORM_MIN_FRACTION = 0.6
 DARK_LUMA = 0.15
@@ -49,6 +59,8 @@ FRAME_POSITIONS = (0.10, 0.50, 0.90)
 FRAME_WIDTH = 512
 # Qualidade JPEG do FFmpeg (-q:v: 2 = melhor, 31 = pior); 5 é moderada.
 FRAME_QUALITY = 5
+# Miniatura depois do último quadro do vídeo: procura o último quadro nestes segundos finais.
+LAST_FRAME_WINDOW_SEC = 3.0
 
 _FRAME_RE = re.compile(r"^frame:\d+\s+pts:\S+\s+pts_time:([\d.]+)")
 _KEY_RE = re.compile(r"^lavfi\.([\w.]+)=(\S+)")
@@ -142,11 +154,13 @@ def scan_clip(path: Path, run: Callable[..., subprocess.CompletedProcess] = subp
         RuntimeError: o FFmpeg falhou.
     """
     with tempfile.TemporaryDirectory(prefix="visual-scan-") as tmp:
-        # Os arquivos de metadados usam nomes relativos (cwd = tmp): caminhos do Windows com
+        # O ramo de cenas sempre deixa passar o 1º quadro (`eq(n,0)`): sem nenhuma mudança de cena
+        # (tomada contínua), a saída ficaria sem quadros e o FFmpeg aborta ("Could not open encoder
+        # before EOF"). Os arquivos de metadados usam nomes relativos (cwd = tmp): caminhos do Windows com
         # `C:` quebrariam a sintaxe do filtro.
         graph = (
             f"[0:v]scale={ANALYSIS_WIDTH}:-2,format=yuv420p,split[a][b];"
-            f"[a]select='gt(scene,{SCENE_THRESHOLD})',metadata=print:file=scenes.txt[o1];"
+            f"[a]select='eq(n,0)+gt(scene,{SCENE_THRESHOLD})',metadata=print:file=scenes.txt[o1];"
             f"[b]fps={MEASURE_FPS},blurdetect,signalstats,metadata=print:file=stats.txt[o2]"
         )
         args = [
@@ -161,7 +175,8 @@ def scan_clip(path: Path, run: Callable[..., subprocess.CompletedProcess] = subp
             raise RuntimeError(f"FFmpeg falhou na análise visual: {(proc.stderr or '').strip()[:300]}")
         scenes = Path(tmp, "scenes.txt")
         stats = Path(tmp, "stats.txt")
-        cuts = [t for t, _ in parse_metadata_file(scenes.read_text(encoding="utf-8"))] if scenes.is_file() else []
+        # O 1º bloco é sempre o quadro n=0 (não é mudança de cena): está lá só para a saída nunca ficar vazia.
+        cuts = [t for t, _ in parse_metadata_file(scenes.read_text(encoding="utf-8"))[1:]] if scenes.is_file() else []
         blocks = parse_metadata_file(stats.read_text(encoding="utf-8")) if stats.is_file() else []
     samples = [
         Sample(
@@ -178,7 +193,10 @@ def scan_clip(path: Path, run: Callable[..., subprocess.CompletedProcess] = subp
 
 
 def measure_shot(span: ShotSpan, samples: list[Sample]) -> ShotMeasures:
-    """Agrega as amostras dentro da tomada. A diferença de luma do 1º quadro após um corte é ignorada."""
+    """Agrega as amostras dentro da tomada. A diferença de luma do 1º quadro após um corte é ignorada.
+
+    `shaky` sai sempre falso: depende das outras tomadas do projeto (`mark_shaky`).
+    """
     inside = [s for s in samples if span.start_sec <= s.time_sec < span.end_sec]
     if not inside:
         # Tomada mais curta que o intervalo de amostragem: usa a amostra mais próxima.
@@ -202,19 +220,42 @@ def measure_shot(span: ShotSpan, samples: list[Sample]) -> ShotMeasures:
         motion=motion,
         luma_spread=round(max(0.0, min(1.0, statistics.median(spreads))), 3),
         blurry=blur is not None and blur >= BLUR_HIGH,
-        shaky=motion >= MOTION_HIGH,
         uniform=uniform_fraction >= UNIFORM_MIN_FRACTION,
         dark=brightness < DARK_LUMA,
         bright=brightness > BRIGHT_LUMA,
     )
 
 
+def motion_threshold(motions: list[float]) -> float:
+    """Limite de tremor do projeto: percentil MOTION_PERCENTILE dos movimentos (interpolado), no mínimo MOTION_FLOOR."""
+    if len(motions) < 2:
+        return round(max([MOTION_FLOOR, *motions]), 4)
+    percentile = statistics.quantiles(motions, n=100, method="inclusive")[MOTION_PERCENTILE - 1]
+    return round(max(MOTION_FLOOR, percentile), 4)
+
+
+def mark_shaky(measures: list[ShotMeasures]) -> float:
+    """Marca como tremidas as tomadas com movimento acima do limite do projeto; devolve o limite.
+
+    Acima (estrito): se todas se movem igual, nenhuma se destaca.
+    """
+    threshold = motion_threshold([m.motion for m in measures])
+    for m in measures:
+        m.shaky = m.motion > threshold
+    return threshold
+
+
 def extract_frames(path: Path, times: list[float], outputs: list[Path]) -> bool:
     """Grava as miniaturas de uma tomada num só FFmpeg (uma entrada com busca por tempo para cada).
 
-    FRAME_WIDTH px de largura, JPEG de qualidade moderada. False se alguma falhar.
+    FRAME_WIDTH px de largura, JPEG de qualidade moderada. A duração do clipe é a do contêiner,
+    que passa da do vídeo quando o áudio é mais longo: um tempo depois do último quadro não
+    gera imagem, e essa miniatura vira o último quadro do vídeo. False se alguma falhar.
     """
-    args = [str(get_ffmpeg_path()), "-hide_banner", "-nostdin", "-v", "error", "-y"]
+    ffmpeg = str(get_ffmpeg_path())
+    for output in outputs:
+        output.unlink(missing_ok=True)
+    args = [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-y"]
     for at_sec in times:
         args += ["-ss", f"{at_sec:.3f}", "-i", str(path)]
     for index, output in enumerate(outputs):
@@ -222,24 +263,34 @@ def extract_frames(path: Path, times: list[float], outputs: list[Path]) -> bool:
             "-map", f"{index}:v:0", "-frames:v", "1",
             "-vf", f"scale={FRAME_WIDTH}:-2", "-q:v", str(FRAME_QUALITY), str(output),
         ]
-    proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", shell=False)
-    return proc.returncode == 0 and all(output.is_file() for output in outputs)
+    _run_quiet(args)
+    for output in outputs:
+        if not output.is_file():
+            # Último quadro: decodifica o fim do arquivo e regrava a imagem a cada quadro.
+            _run_quiet([
+                ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-y",
+                "-sseof", f"-{LAST_FRAME_WINDOW_SEC:g}", "-i", str(path), "-map", "0:v:0",
+                "-vf", f"scale={FRAME_WIDTH}:-2", "-q:v", str(FRAME_QUALITY), "-update", "1", str(output),
+            ])
+    return all(output.is_file() for output in outputs)
+
+
+def _run_quiet(args: list[str]) -> None:
+    subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", shell=False)
 
 
 def shot_params() -> dict[str, float]:
-    """Parâmetros que entram na chave do cache (mudou algum, refaz as tomadas)."""
+    """Parâmetros que entram na chave do cache (mudou algum, refaz as tomadas).
+
+    Só o que muda a passada do FFmpeg, as tomadas e as miniaturas. Os limites das marcas
+    (BLUR_HIGH, UNIFORM_SPREAD, MOTION_*...) não entram: o cache guarda as amostras brutas.
+    """
     return {
         "scene_threshold": SCENE_THRESHOLD,
         "min_shot_sec": MIN_SHOT_SEC,
         "max_shot_sec": MAX_SHOT_SEC,
         "analysis_width": ANALYSIS_WIDTH,
         "measure_fps": MEASURE_FPS,
-        "blur_high": BLUR_HIGH,
-        "motion_high": MOTION_HIGH,
-        "uniform_spread": UNIFORM_SPREAD,
-        "uniform_min_fraction": UNIFORM_MIN_FRACTION,
-        "dark_luma": DARK_LUMA,
-        "bright_luma": BRIGHT_LUMA,
         "frame_width": FRAME_WIDTH,
         "frame_quality": FRAME_QUALITY,
     }

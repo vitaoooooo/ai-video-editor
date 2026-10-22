@@ -38,11 +38,16 @@ from ai_video_editor.visual.schema import (
 )
 from ai_video_editor.visual.shots import (
     MAX_SHOT_SEC,
+    MOTION_FLOOR,
     Sample,
     ShotSpan,
+    extract_frames,
     frame_times,
+    mark_shaky,
     measure_shot,
+    motion_threshold,
     parse_metadata_file,
+    scan_clip,
     split_shots,
 )
 
@@ -96,8 +101,46 @@ def test_measure_shot_flags_uniform_blur_and_ignores_diff_across_cut():
 
     blurry = [Sample(time_sec=t / 2, blur=15.0, yavg=120, ylow=40, yhigh=210, ydif=30) for t in range(8)]
     measures = measure_shot(ShotSpan(start_sec=0.0, end_sec=4.0, boundary="janela"), blurry)
-    assert measures.blurry and measures.shaky and not measures.uniform
-    assert measures.hints == ["borrão alto", "movimento alto"]
+    assert measures.blurry and not measures.shaky and not measures.uniform  # tremor só no projeto
+    assert measures.hints == ["borrão alto"]
+
+
+def test_measure_shot_wall_texture_is_uniform():
+    """Parede real (P007): faixa de luma entre 0,09 e 0,12, acima do limite antigo de 0,10."""
+    wall = [Sample(time_sec=t / 2, blur=5.0, yavg=120, ylow=100, yhigh=100 + 255 * s, ydif=5)
+            for t, s in enumerate([0.09, 0.11, 0.12, 0.10, 0.12, 0.11, 0.25, 0.09])]
+    assert measure_shot(ShotSpan(start_sec=0.0, end_sec=4.0, boundary="janela"), wall).uniform
+
+
+def _motions(values: list[float]) -> list[ShotMeasures]:
+    return [ShotMeasures(samples=1, brightness=0.5, motion=v, luma_spread=0.4) for v in values]
+
+
+def test_shaky_is_relative_to_project_percentile():
+    measures = _motions([0.09, 0.10, 0.11, 0.12, 0.10, 0.09, 0.11, 0.10, 0.12, 0.30])
+    threshold = mark_shaky(measures)
+    # percentil 90 interpolado: 0,12 + 0,1 × (0,30 − 0,12)
+    assert threshold == pytest.approx(0.138)
+    assert [m.shaky for m in measures] == [False] * 9 + [True]
+    assert measures[-1].hints == ["movimento alto"]
+
+
+def test_shaky_never_below_floor():
+    measures = _motions([0.01, 0.02, 0.02, 0.03, 0.05])
+    assert mark_shaky(measures) == MOTION_FLOOR
+    assert not any(m.shaky for m in measures)
+    assert motion_threshold([]) == MOTION_FLOOR
+
+
+def test_shaky_all_equal_or_tiny_project_marks_nothing():
+    same = _motions([0.2] * 6)
+    assert mark_shaky(same) == pytest.approx(0.2)
+    assert not any(m.shaky for m in same)
+    single = _motions([0.5])
+    assert mark_shaky(single) == 0.5 and not single[0].shaky
+    pair = _motions([0.05, 0.3])
+    mark_shaky(pair)
+    assert [m.shaky for m in pair] == [False, True]
 
 
 # --- lote e validação (puro) ---
@@ -186,6 +229,15 @@ def test_prompt_lists_ids_and_hints_without_clip_times(tmp_path):
     assert "P007.T03.F1, P007.T03.F2, P007.T03.F3" in prompt
     assert "1:01" not in prompt and "61" not in prompt  # a IA não vê onde a tomada está no clipe
     assert "resposta anterior foi recusada" in prompt
+
+
+def test_prompt_mentions_measures_only_when_flagged(tmp_path):
+    clean = _shot("P001.T01")
+    flagged = _shot("P001.T02", uniform=True)
+    prompt = build_visual_prompt([_request(clean, tmp_path), _request(flagged, tmp_path)])
+    assert prompt_sections(prompt) == [("P001.T01", ""), ("P001.T02", "tela uniforme")]
+    assert prompt.count("medidas: ") == 1 and "nada a notar" not in prompt
+    assert "0.4" not in prompt  # nenhum valor bruto
 
 
 # --- descritor com IA simulada ---
@@ -361,6 +413,70 @@ def test_visual_end_to_end_shots_measures_frames_and_report(tmp_path, scene_fold
     markdown = (visual_dir / "visual.md").read_text(encoding="utf-8")
     assert "## Atenção" in markdown and "P001.T02–T03" in markdown
     assert "frames/P001.T01.F1.jpg" in markdown
+
+
+def _make_clip(path: Path, video: str, duration: float, audio_sec: float | None = None) -> Path:
+    """Clipe sintético de uma fonte lavfi, sem cortes; com áudio de `audio_sec` s, se pedido."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    args = [str(get_ffmpeg_path()), "-v", "error", "-y", "-f", "lavfi", "-i", f"{video}:duration={duration}"]
+    if audio_sec is not None:
+        args += ["-f", "lavfi", "-i", f"sine=frequency=300:duration={audio_sec}", "-c:a", "aac"]
+    args += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(path)]
+    subprocess.run(args, capture_output=True, check=True)
+    os.utime(path, (FIXED_MTIME, FIXED_MTIME))
+    return path
+
+
+@pytest.mark.slow
+def test_visual_continuous_clip_without_scene_change(tmp_path):
+    """Tomada contínua (o caso comum do vlog): o ramo de cenas não pode ficar sem quadros."""
+    folder = tmp_path / "Trilha"
+    _make_clip(folder / "Principal" / "continua.mp4", "testsrc2=size=480x270:rate=25", 18, audio_sec=18)
+    builder, _ = _visual_builder(tmp_path / "projects")
+
+    result = builder.build(folder)
+
+    clip = result.visual.clips[0]
+    assert clip.error is None and result.visual.warnings == []
+    shots = clip.shots
+    assert [s.boundary for s in shots] == ["inicio", "janela", "janela"]
+    assert [(s.start_sec, s.end_sec) for s in shots] == [(0.0, 6.0), (6.0, 12.0), (12.0, 18.0)]
+    for shot in shots:
+        assert shot.measures.samples == 12 and shot.measures.blur is not None
+        assert shot.measures.brightness > 0 and not shot.measures.uniform
+        assert all((result.project_dir / "visual" / f.file).is_file() for f in shot.frames)
+
+
+@pytest.mark.slow
+def test_visual_very_short_clip(tmp_path):
+    folder = tmp_path / "Trilha"
+    _make_clip(folder / "Principal" / "curto.mp4", "testsrc2=size=480x270:rate=25", 0.4)
+    builder, _ = _visual_builder(tmp_path / "projects")
+
+    clip = builder.build(folder).visual.clips[0]
+
+    assert clip.error is None
+    assert len(clip.shots) == 1 and clip.shots[0].measures.samples == 1
+    assert clip.shots[0].measures.blur is not None
+
+
+@pytest.mark.slow
+def test_scan_clip_without_scene_change_has_no_cuts(tmp_path):
+    clip = _make_clip(tmp_path / "parede.mp4", "color=c=yellow:size=320x240:rate=25", 3)
+
+    scan = scan_clip(clip)
+
+    assert scan.cuts == [] and len(scan.samples) == 6
+
+
+@pytest.mark.slow
+def test_extract_frames_after_last_video_frame_uses_last_frame(tmp_path):
+    """Áudio mais longo que o vídeo: a duração do contêiner passa do último quadro."""
+    clip = _make_clip(tmp_path / "a.mp4", "testsrc2=size=320x240:rate=10", 3, audio_sec=3.6)
+    outputs = [tmp_path / f"F{i}.jpg" for i in range(1, 4)]
+
+    assert extract_frames(clip, [0.3, 1.5, 3.5], outputs)
+    assert all(o.is_file() for o in outputs)
 
 
 @pytest.mark.slow

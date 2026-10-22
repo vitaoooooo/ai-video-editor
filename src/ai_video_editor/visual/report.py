@@ -130,6 +130,8 @@ def build_visual_markdown(visual: ProjectVisual) -> str:
     missing = sum(1 for s in shots if s.status == "sem_analise")
     if missing:
         lines.append(f"- **{missing} tomada(s) sem análise** (serão pedidas de novo na próxima execução)")
+    if visual.motion_threshold is not None:
+        lines.append(f"- Movimento alto: acima de {visual.motion_threshold:g} (percentil do projeto, com piso)")
     lines += ["", "## Resumo", "", *_summary(visual), ""]
 
     lines += ["## Atenção: fala com imagem ruim", ""]
