@@ -183,6 +183,21 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   - 📊 413 → 463 testes automatizados (referência, receitas e catálogo); depois do merge com a Timeline, 505 testes, suíte completa em 4min 14s.
 - ❌ **Fora desta tarefa** (de propósito): renderer, `core/schema.py` e o formato dos IDs das frases (outra tarefa mexe em `core/`/`renderer/`; os IDs de frase com clipe vêm na rodada 2), proxies e análise visual com IA, e o próprio Produtor (`--pedido`).
 
+## Projetos com clipes, rodada 2: Produtor e correções do catálogo (2026-10-22)
+
+- 🔁 **Catálogo, papel por palavra no nome da pasta:** além do nome exato, um sinônimo como palavra (ou duas palavras vizinhas juntas) dá o papel, com origem `contém`: `Osmo Pocket - PRINCIPAL` → principal, `Fx30 - BROLL` → broll, `Go3S - POV` → pov, `Imagens de Drone` → drone. Dois papéis no mesmo nome → `outro` com aviso pedindo `--papel`.
+  - **Por quê:** no material real (vlog com 41 clipes), as pastas têm o nome da câmera junto do papel; todas caíam em `outro`.
+- 🔁 **Catálogo, datas de exportação:** numa mesma subpasta, um clipe que "começa" antes de o anterior terminar (data + duração) marca as datas do papel como não confiáveis, com aviso, e o papel passa a ser ordenado pela ordem natural do nome (`(4)` < `(15)` < `(27)`, origem `order_source = "nome"`). A ordem natural também virou o desempate geral (antes, alfabético: `(15)` vinha antes de `(4)`).
+  - **Por quê:** o material real foi reexportado e o `creation_time` é a hora da exportação (ex.: `Drone (1)` tem 2:02 e "começa" às 13:39:56; `Drone (2)` "começa" às 13:40:45), então a ordem por data embaralhava os clipes. A comparação é por subpasta porque duas câmeras no mesmo papel podem gravar juntas.
+- 🔁 **Catálogo, perfil log:** a suspeita só sai com contraste **e** saturação baixos, com limites mais rígidos e nomeados (`LOG_MAX_LUMA_SPREAD = 0,30`, `LOG_MAX_SATURATION = 0,04`, antes 0,45 e 0,08). `log_suspect` passou a ser calculado dos valores (vale para o cache sem refazer nada); saíram os avisos isolados de "baixo contraste"/"baixa saturação" do `catalog.md`, que agora mostra os valores medidos por clipe para calibrar. `catalog.json` foi para `schema_version` 2.
+  - **Por quê:** no material real quase todo clipe, inclusive com cor normal, saía como suspeito: cena clara ou pouco colorida já ficava abaixo dos dois limites antigos. Os novos limites são uma estimativa inicial, a calibrar com os valores do `catalog.md`.
+- ✅ **Produtor e comando `briefing`** (`producer/`): pedido + resumo compacto do material + receitas registradas (lidas do registro na hora) → `Briefing` (tipo de vídeo, receita, "Entendi: ...", duração alvo, intensidade, ritmo, instruções para o Diretor e para a cobertura, papéis, avisos). Pela `ModelChain`, com as opções do Diretor (`--director-provider/model/fallback/thinking/timeout`), provedor `mock` e `none` (só a regra). Validação pelo código (receita existe e combina com o material, papéis, duração alvo), nova tentativa com o erro e **fallback determinístico** (1 clipe → `fala`; pasta com principal falado → `vlog` se registrada, senão `fala` com aviso), com a origem registrada. Pedido vazio + 1 vídeo falado não chama a IA. `--receita` força a receita. Para pasta, reaproveita o catálogo se a listagem não mudou (senão roda o `catalog`, com o cache por clipe); para arquivo, resumo mínimo (ffprobe + fala). Imprime "Entendi", receita, metas, papéis e uma estimativa sem preços (clipes, áudio a transcrever, chamadas de IA) e salva `briefing.json` na pasta do projeto.
+  - **Por quê:** é o primeiro passo do fluxo "pedido em linguagem natural → plano": o usuário vê o que o sistema entendeu e quanto trabalho vem antes de gastar transcrição e IA. Falha de comunicação com a IA também cai no fallback (com aviso), porque o briefing sem IA ainda é útil.
+  - 🔁 **Receitas de vários clipes se declaram com o atributo `multi_clip = True`** (lido com `getattr`; sem ele, a receita é de 1 vídeo). **Por quê:** `recipes/` é de outra tarefa desta rodada; o atributo evita fixar nomes de receitas no Produtor. A receita `vlog` precisa declará-lo para o Produtor aceitá-la em pastas com vários clipes falados.
+  - 📊 Pasta sintética de 4 clipes (sem fala): catálogo em 3,5s na primeira execução; o briefing caiu no fallback com aviso, como esperado.
+  - 📊 505 → 547 testes automatizados (catálogo: 22 novos; Produtor: 20); suíte completa em 5min 08s.
+- ❌ **Fora desta tarefa:** o `edit` lendo o briefing (integração pendente: receita, metas e instruções ainda vêm das opções do `edit`), o Diretor de cobertura (só recebe o texto em `coverage_instructions`), `--papel`/`--ajuste-relogio` no `briefing` (rodar `catalog` antes) e a calibração dos limites de log com o material real.
+
 ---
 
 ## 🔄 Em andamento
@@ -201,7 +216,8 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
 ## 🔮 Projetos com clipes (próximas rodadas; ver [ARQUITETURA.md](ARQUITETURA.md))
 
-- **Rodada 2:** Produtor (pedido + catálogo → briefing validado) ∥ espinha falada multiclipe (IDs de frase com o clipe) ∥ análise visual dos clipes (proxies; a análise visual da Fase 3 volta aqui).
+- **Rodada 2:** ~~Produtor (pedido + catálogo → briefing validado)~~ (feito: comando `briefing`; falta o `edit` ler o briefing) ∥ espinha falada multiclipe (IDs de frase com o clipe) ∥ análise visual dos clipes (proxies; a análise visual da Fase 3 volta aqui).
+- **Calibrar os limites de perfil log** com os valores do `catalog.md` do material real.
 - **Rodada 3:** Diretor de cobertura + render com cobertura.
 - **Rodada 4:** `revise` multitrilha + relatórios.
 
