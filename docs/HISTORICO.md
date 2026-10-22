@@ -197,7 +197,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   - 🔁 Miniaturas: as 3 de uma tomada saem num único FFmpeg (3 entradas com busca), porque no Windows a partida do processo pesa mais que a extração; os testes do módulo caíram de ~1min 40s para ~1 min.
 - 🔁 **`intelligence/` vira legado** (docstring e referência): `analyze`/`report-ai` continuam usando; a análise visual nova está em `visual/`.
 - 📊 Vídeo sintético (padrão nítido 4 s → parede amarela 10 s → padrão desfocado 4 s): cortes em 4,0 e 14,0 s, 4 tomadas (a parede em 2 janelas), parede marcada como uniforme e o trecho final como borrão alto (blurdetect ≈ 5 nítido, ≈ 20 desfocado).
-- 📊 TESTES_PLACEHOLDER
+- 📊 505 → 537 testes automatizados (10 de imagens no `llm/`, 22 do `visual`; o teste de referência do `edit` passa sem regenerar); suíte completa em 3min 43s.
 - ❌ **Fora desta tarefa:** usar a análise visual nas decisões (Diretor de cobertura, rodada 3), estabilização/tremor por `vidstabdetect` (só a diferença entre quadros), calibração das constantes no material real, preços, e `--papel`/`--ajuste-relogio` no `visual` (rodar o `catalog` antes).
 
 ---
