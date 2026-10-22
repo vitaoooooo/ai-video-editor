@@ -38,11 +38,14 @@ from ai_video_editor.visual.schema import (
 )
 from ai_video_editor.visual.shots import (
     MAX_SHOT_SEC,
+    MOTION_FLOOR,
     Sample,
     ShotSpan,
     extract_frames,
     frame_times,
+    mark_shaky,
     measure_shot,
+    motion_threshold,
     parse_metadata_file,
     scan_clip,
     split_shots,
@@ -98,8 +101,46 @@ def test_measure_shot_flags_uniform_blur_and_ignores_diff_across_cut():
 
     blurry = [Sample(time_sec=t / 2, blur=15.0, yavg=120, ylow=40, yhigh=210, ydif=30) for t in range(8)]
     measures = measure_shot(ShotSpan(start_sec=0.0, end_sec=4.0, boundary="janela"), blurry)
-    assert measures.blurry and measures.shaky and not measures.uniform
-    assert measures.hints == ["borrão alto", "movimento alto"]
+    assert measures.blurry and not measures.shaky and not measures.uniform  # tremor só no projeto
+    assert measures.hints == ["borrão alto"]
+
+
+def test_measure_shot_wall_texture_is_uniform():
+    """Parede real (P007): faixa de luma entre 0,09 e 0,12, acima do limite antigo de 0,10."""
+    wall = [Sample(time_sec=t / 2, blur=5.0, yavg=120, ylow=100, yhigh=100 + 255 * s, ydif=5)
+            for t, s in enumerate([0.09, 0.11, 0.12, 0.10, 0.12, 0.11, 0.25, 0.09])]
+    assert measure_shot(ShotSpan(start_sec=0.0, end_sec=4.0, boundary="janela"), wall).uniform
+
+
+def _motions(values: list[float]) -> list[ShotMeasures]:
+    return [ShotMeasures(samples=1, brightness=0.5, motion=v, luma_spread=0.4) for v in values]
+
+
+def test_shaky_is_relative_to_project_percentile():
+    measures = _motions([0.09, 0.10, 0.11, 0.12, 0.10, 0.09, 0.11, 0.10, 0.12, 0.30])
+    threshold = mark_shaky(measures)
+    # percentil 90 interpolado: 0,12 + 0,1 × (0,30 − 0,12)
+    assert threshold == pytest.approx(0.138)
+    assert [m.shaky for m in measures] == [False] * 9 + [True]
+    assert measures[-1].hints == ["movimento alto"]
+
+
+def test_shaky_never_below_floor():
+    measures = _motions([0.01, 0.02, 0.02, 0.03, 0.05])
+    assert mark_shaky(measures) == MOTION_FLOOR
+    assert not any(m.shaky for m in measures)
+    assert motion_threshold([]) == MOTION_FLOOR
+
+
+def test_shaky_all_equal_or_tiny_project_marks_nothing():
+    same = _motions([0.2] * 6)
+    assert mark_shaky(same) == pytest.approx(0.2)
+    assert not any(m.shaky for m in same)
+    single = _motions([0.5])
+    assert mark_shaky(single) == 0.5 and not single[0].shaky
+    pair = _motions([0.05, 0.3])
+    mark_shaky(pair)
+    assert [m.shaky for m in pair] == [False, True]
 
 
 # --- lote e validação (puro) ---
@@ -188,6 +229,15 @@ def test_prompt_lists_ids_and_hints_without_clip_times(tmp_path):
     assert "P007.T03.F1, P007.T03.F2, P007.T03.F3" in prompt
     assert "1:01" not in prompt and "61" not in prompt  # a IA não vê onde a tomada está no clipe
     assert "resposta anterior foi recusada" in prompt
+
+
+def test_prompt_mentions_measures_only_when_flagged(tmp_path):
+    clean = _shot("P001.T01")
+    flagged = _shot("P001.T02", uniform=True)
+    prompt = build_visual_prompt([_request(clean, tmp_path), _request(flagged, tmp_path)])
+    assert prompt_sections(prompt) == [("P001.T01", ""), ("P001.T02", "tela uniforme")]
+    assert prompt.count("medidas: ") == 1 and "nada a notar" not in prompt
+    assert "0.4" not in prompt  # nenhum valor bruto
 
 
 # --- descritor com IA simulada ---

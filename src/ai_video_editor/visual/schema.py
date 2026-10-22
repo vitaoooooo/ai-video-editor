@@ -165,6 +165,9 @@ class ProjectVisual(BaseModel):
     clips: list[ClipVisual] = Field(default_factory=list)
     ai: Optional[VisualAIRun] = None
     warnings: list[str] = Field(default_factory=list)
+    motion_threshold: Optional[float] = Field(
+        default=None, description="Movimento acima disto = tremida (percentil do projeto, com piso)"
+    )
     stage_times: list[StageTime] = Field(default_factory=list)
     total_sec: float = 0.0
 

@@ -27,7 +27,7 @@ from ai_video_editor.visual.schema import (
 )
 
 # Sobe quando o prompt ou o schema da resposta mudam (invalida as análises em cache).
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 
 # Lote: até 8 tomadas (24 miniaturas) por chamada.
 BATCH_MAX_SHOTS = 8
@@ -121,7 +121,7 @@ def build_visual_prompt(batch: list[ShotRequest], previous_error: Optional[str] 
         "- beauty: 1 a 5, valor da imagem como cobertura (b-roll) num vídeo de viagem.",
         "- summary_for_editor: nota curta e prática para o editor.",
         "",
-        "As medidas automáticas (desfoque, uniformidade, movimento, brilho) são só dicas: confie no que você vê.",
+        "Algumas tomadas trazem uma linha `medidas:` com um alerta automático; é só dica: confie no que você vê.",
         "Responda exatamente uma entrada por tomada listada, com o `shot_id` dela; não invente IDs e não "
         "use tempos.",
         "",
@@ -135,7 +135,9 @@ def build_visual_prompt(batch: list[ShotRequest], previous_error: Optional[str] 
         lines.append(
             f"papel do clipe: {request.clip_role}; duração: {_clock(shot.duration_sec)}; {speech}"
         )
-        lines.append(f"{_MEASURES_PREFIX}{', '.join(hints) if hints else 'nada a notar'}")
+        if hints:
+            # Só o que foi marcado: valores de todas as medidas induziriam a IA.
+            lines.append(f"{_MEASURES_PREFIX}{', '.join(hints)}")
         lines.append(f"miniaturas: {', '.join(frame.id for frame in shot.frames)}")
     if previous_error:
         lines += ["", "ATENÇÃO: a resposta anterior foi recusada:", previous_error, RETRYABLE_HINT]
