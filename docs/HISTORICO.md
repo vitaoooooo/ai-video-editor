@@ -244,6 +244,16 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 📊 **Material real** (vlog "Trilha La Islita", 41 clipes, `--visual-provider none`): **41 sem erro, 200 tomadas** (principal 122 em 28 clipes, drone 54 em 2, POV 3 em 1, b-roll 21 em 10; 1 troca de cena, no drone) em **3min 16s** de tomadas e medidas (4min 05s com o catálogo). `--so-estimar`: 200 tomadas, 600 imagens, 25 chamadas, ~706.500 tokens de entrada (detalhe `auto`) ou ~202.500 (`low`) e ~30.000 de saída.
   - **As constantes não acertam ainda (calibração pendente):** P007 (parede amarela, 1:13): a parede fica em ~44–52 s, com faixa de luma 0,09–0,12 — só 2 amostras abaixo de `UNIFORM_SPREAD = 0,10`, e a janela T07 (43,6–50,8 s, mediana 0,11) **não** foi marcada como uniforme. P023 (borrão de movimento): o desfoque do `blurdetect` fica em 4,6–5,8 (nítido ≈ 5; `BLUR_HIGH = 9`), então o borrão de movimento **não** aparece como desfocado; aparece só como diferença entre quadros alta em ~10–12 s (T02 marcada como tremida). `MOTION_HIGH = 0,08` marca 95 das 200 tomadas como tremidas (câmera na mão), alto demais para ser útil. Nenhuma tomada saiu escura, clara demais, uniforme ou desfocada.
 
+## Calibração das medidas visuais com o material real (2026-10-22)
+
+- 🔁 **Tela uniforme:** `UNIFORM_SPREAD` 0,10 → **0,14**. **Por quê:** a parede amarela real do P007 (~44–52 s) tem faixa de luma entre 0,09 e 0,12 (textura e ruído do sensor); só 2 amostras ficavam abaixo de 0,10. Imagem com conteúdo fica acima de 0,25 no material.
+- 🔁 **Tremor relativo ao projeto:** `MOTION_HIGH` absoluto saiu; `movimento alto` agora é movimento acima do **percentil 90 das tomadas do projeto** (`MOTION_PERCENTILE = 90`, interpolado, estritamente acima: se todas se movem igual, nenhuma se destaca), com piso `MOTION_FLOOR = 0,08`. **Por quê:** o vlog é todo de câmera na mão; com 0,08 fixo, 95 das 200 tomadas saíam tremidas e a marca não informava nada. Mesmo raciocínio do limite de silêncio `auto`. Calculado depois de medir todos os clipes (`mark_shaky`); o limite vai em `visual.json` (`motion_threshold`) e no `visual.md`.
+- 🔁 **Cache guarda as amostras brutas** (`shots.json` com `samples`; `VISUAL_CACHE_VERSION` 1 → 2) e as marcas são recalculadas a cada execução. Os limites das marcas saíram de `shot_params` (a chave do cache): calibrar não refaz o FFmpeg nem perde as análises da IA guardadas na mesma pasta. Na 1ª execução depois da mudança, o cache antigo é refeito uma vez.
+- ✅ **Desfoque mantido** (`BLUR_HIGH = 9`), documentado que o `blurdetect` não detecta borrão de movimento (P023 ficou em 4,6–5,8, igual a imagem nítida); isso fica a cargo da IA (`borrao_movimento`).
+- 🔁 **Prompt da IA:** a linha `medidas:` só aparece quando alguma medida foi marcada (antes: `nada a notar` em todas as tomadas), sem valores brutos; o texto geral não lista mais as medidas. **Por quê:** não induzir a IA. `PROMPT_VERSION` 1 → 2 (as análises em cache de antes não valem mais).
+- 📊 **Material real** (41 clipes, `--visual-provider none`): limite de tremor do projeto **0,1166**; **20 tremidas** (antes 95: principal 12, drone 5, POV 1, b-roll 2), **1 uniforme** (antes 0), 0 desfocadas. P007: só **T07** (43,6–50,8 s, mediana 0,11) sai uniforme; a parede termina ~52,5 s, pouco dentro da T08. P023: **T02 não sai tremida** (movimento 0,088 < 0,1166) — o chacoalhão dura ~2 s (10–12 s) numa janela de 7,2 s e a mediana dilui; fica para a IA (`borrao_movimento`/`tremida`). Tempo: 1ª execução 3min 09s (refaz o cache no formato novo), 2ª **1,1 s** (tomadas e medidas do cache bruto em 0,3 s).
+- 📊 Testes novos: percentil (projeto com uma tomada destoante, todas iguais, tomada única e par, piso), parede com textura (0,09–0,12) uniforme e prompt sem a linha `medidas:` quando nada foi marcado. 600 → 605 testes; suíte completa em 3min 53s.
+
 ---
 
 ## 🔄 Em andamento
@@ -262,7 +272,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
 ## 🔮 Projetos com clipes (próximas rodadas; ver [ARQUITETURA.md](ARQUITETURA.md))
 
-- **Rodada 2:** ~~Produtor (pedido + catálogo → briefing validado)~~ (feito: comando `briefing`; falta o `edit` ler o briefing) ∥ ~~espinha falada multiclipe~~ (feita: `edit <pasta>`, receita `vlog`) ∥ ~~análise visual dos clipes~~ (feita: comando `visual`). Pendente da análise visual: calibrar as constantes das medidas (já rodou no material real; números na correção de 2026-10-22: a parede do P007 não sai uniforme, o borrão de movimento não sai desfocado e quase metade das tomadas sai tremida).
+- **Rodada 2:** ~~Produtor (pedido + catálogo → briefing validado)~~ (feito: comando `briefing`; falta o `edit` ler o briefing) ∥ ~~espinha falada multiclipe~~ (feita: `edit <pasta>`, receita `vlog`) ∥ ~~análise visual dos clipes~~ (feita: comando `visual`). Análise visual calibrada no material real (2026-10-22). Em aberto: tremor curto dentro de uma janela longa (P023) não aparece na mediana; fica para a IA.
 - **Calibrar os limites de perfil log** com os valores do `catalog.md` do material real.
 - **Rodada 3:** Diretor de cobertura + render com cobertura.
 - **Rodada 4:** `revise` multitrilha + relatórios.
