@@ -27,6 +27,7 @@ from ai_video_editor.catalog.media import probe_clip, thumbnails_and_color
 from ai_video_editor.catalog.report import build_catalog_markdown
 from ai_video_editor.catalog.roles import format_offset, match_folder_role, normalize_name
 from ai_video_editor.catalog.schema import (
+    CATALOG_SCHEMA_VERSION,
     ROLE_PREFIX,
     ROLES,
     CatalogClip,
@@ -487,6 +488,43 @@ class CatalogBuilder:
                 target = f"{clip.id}_{name[1:]}"  # t50.jpg → P001_50.jpg
                 shutil.copyfile(cache_root / source.cache_key / name, thumbs_dir / target)
                 clip.thumbnails.append(f"{THUMBS_DIR}/{target}")
+
+
+def current_catalog(source_dir: Path, projects_root: Path = DEFAULT_PROJECTS_ROOT) -> Optional[ProjectCatalog]:
+    """Catálogo já gerado para a pasta, se a lista de arquivos e o formato não mudaram (senão None)."""
+    source_dir = Path(source_dir).resolve()
+    sources, _ = scan_folder(source_dir)
+    digest = listing_hash(sources)
+    path = catalog_project_dir(source_dir, digest, Path(projects_root)).resolve() / CATALOG_DIR / CATALOG_JSON
+    if not path.is_file():
+        return None
+    try:
+        catalog = ProjectCatalog.load(path)
+    except ValueError:
+        return None
+    if catalog.schema_version != CATALOG_SCHEMA_VERSION or catalog.listing_hash != digest:
+        return None
+    return catalog
+
+
+def describe_clip(path: Path, speech_detector: SpeechDetector) -> CatalogClip:
+    """Resumo mínimo de um vídeo avulso (1 vídeo = projeto de 1 clipe): ffprobe e fala, sem miniaturas.
+
+    Raises:
+        VideoIngestError: arquivo ilegível ou sem trilha de vídeo.
+    """
+    path = Path(path).resolve()
+    stat = path.stat()
+    media, tag_date = probe_clip(path)
+    if media.has_audio:
+        speech = speech_detector.detect(path, media.duration_sec)
+    else:
+        speech = SpeechDetection(status="sem_audio")
+    recorded = recording_date(path, tag_date, stat.st_mtime_ns)
+    return CatalogClip(
+        id=f"{ROLE_PREFIX['principal']}001", role="principal", folder="", relative_path=path.name,
+        size_bytes=stat.st_size, media=media, recorded_at=recorded, adjusted_at=recorded.value, speech=speech,
+    )
 
 
 def _media_error(error: VideoIngestError) -> str:
