@@ -50,6 +50,7 @@ class Recipe(BaseModel):
     description: str
     steps: list[str] = Field(min_length=1)
     requires: dict[str, list[str]] = Field(default_factory=dict)
+    multi_clip: bool = Field(default=False, description="receita que trabalha com vários clipes de uma pasta")
 
     @model_validator(mode="after")
     def _check(self) -> "Recipe":

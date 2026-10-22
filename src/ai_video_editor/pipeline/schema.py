@@ -212,7 +212,7 @@ class EditPipelineResult(BaseModel):
     version: Optional[int] = Field(default=None, description="Versão do projeto que corresponde ao resultado")
     original_duration_sec: float
     final_duration_sec: float
-    outcomes: dict[StageName, StageOutcome]
+    outcomes: dict[str, StageOutcome] = Field(..., description="Resultado de cada etapa da receita")
     timings: Optional[RunTimings] = None
     warnings: list[str] = Field(default_factory=list)
 

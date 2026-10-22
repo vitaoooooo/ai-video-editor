@@ -57,6 +57,7 @@ register_recipe(
             "catálogo, cortando pausas, frases ruins e tomadas repetidas; sem cobertura de b-roll/drone"
         ),
         steps=["catalog", "silences", "transcription", "director", "timeline", "render", "subtitles", "report"],
+        multi_clip=True,
         requires={
             "silences": ["catalog"],
             "transcription": ["catalog"],

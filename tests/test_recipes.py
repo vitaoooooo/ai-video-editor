@@ -72,4 +72,4 @@ def test_cli_edit_receita_is_validated(tmp_path, capsys):
     args = build_parser().parse_args(["edit", str(video), "--receita", "gameplay"])
     assert handle_edit(args) == 1
     assert "Receita desconhecida: 'gameplay'" in capsys.readouterr().err
-    assert build_parser().parse_args(["edit", str(video)]).receita == "fala"
+    assert build_parser().parse_args(["edit", str(video)]).receita is None  # fala (vídeo) ou vlog (pasta)
