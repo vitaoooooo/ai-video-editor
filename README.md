@@ -188,6 +188,7 @@ python -m ai_video_editor.cli revise output\projects\aula-<hash> "corta menos"
 python -m ai_video_editor.cli revise output\projects\aula-<hash> "mantém a frase sobre o livro" --from v1
 python -m ai_video_editor.cli versions output\projects\aula-<hash>
 python -m ai_video_editor.cli catalog D:\vlog   # catálogo de uma pasta de clipes (papéis, IDs, datas, fala, folhas de contato)
+python -m ai_video_editor.cli edit D:\vlog --transcribe --language pt --director gemini   # espinha falada: clipes principais com fala, em ordem, sem pausas nem tomadas repetidas
 
 # Benchmark de transcrição
 python -m ai_video_editor.cli benchmark transcription --audio aula.webm --reference ref.txt --language en --configs small:cpu:int8 large-v3-turbo:cuda:float16
@@ -237,7 +238,7 @@ src/ai_video_editor/
 
 ## Limitações conhecidas
 
-- **Foco em vídeo falado** (aula, tutorial, pessoa falando). Gameplay e vlog dependem de imagem e música e não são tratados ainda.
+- **Foco em vídeo falado** (aula, tutorial, pessoa falando). De um vlog, o `edit <pasta>` já monta a espinha falada (clipes principais com fala, em ordem), mas ainda sem cobertura de b-roll/drone por cima e sem música. Gameplay não é tratado.
 - **O Diretor e o revisor dependem de uma API** (Gemini ou OpenAI). Sem chave, o editor faz só corte de silêncio; com ela, há custo e latência de rede, e a decisão pode variar entre execuções.
 - **Palavras curtas**: o tempo que o Whisper atribui a "Um" ou "By" inclui a pausa ao redor, então o corte às vezes tira só o silêncio e a palavra fica (aparece como remoção parcial no relatório).
 - **Nomes e termos em outro idioma** saem errados na transcrição e, portanto, na legenda. Na palestra, transcrita com `--language en`, "gnu.org" virou "canoe org", "software livre" virou "software leave me" e "Pato Branco" virou "Patu".
