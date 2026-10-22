@@ -38,6 +38,7 @@ from ai_video_editor.pipeline.schema import (
     StageProgress,
     VersionRecord,
 )
+from ai_video_editor.pipeline.spine_schema import MULTICLIP_REVISE_MESSAGE, is_multiclip_manifest
 from ai_video_editor.pipeline.timing import TimingRecorder, build_timings_section, format_duration
 from ai_video_editor.pipeline.versions import (
     VERSION_FILE,
@@ -166,6 +167,8 @@ class ProjectReviser:
         manifest_path = project_dir / MANIFEST_FILE
         if not manifest_path.is_file():
             raise ProjectStateError(f"{project_dir} não é uma pasta de projeto (falta {MANIFEST_FILE})")
+        if is_multiclip_manifest(manifest_path):
+            raise ProjectStateError(MULTICLIP_REVISE_MESSAGE)
         manifest = ensure_versions(project_dir, ProjectManifest.load(manifest_path), manifest_path)
 
         base = get_version(manifest, from_version if from_version is not None else manifest.current_version)

@@ -6,12 +6,14 @@ from typing import Optional
 from ai_video_editor.pipeline.schema import RunTimings, StageOutcome, StageTiming
 
 STAGE_LABELS = {
+    "catalog": "Catálogo",
     "probe": "Metadados",
     "silences": "Silêncios",
     "transcription": "Transcrição",
     "director": "Diretor",
     "reviser": "Revisor",
     "plan": "Plano de corte",
+    "timeline": "Timeline",
     "render": "Renderização",
     "subtitles": "Legendas",
     "report": "Relatório",

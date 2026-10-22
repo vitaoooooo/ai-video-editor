@@ -60,8 +60,8 @@ def vlog_recipe():
 
 @pytest.fixture(autouse=True)
 def _without_vlog(request):
-    """Sem a fixture `vlog_recipe`, o teste roda sem `vlog` registrada (mesmo se outra tarefa registrar)."""
-    if "vlog_recipe" in request.fixturenames:
+    """Sem a fixture `vlog_recipe` (ou `real_vlog`), o teste roda sem `vlog` registrada."""
+    if {"vlog_recipe", "real_vlog"} & set(request.fixturenames):
         yield
         return
     saved = recipe_registry._RECIPES.pop("vlog", None)
@@ -175,6 +175,25 @@ def test_validation_recipe_roles_duration_and_compatibility(vlog_recipe):
 
 
 # --- execução ---
+
+
+@pytest.fixture
+def real_vlog():
+    """A receita `vlog` de verdade, registrada por `recipes/registry.py` (espinha falada multiclipe)."""
+    recipe = recipe_registry.get_recipe("vlog")
+    assert recipe.multi_clip and "catalog" in recipe.steps
+    return recipe
+
+
+def test_real_vlog_recipe_is_accepted_for_folder_with_several_speaking_clips(real_vlog):
+    """Pasta com 3 principais falados: a `vlog` real (multi_clip=True) é válida e vem da IA, sem fallback."""
+    material = _vlog_material()
+    assert material.role("principal").clips_with_speech == 3
+    assert validate_content(_content(), material, registered_recipes()) == []
+    briefing = run_producer(MockProducer(responses=[_content()]), "vlog de viagem curto", material)
+    assert briefing.origin == "ia" and briefing.origin_reason == "" and briefing.recipe == "vlog"
+    # A `fala` (1 vídeo) não serve para vários clipes com fala.
+    assert validate_content(_content(recipe="fala"), material, registered_recipes())
 
 
 def test_valid_briefing_from_ai(vlog_recipe):

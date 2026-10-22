@@ -13,7 +13,7 @@ from ai_video_editor.recipes import PIECES, Recipe, RecipeError, get_recipe, rec
 def test_fala_is_exactly_the_original_edit_stages():
     fala = get_recipe("fala")
     assert fala.steps == list(STAGES)
-    assert set(PIECES) == set(STAGES)
+    assert set(STAGES) <= set(PIECES)
     assert "fala" in recipe_names()
     assert fala.position("director") == 4
     assert fala.dependencies("plan") == ["probe", "silences", "director"]
@@ -33,10 +33,10 @@ def test_unknown_recipe_lists_available():
         (["probe", "silences"], {"silences": ["teletransporte"]}, "depende de 'teletransporte', que não existe"),
         (["probe", "plan"], {}, "dependência faltando: 'plan' precisa de 'silences'"),
         (["probe", "transcription", "director"], {"transcription": ["transcription"]}, "depende de si mesma"),
-        (["silences", "probe"], {}, "ordem impossível: 'silences' precisa vir depois de 'probe'"),
+        (["plan", "probe", "silences"], {}, "ordem impossível: 'plan' precisa vir depois de 'probe'"),
         (
             ["probe", "silences", "plan", "render"],
-            {"silences": ["render"]},
+            {"silences": ["render"], "render": ["plan"]},
             "dependência circular entre 'silences' e 'render'",
         ),
     ],
@@ -69,7 +69,7 @@ def test_progress_numbering_comes_from_recipe():
 def test_cli_edit_receita_is_validated(tmp_path, capsys):
     video = tmp_path / "v.mp4"
     video.write_bytes(b"x")
-    args = build_parser().parse_args(["edit", str(video), "--receita", "vlog"])
+    args = build_parser().parse_args(["edit", str(video), "--receita", "gameplay"])
     assert handle_edit(args) == 1
-    assert "Receita desconhecida: 'vlog'" in capsys.readouterr().err
-    assert build_parser().parse_args(["edit", str(video)]).receita == "fala"
+    assert "Receita desconhecida: 'gameplay'" in capsys.readouterr().err
+    assert build_parser().parse_args(["edit", str(video)]).receita is None  # fala (vídeo) ou vlog (pasta)

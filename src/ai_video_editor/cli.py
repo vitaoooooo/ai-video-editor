@@ -26,10 +26,24 @@ from ai_video_editor.pipeline import (
 from ai_video_editor.pipeline.project import MANIFEST_FILE
 from ai_video_editor.pipeline.report import format_timestamp
 from ai_video_editor.pipeline.schema import RunTimings, StageProgress
+from ai_video_editor.pipeline.spine import SpinePipeline
+from ai_video_editor.pipeline.spine_schema import (
+    MULTICLIP_REVISE_MESSAGE,
+    SpineManifest,
+    SpineResult,
+    is_multiclip_manifest,
+)
 from ai_video_editor.pipeline.timing import STAGE_LABELS, format_duration, summarize_run
 from ai_video_editor.pipeline.versions import ensure_versions, parse_version_ref
 from ai_video_editor.planning import SilenceCutParams
-from ai_video_editor.recipes import DEFAULT_RECIPE, Recipe, RecipeError, get_recipe, recipe_names
+from ai_video_editor.recipes import (
+    DEFAULT_FOLDER_RECIPE,
+    DEFAULT_RECIPE,
+    Recipe,
+    RecipeError,
+    get_recipe,
+    recipe_names,
+)
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.renderer.timeline_executor import TimelineRenderExecutor
 from ai_video_editor.revision import RevisionError
@@ -269,15 +283,20 @@ def _threshold_arg(value: str):
 
 
 def handle_edit(args: argparse.Namespace) -> int:
-    """Corta as pausas de um vídeo falado, com pasta de projeto e cache por etapa."""
+    """Edita um vídeo falado (receita `fala`) ou uma pasta de clipes (receita `vlog`), com cache por etapa."""
     video_path = Path(args.video)
-    if not video_path.is_file():
-        print(f"Erro: vídeo não encontrado: {video_path}", file=sys.stderr)
+    is_folder = video_path.is_dir()
+    if not is_folder and not video_path.is_file():
+        print(f"Erro: vídeo ou pasta não encontrado: {video_path}", file=sys.stderr)
         return 1
     try:
-        recipe = get_recipe(args.receita)
+        recipe = get_recipe(args.receita or (DEFAULT_FOLDER_RECIPE if is_folder else DEFAULT_RECIPE))
     except RecipeError as e:
         print(f"Erro: {e}", file=sys.stderr)
+        return 1
+    if recipe.multi_clip != is_folder:
+        kind = "uma pasta de clipes" if recipe.multi_clip else "um vídeo só"
+        print(f"Erro: a receita '{recipe.name}' edita {kind}; recebido {video_path}.", file=sys.stderr)
         return 1
 
     try:
@@ -320,7 +339,8 @@ def handle_edit(args: argparse.Namespace) -> int:
 
     status = LiveStatus(live=False if args.no_live else None)
     printer = EditProgressPrinter(status, recipe)
-    pipeline = EditPipeline(
+    pipeline_class = SpinePipeline if is_folder else EditPipeline
+    pipeline = pipeline_class(
         projects_root=Path(args.projects_dir), on_progress=printer, on_stage_progress=printer.progress,
         recipe=recipe,
     )
@@ -343,7 +363,12 @@ def handle_edit(args: argparse.Namespace) -> int:
         print(f"Legendas: {result.subtitles_path}")
     if result.transcript_path is not None:
         print(f"Transcrição comparativa: {result.transcript_path}")
-    if result.version is not None:
+    if isinstance(result, SpineResult):
+        print(f"Clipes na espinha: {len(result.clips_used)} ({', '.join(result.clips_used)}); não usados: {result.clips_unused}")
+        print(f"Timeline: {result.timeline_path}")
+        if result.version is not None:
+            print(f"Versão: v{result.version}")
+    elif result.version is not None:
         print(f"Versão: v{result.version} (revise com: revise \"{result.project_dir}\" \"pedido\")")
     print(
         f"Duração: {result.original_duration_sec:.2f}s -> {result.final_duration_sec:.2f}s "
@@ -440,6 +465,9 @@ def handle_revise(args: argparse.Namespace) -> int:
         manifest_path = project_dir / MANIFEST_FILE
         if not manifest_path.is_file():
             print(f"Erro: {project_dir} não é uma pasta de projeto (falta {MANIFEST_FILE}).", file=sys.stderr)
+            return 1
+        if is_multiclip_manifest(manifest_path):
+            print(f"Versão não criada: {MULTICLIP_REVISE_MESSAGE}", file=sys.stderr)
             return 1
         params = ProjectManifest.load(manifest_path).params
         status = LiveStatus(live=False if args.no_live else None)
@@ -573,7 +601,10 @@ def handle_versions(args: argparse.Namespace) -> int:
         print(f"Erro: {project_dir} não é uma pasta de projeto (falta {MANIFEST_FILE}).", file=sys.stderr)
         return 1
     try:
-        manifest = ensure_versions(project_dir, ProjectManifest.load(manifest_path), manifest_path)
+        if is_multiclip_manifest(manifest_path):
+            manifest = SpineManifest.load(manifest_path)
+        else:
+            manifest = ensure_versions(project_dir, ProjectManifest.load(manifest_path), manifest_path)
     except Exception as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 1
@@ -1034,15 +1065,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Subcomando: edit
     edit_parser = subparsers.add_parser(
-        "edit", help="Remove as pausas de um vídeo falado (pasta de projeto com cache)"
+        "edit",
+        help="Remove as pausas de um vídeo falado, ou monta a espinha falada de uma pasta de clipes "
+        "(pasta de projeto com cache)",
     )
-    edit_parser.add_argument("video", help="Caminho do vídeo a editar")
+    edit_parser.add_argument(
+        "video", help="Vídeo a editar, ou pasta de clipes (vlog: clipes principais com fala, em ordem)"
+    )
     edit_parser.add_argument(
         "--receita",
-        default=DEFAULT_RECIPE,
+        default=None,
         metavar="NOME",
         help=f"Receita (combinação de etapas) a executar; disponíveis: {', '.join(recipe_names())} "
-        f"(padrão: {DEFAULT_RECIPE})",
+        f"(padrão: {DEFAULT_RECIPE} para um vídeo, {DEFAULT_FOLDER_RECIPE} para uma pasta)",
     )
     edit_parser.add_argument(
         "--threshold-db",
@@ -1148,7 +1183,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Duração final desejada em segundos (opcional)",
     )
     edit_parser.add_argument(
-        "--instructions", default=None, help="Pedido livre ao Diretor (ex: 'corte as piadas')"
+        "--instructions", "--pedido", dest="instructions", default=None,
+        help="Pedido livre ao Diretor (ex: 'corte as piadas')",
     )
     edit_parser.add_argument(
         "--keep-fillers",

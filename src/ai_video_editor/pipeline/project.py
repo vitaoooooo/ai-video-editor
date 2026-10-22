@@ -20,6 +20,15 @@ EDIT_REPORT_FILE = "edit_report.md"
 EDIT_TRANSCRIPT_FILE = "edit_transcript.md"
 EDIT_DIFF_FILE = "edit_diff.json"
 EDIT_TIMELINE_FILE = "edit_timeline.svg"
+# Projetos com vários clipes (`edit <pasta>`).
+SPINE_CLIPS_FILE = "spine_clips.json"
+SILENCES_FILE = "silences.json"
+TRANSCRIPTION_FILE = "transcription.json"
+SPINE_PLAN_FILE = "spine_plan.json"
+TIMELINE_FILE = "timeline.json"
+# Cache por clipe (silêncios e transcrição), fora do projeto: trocar um clipe muda o projeto, mas não
+# refaz os outros clipes. `<projects>/_cache/edit_clips/<hash do arquivo>/<etapa>-<fingerprint>.json`.
+CLIP_STAGE_CACHE_DIR = Path("_cache") / "edit_clips"
 
 # Hash por amostragem: lê só alguns blocos, então vídeos de vários GB não pagam leitura completa.
 _HASH_CHUNK = 4 * 1024 * 1024

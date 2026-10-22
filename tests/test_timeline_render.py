@@ -3,6 +3,7 @@
 import json
 import subprocess
 import time
+import wave
 from pathlib import Path
 
 import numpy as np
@@ -102,34 +103,134 @@ def test_compile_commands(mixed_sources, tmp_path: Path):
     )
     job = TimelineCompiler().compile(tl, tmp_path)
 
-    video_cmds = [c for c in job.piece_commands if c[-1].endswith(".mov")]
-    audio_cmds = [c for c in job.piece_commands if c[-1].endswith(".wav")]
+    video_cmds = job.piece_commands
+    assert all(c[-1].endswith(".mov") for c in video_cmds)
     assert len(video_cmds) == 4  # base, overlay (termina na fronteira do item), item mudo, último item
-    assert len(audio_cmds) == 3  # um por item da base: o overlay não mexe no áudio
     for cmd in video_cmds:
         assert "-an" in cmd and cmd.index("-ss") < cmd.index("-i")
         graph = _graph(cmd)
         assert "pad=640:360" in graph and "setsar=1" in graph and "format=yuv420p" in graph
 
-    assert "[0:a:0]" in _graph(audio_cmds[0]) and "afade=t=in" in _graph(audio_cmds[0])
-    assert _graph(audio_cmds[1]).startswith("anullsrc")  # origem sem áudio
-    assert _graph(audio_cmds[2]).startswith("anullsrc")  # item marcado sem áudio
-    assert "atrim=end_sample=48000" in _graph(audio_cmds[0])
-
-    mix = _graph(job.audio_command)
-    assert "amix=inputs=2:duration=first:normalize=0" in mix
-    assert "adelay=delays=72000S" in mix and "volume=0.5" in mix
+    # Áudio inteiro num só comando: a origem com áudio (main) e o ambiente entram uma vez cada.
+    assert job.audio_command.count("-i") == 2
+    assert job.audio_command[job.audio_command.index("-/filter_complex") + 1] == str(job.audio_graph_path)
+    chains = job.audio_graph.split(";\n")
+    item0 = next(c for c in chains if c.endswith("[p0]"))
+    assert item0.startswith("[s0_0]asetpts=PTS-STARTPTS") and "afade=t=in" in item0
+    assert "[0:a:0]asegment=timestamps=1.000000[s0_0][g0_1]" in job.audio_graph
+    assert "atrim=end_sample=48000" in item0
+    assert next(c for c in chains if c.endswith("[p1]")).startswith("anullsrc")  # origem sem áudio
+    assert next(c for c in chains if c.endswith("[p2]")).startswith("anullsrc")  # item marcado sem áudio
+    assert "[p0][p1][p2]concat=n=3:v=0:a=1[main]" in job.audio_graph
+    assert "amix=inputs=2:duration=first:normalize=0" in job.audio_graph
+    assert "adelay=delays=72000S" in job.audio_graph and "volume=0.5" in job.audio_graph
     assert job.expected_frames == 90 and job.has_audio
 
 
-def test_compile_without_ambient_copies_main_audio(mixed_sources, tmp_path: Path):
+def test_compile_without_ambient_only_generates_silence(mixed_sources, tmp_path: Path):
     tl = Timeline(
         output_path=tmp_path / "out.mp4",
         video_main=[{"source_path": mixed_sources["mute"], "source_in": 0.0, "source_out": 1.0}],
     )
     job = TimelineCompiler().compile(tl, tmp_path)
-    assert "-filter_complex" not in job.audio_command and "copy" in job.audio_command
+    assert "-i" not in job.audio_command and "amix" not in job.audio_graph
+    assert job.audio_graph.startswith("anullsrc") and "concat=n=1:v=0:a=1[a]" in job.audio_graph
     assert not job.has_audio
+
+
+def _shuffled_timeline(sources: dict[str, Path], tmp_path: Path, count: int) -> Timeline:
+    """`count` itens curtos (4 a 7 frames) fora de ordem e alternando duas origens (caso patológico)."""
+    items = []
+    for i in range(count):
+        source = sources["main"] if i % 3 else sources["small"]
+        start = round((i * 0.37) % 2.5, 3)
+        items.append({"source_path": source, "source_in": start, "source_out": start + (4 + i % 4) / 30})
+    return Timeline(output_path=tmp_path / "out.mp4", resolution=(640, 360), video_main=items)
+
+
+@pytest.fixture(scope="module")
+def pulse_sources(tmp_path_factory) -> list[Path]:
+    """Duas origens de 160 s cujo áudio alterna 1 s de tom e 1 s de silêncio (tom em [2k, 2k+1))."""
+    root = tmp_path_factory.mktemp("pulse")
+    paths = []
+    for n, freq in enumerate((440, 660)):
+        path = root / f"pulse_{n}.mp4"
+        args = [
+            str(get_ffmpeg_path()), "-y", "-loglevel", "error",
+            "-f", "lavfi", "-i", "testsrc=duration=160:size=160x120:rate=30",
+            "-f", "lavfi", "-i", f"sine=frequency={freq}:sample_rate=48000:duration=160",
+            "-filter_complex", "[1:a]volume=eval=frame:volume='lt(mod(t,2),1)'[a]",
+            "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-preset", "ultrafast",
+            "-c:a", "aac", "-ar", "48000", str(path),
+        ]
+        subprocess.run(args, check=True, capture_output=True)
+        paths.append(path)
+    return paths
+
+
+def _spine_timeline(sources: list[Path], tmp_path: Path, count: int) -> Timeline:
+    """Espinha sintética: blocos de 10 itens por origem; o item j de uma origem pega 0,4 s do segundo j
+    (tom quando j é par, silêncio quando é ímpar). Tempos de origem crescentes dentro de cada origem."""
+    items, taken = [], [0, 0]
+    for i in range(count):
+        k = (i // 10) % 2
+        j = taken[k]
+        taken[k] += 1
+        items.append({"source_path": sources[k], "source_in": j + 0.3, "source_out": j + 0.7, "label": str(j)})
+    return Timeline(output_path=tmp_path / "out.mp4", resolution=(160, 120), video_main=items)
+
+
+def test_audio_process_count_does_not_grow_with_items(pulse_sources, mixed_sources, tmp_path: Path):
+    few = TimelineCompiler().compile(_spine_timeline(pulse_sources, tmp_path, 10), tmp_path)
+    many = TimelineCompiler().compile(_spine_timeline(pulse_sources, tmp_path, 300), tmp_path)
+    shuffled = TimelineCompiler().compile(_shuffled_timeline(mixed_sources, tmp_path, 300), tmp_path)
+    for job, sources in ((few, 1), (many, 2), (shuffled, 2)):
+        # Um processo de áudio; cada origem entra uma vez; os demais comandos são só de vídeo.
+        assert job.audio_command.count("-i") == sources
+        assert all("-an" in c and c[-1].endswith(".mov") for c in job.piece_commands)
+    assert len(many.piece_commands) == 300
+    assert many.audio_graph.count("asegment=") == 2 and "asplit" not in many.audio_graph
+    assert "concat=n=300:v=0:a=1[a]" in many.audio_graph
+    # Itens muito fora de ordem: a origem entra uma vez e cada item recorta sua cópia.
+    assert "asplit=200" in shuffled.audio_graph and "asplit=100" in shuffled.audio_graph
+
+
+def _wav_rms(path: Path, start_sample: int, count: int) -> float:
+    with wave.open(str(path)) as wav:
+        wav.setpos(start_sample)
+        samples = np.frombuffer(wav.readframes(count), dtype=np.int16).astype(np.float64) / 32768
+    return float(np.sqrt(np.mean(samples**2)))
+
+
+@pytest.mark.slow
+def test_audio_of_300_items_is_exact_and_in_sync(pulse_sources, mixed_sources, tmp_path: Path):
+    """O áudio de 300 itens sai de um só FFmpeg, com a contagem exata de amostras e o trecho certo em cada item."""
+    timeline = _spine_timeline(pulse_sources, tmp_path, 300)
+    job = TimelineCompiler().compile(timeline, tmp_path)
+    job.audio_graph_path.write_text(job.audio_graph, encoding="utf-8")
+    RenderExecutor._run_ffmpeg(job.audio_command)
+    with wave.open(str(job.audio_path)) as wav:
+        assert (wav.getframerate(), wav.getnchannels()) == (48000, 2)
+        assert wav.getnframes() == round(timeline.total_frames * 48000 / timeline.fps)
+
+    position = 0
+    for item in timeline.video_main:
+        frames = timeline.item_frames(item)
+        start, end = timeline.to_sample(position), timeline.to_sample(position + frames)
+        middle = _wav_rms(job.audio_path, start + (end - start) // 4, (end - start) // 2)
+        if int(item.label) % 2 == 0:
+            assert middle > 0.02, f"item {item.label}: esperado tom"
+        else:
+            assert middle < 0.002, f"item {item.label}: esperado silêncio"
+        position += frames
+
+    shuffled = _shuffled_timeline(mixed_sources, tmp_path / "shuffled", 300)
+    (tmp_path / "shuffled").mkdir()
+    job = TimelineCompiler().compile(shuffled, tmp_path / "shuffled")
+    job.audio_graph_path.write_text(job.audio_graph, encoding="utf-8")
+    RenderExecutor._run_ffmpeg(job.audio_command)
+    with wave.open(str(job.audio_path)) as wav:
+        assert wav.getnframes() == round(shuffled.total_frames * 48000 / shuffled.fps)
 
 
 def test_compile_rejects_items_beyond_source_or_without_streams(
@@ -216,7 +317,7 @@ def test_render_mixed_formats_with_overlay_and_ambient(mixed_sources, tmp_path: 
     assert result.duration_sec == pytest.approx(4.0, abs=1 / 30)
     assert result.fps == pytest.approx(30)
     assert result.warnings == []
-    assert progress[0] == (0, 8) and progress[-1] == (8, 8)  # 6 pedaços de vídeo + 2 de áudio
+    assert progress[0] == (0, 7) and progress[-1] == (7, 7)  # 6 pedaços de vídeo + 1 processo de áudio
 
     streams = _streams(result.output_path)
     assert streams["video"]["pix_fmt"] == "yuv420p"

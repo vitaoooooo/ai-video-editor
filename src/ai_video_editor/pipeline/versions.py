@@ -7,9 +7,10 @@ Projetos antigos, sem versões, viram v1 de forma transparente (`ensure_versions
 
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ai_video_editor.core.schema import EditPlan
+from ai_video_editor.core.timeline import Timeline
 from ai_video_editor.pipeline.project import (
     DIRECTOR_DECISION_FILE,
     EDIT_DIFF_FILE,
@@ -17,10 +18,15 @@ from ai_video_editor.pipeline.project import (
     EDIT_REPORT_FILE,
     EDIT_TIMELINE_FILE,
     EDIT_TRANSCRIPT_FILE,
+    SPINE_PLAN_FILE,
+    TIMELINE_FILE,
     fingerprint,
 )
 from ai_video_editor.pipeline.schema import ProjectManifest, RunTimings, VersionRecord
 from ai_video_editor.revision.exceptions import ProjectStateError
+
+if TYPE_CHECKING:
+    from ai_video_editor.pipeline.spine_schema import SpineManifest
 
 VERSIONS_DIR = "versions"
 VERSION_FILE = "version.json"
@@ -156,3 +162,72 @@ def ensure_versions(project_dir: Path, manifest: ProjectManifest, manifest_path:
                 "o projeto não tem edição concluída (rode `edit` antes de revisar ou listar versões)"
             )
     return manifest
+
+
+def register_spine_version(
+    project_dir: Path,
+    manifest: "SpineManifest",
+    manifest_path: Path,
+    timings: Optional[RunTimings] = None,
+) -> Optional[VersionRecord]:
+    """Projeto com vários clipes: copia o resultado do `edit <pasta>` para uma versão nova, como no
+    `register_edit_version` (vídeo, timeline.json, relatórios, legendas, decisão do Diretor)."""
+    render, report = manifest.stages.get("render"), manifest.stages.get("report")
+    timeline_path = project_dir / TIMELINE_FILE
+    if (
+        render is None or report is None or render.status != "done" or report.status != "done"
+        or render.artifact is None or not (project_dir / render.artifact).is_file() or not timeline_path.is_file()
+    ):
+        return None
+    subtitles_record = manifest.stages.get("subtitles")
+    fp = fingerprint("edit-version", render.fingerprint, subtitles_record.fingerprint if subtitles_record else None)
+    for record in manifest.versions:
+        if record.edit_fp == fp:
+            return record
+
+    number = max((r.number for r in manifest.versions), default=0) + 1
+    target = version_dir(project_dir, number)
+    shutil.rmtree(target, ignore_errors=True)
+    target.mkdir(parents=True)
+    video_name = render.artifact
+    try:
+        shutil.copy2(project_dir / video_name, target / video_name)
+        timeline = Timeline.model_validate_json(timeline_path.read_text(encoding="utf-8"))
+        timeline = timeline.model_copy(update={"output_path": target / video_name})
+        (target / TIMELINE_FILE).write_text(timeline.model_dump_json(indent=2), encoding="utf-8")
+        subtitles = None
+        if subtitles_record is not None and subtitles_record.status == "done" and subtitles_record.artifact:
+            if (project_dir / subtitles_record.artifact).is_file():
+                subtitles = subtitles_record.artifact
+                shutil.copy2(project_dir / subtitles, target / subtitles)
+        director = manifest.stages.get("director")
+        names = [EDIT_REPORT_FILE, SPINE_PLAN_FILE, EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE, EDIT_TIMELINE_FILE]
+        if director is not None and director.status == "done":
+            names.append(DIRECTOR_DECISION_FILE)
+        for name in names:
+            if (project_dir / name).is_file():
+                shutil.copy2(project_dir / name, target / name)
+        record = VersionRecord(
+            number=number,
+            kind="edit",
+            request=manifest.params.brief.instructions or DEFAULT_EDIT_REQUEST,
+            parent=manifest.current_version,
+            cut=manifest.params.cut,
+            loudness=manifest.params.loudness,
+            duration_sec=float(render.metrics["duration_sec"]),
+            cuts=int(report.metrics.get("cuts", 0)),
+            segments=len(timeline.video_main),
+            removed_sentences=int(director.metrics.get("removed", 0)) if director is not None and director.metrics else 0,
+            video=video_name,
+            subtitles=subtitles,
+            edit_fp=fp,
+            timings=timings,
+        )
+        (target / VERSION_FILE).write_text(record.model_dump_json(indent=2), encoding="utf-8")
+    except Exception:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
+    manifest.versions.append(record)
+    manifest.current_version = number
+    manifest.save(manifest_path)
+    return record

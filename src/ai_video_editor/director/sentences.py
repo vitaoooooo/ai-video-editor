@@ -88,6 +88,21 @@ def build_sentences(transcript: Transcript, params: Optional[SentenceParams] = N
     return sentences
 
 
+def build_clip_sentences(
+    transcripts: list[tuple[str, Transcript]], params: Optional[SentenceParams] = None
+) -> list[Sentence]:
+    """Frases de vários clipes, em ordem: IDs globais sequenciais e `clip_id` em cada frase.
+
+    Cada clipe é montado à parte (`build_sentences`), então uma frase nunca atravessa dois clipes;
+    os tempos continuam relativos ao clipe.
+    """
+    sentences: list[Sentence] = []
+    for clip_id, transcript in transcripts:
+        for sentence in build_sentences(transcript, params):
+            sentences.append(sentence.model_copy(update={"id": len(sentences), "clip_id": clip_id}))
+    return sentences
+
+
 def split_by_removal(
     sentences: list[Sentence], removed_ids: set[int]
 ) -> tuple[list[TimeRange], list[TimeRange]]:

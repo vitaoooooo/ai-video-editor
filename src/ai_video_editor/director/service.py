@@ -7,6 +7,7 @@ from ai_video_editor.director.schema import (
     DirectorContext,
     DirectorDecision,
     DirectorRun,
+    WHOLE_CLIP_CATEGORIES,
     Sentence,
     UserBrief,
 )
@@ -40,7 +41,8 @@ def validate_decision(
 
     Raises:
         AIResponseValidationError: ID inexistente ou repetido, enrolação removida com
-            `remove_fillers=False`, ou remoção acima do limite de tempo de fala.
+            `remove_fillers=False`, todas as frases de um clipe removidas sem `retake`/`off_topic`
+            (projetos com vários clipes) ou remoção acima do limite de tempo de fala.
     """
     by_id = {s.id: s for s in sentences}
     seen: set[int] = set()
@@ -55,6 +57,8 @@ def validate_decision(
             problems.append(
                 f"sentence_id {removal.sentence_id}: o usuário pediu para não remover enrolação (filler)"
             )
+    if not problems:
+        problems += _whole_clip_problems(decision, sentences)
     if problems:
         raise AIResponseValidationError("director", details="; ".join(problems))
 
@@ -69,6 +73,25 @@ def validate_decision(
                 f"de {limit:.0%}; remova menos frases"
             ),
         )
+
+
+def _whole_clip_problems(decision: DirectorDecision, sentences: list[Sentence]) -> list[str]:
+    """Clipes que perderiam todas as frases sem que todas as remoções sejam `retake`/`off_topic`."""
+    by_clip: dict[str, list[Sentence]] = {}
+    for sentence in sentences:
+        if sentence.clip_id is not None:
+            by_clip.setdefault(sentence.clip_id, []).append(sentence)
+    removals = {r.sentence_id: r for r in decision.removals}
+    problems = []
+    for clip_id, clip_sentences in by_clip.items():
+        if all(s.id in removals for s in clip_sentences) and any(
+            removals[s.id].category not in WHOLE_CLIP_CATEGORIES for s in clip_sentences
+        ):
+            problems.append(
+                f"o clipe {clip_id} ficaria sem nenhuma frase; remover um clipe inteiro só vale se todas as "
+                "remoções dele forem 'retake' (a fala foi regravada em outro clipe) ou 'off_topic'"
+            )
+    return problems
 
 
 def record_effective_model(run, stage) -> None:

@@ -2,6 +2,8 @@
 
 from ai_video_editor.pipeline.revise import ChangedSentence, ProjectReviser, RevisionResult
 from ai_video_editor.pipeline.runner import EditPipeline, ProgressCallback, StageProgressCallback
+from ai_video_editor.pipeline.spine import SpinePipeline
+from ai_video_editor.pipeline.spine_schema import SpineResult
 from ai_video_editor.pipeline.schema import (
     STAGES,
     EditPipelineParams,
@@ -22,6 +24,8 @@ __all__ = [
     "ProjectManifest",
     "ProjectReviser",
     "RevisionResult",
+    "SpinePipeline",
+    "SpineResult",
     "StageProgress",
     "StageProgressCallback",
     "StageRecord",

@@ -21,13 +21,19 @@ class Piece(BaseModel):
 PIECES: dict[str, Piece] = {
     p.name: p
     for p in (
+        Piece(name="catalog", description="Catálogo da pasta de clipes (papéis, IDs, fala) e escolha dos clipes"),
         Piece(name="probe", description="Metadados do vídeo (ffprobe) e rotação"),
-        Piece(name="silences", description="Detecção de silêncios no áudio", needs=["probe"]),
-        Piece(name="transcription", description="Transcrição com tempos por palavra", needs=["probe"]),
+        Piece(name="silences", description="Detecção de silêncios no áudio (por clipe, com cache)"),
+        Piece(name="transcription", description="Transcrição com tempos por palavra (por clipe, com cache)"),
         Piece(name="director", description="Diretor de IA: frases a remover, por ID", needs=["transcription"]),
-        Piece(name="plan", description="Plano de corte (EditPlan)", needs=["probe", "silences"]),
-        Piece(name="render", description="Renderização com FFmpeg", needs=["plan"]),
-        Piece(name="subtitles", description="Legendas .srt no tempo editado", needs=["transcription", "plan"]),
+        Piece(name="plan", description="Plano de corte (EditPlan) de um vídeo", needs=["probe", "silences"]),
+        Piece(
+            name="timeline",
+            description="Timeline com trilhas: trechos mantidos de cada clipe em sequência",
+            needs=["catalog", "silences"],
+        ),
+        Piece(name="render", description="Renderização com FFmpeg (do EditPlan ou da Timeline)"),
+        Piece(name="subtitles", description="Legendas .srt no tempo editado", needs=["transcription"]),
         Piece(name="report", description="Relatório, transcrição comparativa e linha do tempo", needs=["render"]),
     )
 }
@@ -44,6 +50,7 @@ class Recipe(BaseModel):
     description: str
     steps: list[str] = Field(min_length=1)
     requires: dict[str, list[str]] = Field(default_factory=dict)
+    multi_clip: bool = Field(default=False, description="receita que trabalha com vários clipes de uma pasta")
 
     @model_validator(mode="after")
     def _check(self) -> "Recipe":
