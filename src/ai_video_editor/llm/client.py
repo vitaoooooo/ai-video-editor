@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ai_video_editor.intelligence.exceptions import AIProviderError
 from ai_video_editor.intelligence.retry import RetryPolicy, call_with_retry
 from ai_video_editor.llm.keys import find_api_key
+from ai_video_editor.llm.per_thread import PerThread
 from ai_video_editor.llm.schema import ImageInput, LLMCallConfig, LLMCallMetrics, StructuredResult, T, ThinkingLevel
 
 _THINKING_ORDER: tuple[ThinkingLevel, ...] = ("off", "low", "high")
@@ -34,11 +35,12 @@ class StructuredLLMClient(ABC):
     default_model: str = ""
     # Modelos de reserva do mesmo provedor quando o usuário não informa a cadeia.
     default_fallback: tuple[str, ...] = ()
+    # Métricas da última chamada desta thread (lotes do `visual` chamam em paralelo).
+    last_metrics = PerThread(None)
 
     def __init__(self, api_key: Optional[str] = None, client: Any = None):
         self._api_key = api_key
         self._client = client
-        self.last_metrics: Optional[LLMCallMetrics] = None
 
     # --- credenciais e cliente do SDK ---
 
@@ -150,10 +152,14 @@ class StructuredLLMClient(ABC):
         self.last_metrics = metrics
         started = time.perf_counter()
         refused: list[str] = []
+        # Contadas aqui, não em `retry.attempts_made`: a política é compartilhada entre threads.
+        attempts = 0
         try:
             for level in self.thinking_ladder(config.model_id, config.thinking):
 
                 def call(level=level):
+                    nonlocal attempts
+                    attempts += 1
                     if images:
                         return self._request(prompt, schema, config, level, images)
                     return self._request(prompt, schema, config, level)
@@ -176,7 +182,7 @@ class StructuredLLMClient(ABC):
                 provider=self.provider_name,
             )
         finally:
-            metrics.api_calls = max(1, retry.attempts_made)
+            metrics.api_calls = max(1, attempts)
             metrics.latency_sec = round(time.perf_counter() - started, 3)
 
     def _level_value(self, model_id: str, level: Optional[ThinkingLevel]) -> str:
