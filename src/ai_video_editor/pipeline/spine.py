@@ -12,7 +12,9 @@ parâmetros), então trocar um clipe da pasta só reprocessa esse clipe.
 """
 
 import json
+import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -91,6 +93,9 @@ SPINE_STEPS = ("catalog", "silences", "transcription", "director", "timeline", "
 DIRECTOR_PROMPT_FORMAT = "spine-prompt-v1"
 TIMELINE_FORMAT = "spine-timeline-v1"
 REPORT_FORMAT = "spine-report-v1"
+
+# Clipes com a detecção de silêncio rodando ao mesmo tempo (um FFmpeg cada).
+SILENCE_WORKERS = min(4, os.cpu_count() or 2)
 
 
 @dataclass
@@ -330,12 +335,20 @@ class SpinePipeline(EditPipeline):
         s.fp_silences = fingerprint("silences", [(clip.id, per_clip[clip.id]) for clip in s.clips])
 
         def do_silences() -> tuple[dict, str]:
+            # Um FFmpeg por clipe, independentes: em paralelo (a transcrição, na GPU, fica sequencial).
+            total_clips = len(s.clips)
+            self._stage_progress("silences", StageProgress(done=0, total=total_clips, unit="clips"))
+            results: dict[str, tuple[AudioAnalysisResult, bool]] = {}
+            with ThreadPoolExecutor(max_workers=SILENCE_WORKERS) as pool:
+                futures = {pool.submit(self._clip_audio, s, clip, per_clip[clip.id], s.run.force): clip for clip in s.clips}
+                for done, future in enumerate(as_completed(futures), start=1):
+                    results[futures[future].id] = future.result()
+                    self._stage_progress(
+                        "silences", StageProgress(done=done, total=total_clips, unit="clips", note=futures[future].id)
+                    )
             cached, summary = 0, {}
-            for k, clip in enumerate(s.clips):
-                self._stage_progress(
-                    "silences", StageProgress(done=k, total=len(s.clips), unit="clips", note=f"{clip.id} ({k + 1}/{len(s.clips)})")
-                )
-                result, from_cache = self._clip_audio(s, clip, per_clip[clip.id], s.run.force)
+            for clip in s.clips:
+                result, from_cache = results[clip.id]
                 cached += from_cache
                 summary[clip.id] = {
                     "silences": len(result.silences),
