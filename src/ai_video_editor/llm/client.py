@@ -2,14 +2,14 @@
 
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from pydantic import BaseModel
 
 from ai_video_editor.intelligence.exceptions import AIProviderError
 from ai_video_editor.intelligence.retry import RetryPolicy, call_with_retry
 from ai_video_editor.llm.keys import find_api_key
-from ai_video_editor.llm.schema import LLMCallConfig, LLMCallMetrics, StructuredResult, T, ThinkingLevel
+from ai_video_editor.llm.schema import ImageInput, LLMCallConfig, LLMCallMetrics, StructuredResult, T, ThinkingLevel
 
 _THINKING_ORDER: tuple[ThinkingLevel, ...] = ("off", "low", "high")
 
@@ -87,8 +87,19 @@ class StructuredLLMClient(ABC):
     # --- chamada ---
 
     @abstractmethod
-    def _request(self, prompt: str, schema: type[BaseModel], config: LLMCallConfig, level: Optional[ThinkingLevel]) -> Any:
-        """Faz uma chamada ao SDK e devolve a resposta crua (exceções do SDK sobem como estão)."""
+    def _request(
+        self,
+        prompt: str,
+        schema: type[BaseModel],
+        config: LLMCallConfig,
+        level: Optional[ThinkingLevel],
+        images: Sequence[ImageInput] = (),
+    ) -> Any:
+        """Faz uma chamada ao SDK e devolve a resposta crua (exceções do SDK sobem como estão).
+
+        Sem `images`, a chamada é exatamente a de só texto; com elas, o prompt vai primeiro e
+        cada imagem vai inline, precedida do seu `caption` (formato oficial de cada SDK).
+        """
         ...
 
     @abstractmethod
@@ -112,20 +123,29 @@ class StructuredLLMClient(ABC):
         schema: type[T],
         config: LLMCallConfig,
         retry: Optional[RetryPolicy] = None,
+        images: Optional[Sequence[ImageInput]] = None,
     ) -> StructuredResult[T]:
-        """Chama o modelo com saída no `schema`.
+        """Chama o modelo com saída no `schema` (e, opcionalmente, imagens junto com o prompt).
 
         Falhas temporárias (503, 504, 429 por minuto, conexão) são repetidas conforme `retry`;
         erros permanentes sobem na hora. Se a API recusar o nível de raciocínio, sobe de nível
         sem contar como nova tentativa. `last_metrics` fica preenchido mesmo em caso de erro
         (inclusive tokens, se a resposta chegou mas não pôde ser validada).
+
+        Raises:
+            FileNotFoundError: uma das imagens não existe (antes de qualquer chamada).
         """
+        images = list(images or ())
+        for image in images:
+            if not image.path.is_file():
+                raise FileNotFoundError(f"imagem não encontrada: {image.path}")
         retry = retry if retry is not None else RetryPolicy()
         retry.reset()
         metrics = LLMCallMetrics(
             provider=self.provider_name,
             model_id=config.model_id,
             thinking=self.thinking_label(config.model_id, config.thinking),
+            images=len(images),
         )
         self.last_metrics = metrics
         started = time.perf_counter()
@@ -134,6 +154,8 @@ class StructuredLLMClient(ABC):
             for level in self.thinking_ladder(config.model_id, config.thinking):
 
                 def call(level=level):
+                    if images:
+                        return self._request(prompt, schema, config, level, images)
                     return self._request(prompt, schema, config, level)
 
                 try:

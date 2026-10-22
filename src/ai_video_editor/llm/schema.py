@@ -1,6 +1,7 @@
 """Schemas da camada genérica de IA: configuração da chamada, métricas e cadeia de modelos."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Generic, Literal, Optional, TypeVar
 
 from pydantic import BaseModel, Field
@@ -9,6 +10,30 @@ from pydantic import BaseModel, Field
 ThinkingLevel = Literal["off", "low", "high"]
 
 T = TypeVar("T", bound=BaseModel)
+
+# Resolução com que o provedor lê a imagem; cada um traduz (Gemini `media_resolution`, OpenAI `detail`).
+# "auto" = padrão do provedor (o parâmetro não é enviado).
+ImageDetail = Literal["low", "auto", "high"]
+
+
+class ImageInput(BaseModel):
+    """Uma imagem enviada junto com o prompt, precedida do rótulo (`label`) que o prompt cita.
+
+    O provedor lê o arquivo no momento da chamada e envia os bytes inline.
+    """
+
+    path: Path
+    label: str = Field(..., min_length=1, description="ID que aparece no prompt, ex: `P007.T03.F1`")
+    mime_type: str = "image/jpeg"
+    detail: ImageDetail = "auto"
+
+    def read_bytes(self) -> bytes:
+        return self.path.read_bytes()
+
+    @property
+    def caption(self) -> str:
+        """Texto colocado logo antes da imagem."""
+        return f"Imagem {self.label}:"
 
 
 class LLMCallConfig(BaseModel):
@@ -30,6 +55,7 @@ class LLMCallMetrics(BaseModel):
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     api_calls: int = Field(default=0, ge=0, description="Chamadas à API, incluindo novas tentativas")
+    images: int = Field(default=0, ge=0, description="Imagens enviadas junto com o prompt")
 
 
 @dataclass

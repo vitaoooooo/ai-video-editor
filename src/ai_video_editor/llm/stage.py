@@ -1,9 +1,9 @@
 """Base das etapas de IA (Diretor, revisor) que chamam uma `ModelChain`."""
 
-from typing import Optional
+from typing import Optional, Sequence
 
 from ai_video_editor.llm.chain import ModelChain
-from ai_video_editor.llm.schema import ModelSwitch, T
+from ai_video_editor.llm.schema import ImageInput, ModelSwitch, T
 
 
 class ChainBackedStage:
@@ -37,11 +37,13 @@ class ChainBackedStage:
     def model_switches(self) -> list[ModelSwitch]:
         return self.chain.switches
 
-    def _generate(self, prompt: str, schema: type[T]) -> T:
+    def _generate(self, prompt: str, schema: type[T], images: Optional[Sequence[ImageInput]] = None) -> T:
         self.last_input_tokens = None
         self.last_output_tokens = None
         self.effective_thinking_label = self.thinking_label
         try:
+            if images:
+                return self.chain.generate(prompt, schema, images).value
             return self.chain.generate(prompt, schema).value
         finally:
             metrics = self.chain.last_metrics

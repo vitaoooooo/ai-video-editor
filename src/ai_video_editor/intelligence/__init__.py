@@ -1,4 +1,10 @@
-"""Módulo de inteligência artificial multimodal para análise visual de vídeos."""
+"""Módulo de inteligência artificial multimodal para análise visual de vídeos.
+
+LEGADO: a análise visual (`MultimodalAIProvider`, `report-ai`) será substituída por `visual/`
+(tomadas, medidas e descrição por IA via `llm/` com imagens). Continua aqui porque `analyze` e
+`report-ai` ainda a usam; as exceções (`exceptions.py`) e as novas tentativas (`retry.py`)
+seguem sendo a base comum da camada `llm/`.
+"""
 
 from ai_video_editor.intelligence.exceptions import (
     AIAuthenticationError,
