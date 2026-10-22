@@ -108,9 +108,10 @@ class TimelineRenderExecutor:
     def execute(self, timeline: Timeline, on_progress: Optional[RenderProgress] = None) -> TimelineRenderResult:
         """Renderiza a Timeline em `timeline.output_path`.
 
-        Pedaços de vídeo (sem áudio) e de áudio principal rodam em paralelo (até `max_workers`);
-        depois o áudio principal é concatenado e mixado com o ambiente, medido pelo loudnorm (se
-        pedido) e unido ao vídeo concatenado num mux final. Temporários apagados mesmo com erro.
+        Pedaços de vídeo (sem áudio) rodam em paralelo (até `max_workers`), junto com o único
+        processo de áudio (principal recortado e concatenado + ambiente mixado); depois o áudio é
+        medido pelo loudnorm (se pedido) e unido ao vídeo concatenado num mux final. Temporários
+        apagados mesmo com erro.
 
         Raises:
             RuntimeError: falha do FFmpeg ou saída com duração/fps diferentes do esperado.
@@ -121,9 +122,12 @@ class TimelineRenderExecutor:
 
         with tempfile.TemporaryDirectory(prefix="ave_timeline_", dir=self.temp_root) as tmp:
             job = self.compiler.compile(timeline, Path(tmp))
+            job.audio_graph_path.write_text(job.audio_graph, encoding="utf-8")
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-                futures = [pool.submit(RenderExecutor._run_ffmpeg, cmd) for cmd in job.piece_commands]
+                # O áudio vai primeiro: é o processo mais longo e não depende dos pedaços de vídeo.
+                commands = [job.audio_command, *job.piece_commands]
+                futures = [pool.submit(RenderExecutor._run_ffmpeg, cmd) for cmd in commands]
                 total = len(futures)
                 if on_progress is not None:
                     on_progress(0, total)
@@ -138,8 +142,6 @@ class TimelineRenderExecutor:
                     raise
 
             job.video_list_path.write_text(job.video_list_content, encoding="utf-8")
-            job.audio_list_path.write_text(job.audio_list_content, encoding="utf-8")
-            RenderExecutor._run_ffmpeg(job.audio_command)
             audio_filter, loudness = self._normalize_loudness(timeline, job)
             mux = self.compiler.mux_command(job, timeline.output_path, audio_filter)
             RenderExecutor._run_ffmpeg(mux)

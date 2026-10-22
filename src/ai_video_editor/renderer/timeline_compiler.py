@@ -1,8 +1,11 @@
 """Compila uma Timeline achatada em comandos FFmpeg (lista de argumentos, sem shell).
 
-Um comando por pedaço de vídeo (sem áudio, padronizado) e um por item do áudio principal,
-todos independentes para rodar em paralelo; depois os concats (demuxer), a mixagem do
-ambiente e o mux final. Os intermediários de áudio são PCM a 48 kHz estéreo.
+Um comando por pedaço de vídeo (sem áudio, padronizado), independentes para rodar em paralelo.
+O áudio inteiro (principal + ambiente) sai de UM comando, qualquer que seja o número de itens:
+cada arquivo de origem entra uma vez, dividido com `asplit` e recortado com `atrim` por item
+(com os micro fades), e os itens são unidos pelo filtro `concat`. O grafo vai num arquivo de
+script (`-/filter_complex`), porque com centenas de itens ele passa do limite de tamanho da linha
+de comando do Windows. Depois vem o mux final. Os intermediários de áudio são PCM a 48 kHz estéreo.
 """
 
 import json
@@ -15,7 +18,6 @@ from ai_video_editor.core.timeline import (
     TIMELINE_SAMPLE_RATE,
     AmbientAudioPiece,
     FlatTimeline,
-    MainAudioPiece,
     Timeline,
     VideoPiece,
     flatten,
@@ -30,6 +32,10 @@ PCM_AUDIO_ARGS = ["-c:a", "pcm_s16le", "-ar", str(TIMELINE_SAMPLE_RATE), "-ac", 
 HDR_TRANSFERS = {"smpte2084", "arib-std-b67"}
 
 _QUIET = ["-y", "-nostdin", "-hide_banner", "-loglevel", "error"]
+
+# Sequências crescentes por origem acima das quais a origem entra uma vez só (asplit + atrim), para o
+# número de entradas do processo de áudio não crescer com itens fora de ordem.
+MAX_SEGMENT_RUNS = 4
 
 
 @dataclass(frozen=True)
@@ -82,12 +88,12 @@ def probe_media(path: Path, ffprobe_bin: Optional[Path] = None) -> MediaInfo:
 class TimelineRenderJob:
     """Comandos de um render de Timeline e o que se espera da saída."""
 
-    piece_commands: list[list[str]]  # vídeo e áudio principal, independentes (paralelos)
+    piece_commands: list[list[str]]  # pedaços de vídeo, independentes (paralelos)
     video_list_path: Path
     video_list_content: str
-    audio_list_path: Path
-    audio_list_content: str
-    audio_command: list[str]  # concat do áudio principal (+ mixagem do ambiente) → audio_path
+    audio_graph_path: Path
+    audio_graph: str  # filter_complex do áudio (gravado em audio_graph_path antes do audio_command)
+    audio_command: list[str]  # áudio principal (+ mixagem do ambiente) → audio_path, num só processo
     audio_path: Path
     expected_frames: int
     expected_duration_sec: float
@@ -199,24 +205,21 @@ class TimelineCompiler:
             commands.append(self._video_command(timeline, piece, path))
             video_lines += [f"file '{path.name}'", f"duration {_fmt(piece.frame_count / flat.fps)}"]
 
-        audio_lines = ["ffconcat version 1.0"]
-        has_audio = False
-        for idx, piece in enumerate(flat.audio_main):
-            path = work_dir / f"a_{idx:05d}.wav"
-            source_has_audio = piece.source_path is not None and infos[piece.source_path.resolve()].has_audio
-            has_audio = has_audio or source_has_audio
-            commands.append(self._main_audio_command(timeline, piece, source_has_audio, path))
-            audio_lines += [f"file '{path.name}'", f"duration {_fmt(piece.sample_count / flat.sample_rate)}"]
-
-        audio_list_path = work_dir / "audio.txt"
+        with_audio = {path for path, info in infos.items() if info.has_audio}
+        has_audio = any(p.source_path is not None and p.source_path.resolve() in with_audio for p in flat.audio_main)
+        graph_path = work_dir / "audio_graph.txt"
         audio_path = work_dir / "audio.wav"
+        inputs, graph = self._audio_graph(timeline, flat, with_audio)
         return TimelineRenderJob(
             piece_commands=commands,
             video_list_path=work_dir / "video.txt",
             video_list_content="\n".join(video_lines) + "\n",
-            audio_list_path=audio_list_path,
-            audio_list_content="\n".join(audio_lines) + "\n",
-            audio_command=self._audio_command(flat, audio_list_path, audio_path),
+            audio_graph_path=graph_path,
+            audio_graph=graph,
+            audio_command=[
+                str(self.ffmpeg_bin), *_QUIET, *inputs, "-/filter_complex", str(graph_path),
+                "-map", "[a]", *PCM_AUDIO_ARGS, str(audio_path),
+            ],
             audio_path=audio_path,
             expected_frames=flat.total_frames,
             expected_duration_sec=flat.duration_sec,
@@ -247,67 +250,107 @@ class TimelineCompiler:
             str(out),
         ]
 
-    def _main_audio_command(
-        self, timeline: Timeline, piece: MainAudioPiece, source_has_audio: bool, out: Path
-    ) -> list[str]:
-        """Áudio de um item da base com os micro fades nos cortes; silêncio se não houver áudio."""
-        if not source_has_audio:
-            return [
-                str(self.ffmpeg_bin),
-                *_QUIET,
-                "-filter_complex",
-                f"{_silence(piece.sample_count)}[a]",
-                "-map",
-                "[a]",
-                *PCM_AUDIO_ARGS,
-                str(out),
-            ]
+    def _audio_graph(
+        self, timeline: Timeline, flat: FlatTimeline, with_audio: set[Path]
+    ) -> tuple[list[str], str]:
+        """(entradas `-ss/-t/-i`, filter_complex) do áudio inteiro, num só processo.
 
-        fade = min(timeline.audio_fade_sec, piece.sample_count / TIMELINE_SAMPLE_RATE / 2)
-        read = piece.sample_count / TIMELINE_SAMPLE_RATE + INPUT_READ_MARGIN_SEC
-        chain = f"[0:a:0]volume={piece.volume},{_fit_audio(piece.sample_count)}{_fades(piece.sample_count, fade, fade)}[a]"
-        return [
-            str(self.ffmpeg_bin),
-            *_QUIET,
-            "-ss",
-            _fmt(piece.source_in),
-            "-t",
-            _fmt(read),
-            "-i",
-            str(piece.source_path.resolve()),
-            "-filter_complex",
-            chain,
-            "-map",
-            "[a]",
-            *PCM_AUDIO_ARGS,
-            str(out),
-        ]
+        Os itens de cada origem são agrupados em sequências com tempos de origem crescentes e sem
+        sobreposição (numa espinha, todos os trechos de um clipe formam uma só sequência). Cada
+        sequência é uma entrada, lida só no intervalo usado, e `asegment` a divide com precisão de
+        amostra: cada amostra vai para um único ramo (o item ou o vão entre itens, descartado em
+        `anullsink`), então o custo não cresce com o número de itens. Uma origem que precisaria de
+        mais de `MAX_SEGMENT_RUNS` sequências (itens muito fora de ordem) entra uma vez só e cada
+        item recebe uma cópia (`asplit`) recortada com `atrim`. Cada item mantém o micro fade e a
+        contagem exata de amostras (derivada dos frames); `concat` junta tudo na ordem da timeline.
+        O ambiente é mixado no mesmo grafo.
+        """
+        margin = INPUT_READ_MARGIN_SEC
+        pieces = flat.audio_main
 
-    def _audio_command(self, flat: FlatTimeline, audio_list_path: Path, out: Path) -> list[str]:
-        """Concatena o áudio principal e mixa o ambiente posicionado (amix sem normalizar volumes)."""
-        args = [str(self.ffmpeg_bin), *_QUIET, "-f", "concat", "-safe", "0", "-i", str(audio_list_path)]
-        if not flat.audio_ambient:
-            return [*args, "-map", "0:a:0", "-c:a", "copy", str(out)]
+        def end_of(i: int) -> float:
+            return pieces[i].source_in + pieces[i].sample_count / TIMELINE_SAMPLE_RATE
 
+        # Sequências: (origem, índices dos itens na ordem da timeline).
+        runs: list[tuple[Path, list[int]]] = []
+        for i, p in enumerate(pieces):
+            if p.source_path is None or p.source_path.resolve() not in with_audio:
+                continue
+            key = p.source_path.resolve()
+            run = next(
+                (r for r in reversed(runs) if r[0] == key and p.source_in >= end_of(r[1][-1]) - 1e-9), None
+            )
+            if run is None:
+                runs.append((key, [i]))
+            else:
+                run[1].append(i)
+        per_source: dict[Path, int] = {}
+        for key, _ in runs:
+            per_source[key] = per_source.get(key, 0) + 1
+        split = {key for key, count in per_source.items() if count > MAX_SEGMENT_RUNS}
+        merged: list[tuple[Path, list[int]]] = [r for r in runs if r[0] not in split]
+        for key in split:
+            merged.append((key, sorted(i for k, members in runs if k == key for i in members)))
+
+        inputs: list[str] = []
         chains: list[str] = []
-        labels = ["[0:a]"]
-        for n, item in enumerate(flat.audio_ambient, start=1):
-            args += [
-                "-ss",
-                _fmt(item.source_in),
-                "-t",
-                _fmt(item.sample_count / flat.sample_rate + INPUT_READ_MARGIN_SEC),
-                "-i",
-                str(item.source_path.resolve()),
-            ]
-            chains.append(self._ambient_chain(n, item))
-            labels.append(f"[amb{n}]")
-        chains.append(
-            f"{''.join(labels)}amix=inputs={len(labels)}:duration=first:normalize=0:dropout_transition=0,"
-            f"aformat=sample_fmts=s16:channel_layouts=stereo,"
-            f"atrim=end_sample={flat.total_samples}[a]"
-        )
-        return [*args, "-filter_complex", ";".join(chains), "-map", "[a]", *PCM_AUDIO_ARGS, str(out)]
+        item_head: dict[int, str] = {}  # rótulo do ramo do item + recorte (só no modo asplit)
+        for n, (key, members) in enumerate(merged):
+            lo = min(pieces[i].source_in for i in members)
+            hi = max(end_of(i) for i in members)
+            inputs += ["-ss", _fmt(lo), "-t", _fmt(hi - lo + margin), "-i", str(key)]
+            if key in split:
+                outs = [f"[s{n}_{k}]" for k in range(len(members))]
+                chains.append(f"[{n}:a:0]asplit={len(members)}{''.join(outs)}")
+                for label, i in zip(outs, members):
+                    start = pieces[i].source_in - lo
+                    item_head[i] = f"{label}atrim=start={_fmt(start)}:end={_fmt(end_of(i) - lo + margin)},"
+                continue
+            stamps: list[str] = []
+            outputs: list[str] = []
+            cursor = 0.0
+            for i in members:
+                start, end = pieces[i].source_in - lo, end_of(i) - lo
+                if start > cursor + 1e-6:
+                    stamps.append(_fmt(start))
+                    outputs.append(f"[g{n}_{len(outputs)}]")
+                item_head[i] = f"[s{n}_{len(outputs)}]"
+                outputs.append(item_head[i])
+                stamps.append(_fmt(end))
+                cursor = end
+            outputs.append(f"[g{n}_{len(outputs)}]")  # o resto depois do último item
+            chains.append(f"[{n}:a:0]asegment=timestamps={'|'.join(stamps)}{''.join(outputs)}")
+            chains += [f"{label}anullsink" for label in outputs if label.startswith("[g")]
+
+        for i, p in enumerate(pieces):
+            if i not in item_head:
+                chains.append(f"{_silence(p.sample_count)}[p{i}]")
+                continue
+            fade = min(timeline.audio_fade_sec, p.sample_count / TIMELINE_SAMPLE_RATE / 2)
+            chains.append(
+                f"{item_head[i]}asetpts=PTS-STARTPTS,volume={p.volume},"
+                f"{_fit_audio(p.sample_count)}{_fades(p.sample_count, fade, fade)}[p{i}]"
+            )
+        main = "[a]" if not flat.audio_ambient else "[main]"
+        chains.append(f"{''.join(f'[p{i}]' for i in range(len(pieces)))}concat=n={len(pieces)}:v=0:a=1{main}")
+
+        if flat.audio_ambient:
+            labels = [main]
+            for item in flat.audio_ambient:
+                n = len(merged) + item.item_index
+                inputs += [
+                    "-ss", _fmt(item.source_in),
+                    "-t", _fmt(item.sample_count / flat.sample_rate + margin),
+                    "-i", str(item.source_path.resolve()),
+                ]
+                chains.append(self._ambient_chain(n, item))
+                labels.append(f"[amb{n}]")
+            chains.append(
+                f"{''.join(labels)}amix=inputs={len(labels)}:duration=first:normalize=0:dropout_transition=0,"
+                f"aformat=sample_fmts=s16:channel_layouts=stereo,"
+                f"atrim=end_sample={flat.total_samples}[a]"
+            )
+        return inputs, ";\n".join(chains) + "\n"
 
     @staticmethod
     def _ambient_chain(input_index: int, item: AmbientAudioPiece) -> str:
