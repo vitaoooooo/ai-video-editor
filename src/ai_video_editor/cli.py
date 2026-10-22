@@ -659,6 +659,171 @@ def handle_catalog(args: argparse.Namespace) -> int:
     return 0
 
 
+class VisualProgressPrinter:
+    """Andamento das etapas do `visual` (linha ao vivo em um terminal)."""
+
+    def __init__(self, status: LiveStatus):
+        self.status = status
+
+    def step(self, stage: str) -> str:
+        from ai_video_editor.visual import VISUAL_STAGE_LABELS, VISUAL_STAGES
+
+        return f"[{VISUAL_STAGES.index(stage) + 1}/{len(VISUAL_STAGES)}] {VISUAL_STAGE_LABELS[stage]}"
+
+    def __call__(self, stage: str, event: str, detail: str) -> None:
+        step = self.step(stage)
+        if event == "start":
+            self.status.begin(step)
+        elif event == "done":
+            self.status.end(f"{step}: ok — {detail}")
+        elif event == "skipped":
+            self.status.message(f"{step}: pulada ({detail})")
+        elif event == "notice":
+            self.status.message(f"{step}: {detail}")
+
+    def progress(self, stage: str, progress: StageProgress) -> None:
+        self.status.apply(progress)
+
+
+def _parse_roles(text: Optional[str]) -> list[str]:
+    from ai_video_editor.catalog.roles import role_for_folder
+    from ai_video_editor.catalog.schema import ROLES
+
+    if not text or text.strip().lower() in ("todos", "all"):
+        return list(ROLES)
+    roles: list[str] = []
+    for item in text.split(","):
+        name = item.strip().lower()
+        if not name:
+            continue
+        role = name if name in ROLES else role_for_folder(name)
+        if role not in ROLES or (name not in ROLES and role == "outro"):
+            raise ValueError(f"papel desconhecido: {item.strip()!r} (papéis: {', '.join(ROLES)})")
+        if role not in roles:
+            roles.append(role)
+    return roles
+
+
+def _build_visual_describer(args: argparse.Namespace, printer: "VisualProgressPrinter"):
+    """Descritor visual pedido na CLI (None com `--visual-provider none`)."""
+    from ai_video_editor.visual import VisualDescriber, mock_visual_responder
+
+    provider = args.visual_provider
+    if provider == "none":
+        return None
+    clients = None
+    if provider == "mock":
+        from ai_video_editor.llm.providers.mock import MockLLMClient
+
+        clients = {"mock": MockLLMClient(responses=[mock_visual_responder])}
+    chain = ModelChain(
+        resolve_chain(provider, args.visual_model, args.visual_fallback),
+        thinking=args.visual_thinking,
+        timeout_sec=args.visual_timeout,
+        retry=RetryPolicy(
+            max_retries=args.api_retries,
+            on_retry=lambda event: printer(
+                "ai", "notice", f"{event.message} (tentativa {event.next_attempt}/{event.total_attempts})"
+            ),
+        ),
+        on_event=lambda message: printer("ai", "notice", message),
+        clients=clients,
+    )
+    return VisualDescriber(
+        chain, detail=args.detalhe_imagem, on_retry=lambda message: printer("ai", "notice", message)
+    )
+
+
+def _thousands(value: Optional[int]) -> str:
+    return "—" if value is None else f"{value:,}".replace(",", ".")
+
+
+def handle_visual(args: argparse.Namespace) -> int:
+    """Tomadas, miniaturas, medidas e descrição por IA dos clipes de um projeto."""
+    from ai_video_editor.intelligence.exceptions import AIProviderError
+    from ai_video_editor.visual import VisualBuilder
+    from ai_video_editor.visual.builder import VISUAL_DIR, VISUAL_JSON, VISUAL_MD
+    from ai_video_editor.visual.describer import BATCH_MAX_IMAGES, BATCH_MAX_SHOTS, IMAGE_TOKENS
+
+    folder = Path(args.folder)
+    if not folder.is_dir():
+        print(f"Erro: pasta não encontrada: {folder}", file=sys.stderr)
+        return 1
+    try:
+        roles = _parse_roles(args.papeis)
+        status = LiveStatus(live=False if args.no_live else None)
+        printer = VisualProgressPrinter(status)
+        describer = _build_visual_describer(args, printer)
+    except ValueError as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    from ai_video_editor.catalog import CatalogBuilder
+
+    builder = VisualBuilder(
+        projects_root=Path(args.projects_dir),
+        describer=describer,
+        detail=args.detalhe_imagem,
+        on_progress=printer,
+        on_stage_progress=printer.progress,
+        catalog_builder=CatalogBuilder(projects_root=Path(args.projects_dir)),
+    )
+    try:
+        with status:
+            result = builder.build(folder, roles=roles, estimate_only=args.so_estimar, force=args.force)
+    except AIProviderError as e:
+        print(f"Erro da IA: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    if result.estimate is not None:
+        est = result.estimate
+        per_role = ", ".join(f"{role} {n}" for role, n in est.shots_by_role.items())
+        print("\nEstimativa (nenhuma chamada à IA foi feita):")
+        print(f"Projeto: {result.project_dir}")
+        print(f"Tomadas: {sum(est.shots_by_role.values())} ({per_role})")
+        if est.cached_shots:
+            print(f"Já analisadas (cache, não serão enviadas): {est.cached_shots}")
+        print(f"A analisar: {est.shots} tomadas, {est.images} imagens")
+        print(f"Chamadas: {est.calls} (lotes de até {BATCH_MAX_SHOTS} tomadas / {BATCH_MAX_IMAGES} imagens; "
+              "sem contar novas tentativas)")
+        print(
+            f"Tokens estimados: ~{_thousands(est.input_tokens)} de entrada "
+            f"({IMAGE_TOKENS[est.image_detail]} por imagem, detalhe {est.image_detail}, referência Gemini 3) "
+            f"e ~{_thousands(est.output_tokens)} de saída"
+        )
+        print("Consulte os preços do provedor para converter em custo.")
+        return 0
+
+    visual = result.visual
+    shots = visual.all_shots()
+    visual_dir = result.project_dir / VISUAL_DIR
+    print("\nAnálise visual concluída!")
+    print(f"Projeto: {result.project_dir}")
+    print(f"Relatório: {visual_dir / VISUAL_MD}")
+    print(f"Dados: {visual_dir / VISUAL_JSON}")
+    analysed = sum(1 for s in shots if s.status == "analisada")
+    missing = sum(1 for s in shots if s.status == "sem_analise")
+    line = f"Tomadas: {len(shots)} em {len(visual.clips)} clipe(s), {analysed} analisadas"
+    if missing:
+        line += f", {missing} sem análise"
+    print(line)
+    ai = visual.ai
+    if ai is not None:
+        print(f"Modelo efetivo: {ai.effective_model or '— (nenhuma chamada)'}"
+              + (f" (raciocínio {ai.thinking})" if ai.thinking else ""))
+        print(f"IA: {ai.batches} lote(s), {ai.api_calls} chamada(s), {ai.images_sent} imagens; "
+              f"tokens {_thousands(ai.input_tokens)} de entrada / {_thousands(ai.output_tokens)} de saída")
+        for switch in ai.model_switches:
+            print(f"Troca de modelo: {switch.from_model} → {switch.to_model} ({switch.reason})")
+    for warning in visual.warnings:
+        print(f"Aviso: {warning}")
+    print(f"Tempo total: {format_duration(visual.total_sec)}")
+    return 0
+
+
 def _non_negative_int(value: str) -> int:
     number = int(value)
     if number < 0:
@@ -1018,6 +1183,57 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-live", action="store_true", help="Sem linha de andamento ao vivo; só as linhas finais de cada etapa"
     )
 
+    # Subcomando: visual
+    visual_parser = subparsers.add_parser(
+        "visual", help="Tomadas, miniaturas, medidas e descrição por IA dos clipes de um projeto"
+    )
+    visual_parser.add_argument(
+        "folder", help="Pasta de clipes (a mesma do catalog) ou pasta do projeto; o catálogo é gerado se faltar"
+    )
+    visual_parser.add_argument(
+        "--papeis", default=None, metavar="LISTA",
+        help="Papéis a analisar, separados por vírgula, ex: principal,broll (padrão: todos)",
+    )
+    visual_parser.add_argument(
+        "--so-estimar", action="store_true",
+        help="Gera tomadas e medidas, mostra nº de tomadas, imagens, chamadas e tokens estimados, e para "
+        "(sem chamar a IA)",
+    )
+    visual_parser.add_argument(
+        "--visual-provider", choices=["none", "mock", *_llm_providers()], default="gemini",
+        help="Provedor da descrição por IA; none = só tomadas e medidas (padrão: gemini)",
+    )
+    visual_parser.add_argument("--visual-model", default=None, help="Modelo (padrão: o do provedor)")
+    visual_parser.add_argument(
+        "--visual-fallback", default=None, metavar="LISTA",
+        help="Modelos de reserva \"provedor:modelo,...\"; \"none\" desliga (padrão: os do provedor, como no Diretor)",
+    )
+    visual_parser.add_argument(
+        "--visual-thinking", choices=["off", "low", "high"], default="low",
+        help="Raciocínio da descrição (padrão: low)",
+    )
+    visual_parser.add_argument(
+        "--visual-timeout", type=float, default=180.0,
+        help="Tempo limite em segundos de cada chamada (padrão: 180)",
+    )
+    visual_parser.add_argument(
+        "--detalhe-imagem", choices=["low", "auto", "high"], default="auto",
+        help="Resolução com que a IA lê as miniaturas: low = ~4x menos tokens no Gemini 3 (padrão: auto)",
+    )
+    visual_parser.add_argument(
+        "--api-retries", type=_non_negative_int, default=DEFAULT_API_RETRIES, metavar="N",
+        help=f"Novas tentativas da API em falhas temporárias (padrão: {DEFAULT_API_RETRIES})",
+    )
+    visual_parser.add_argument(
+        "--force", action="store_true", help="Refaz tomadas e medidas de todos os clipes, ignorando o cache"
+    )
+    visual_parser.add_argument(
+        "--projects-dir", default="output/projects", help="Diretório base dos projetos (padrão: output/projects)"
+    )
+    visual_parser.add_argument(
+        "--no-live", action="store_true", help="Sem linha de andamento ao vivo; só as linhas finais de cada etapa"
+    )
+
     # Subcomando: benchmark
     benchmark_parser = subparsers.add_parser("benchmark", help="Benchmarks reproduzíveis")
     benchmark_sub = benchmark_parser.add_subparsers(dest="benchmark_command", required=True)
@@ -1085,6 +1301,8 @@ def main() -> None:
         sys.exit(handle_versions(args))
     elif args.command == "catalog":
         sys.exit(handle_catalog(args))
+    elif args.command == "visual":
+        sys.exit(handle_visual(args))
     elif args.command == "benchmark":
         if args.benchmark_command == "rescore":
             sys.exit(handle_benchmark_rescore(args))
