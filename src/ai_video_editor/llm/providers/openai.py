@@ -5,8 +5,9 @@ Usa `client.responses.parse(text_format=<schema Pydantic>)`, que envia o schema 
 Instale com `pip install -e ".[openai]"`.
 """
 
+import base64
 import re
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from pydantic import BaseModel
 
@@ -21,7 +22,7 @@ from ai_video_editor.intelligence.exceptions import (
 from ai_video_editor.llm.client import StructuredLLMClient, as_int
 from ai_video_editor.llm.errors import is_connection_error, redact, retry_after_sec, status_code
 from ai_video_editor.llm.keys import resolve_api_key
-from ai_video_editor.llm.schema import LLMCallConfig, T, ThinkingLevel
+from ai_video_editor.llm.schema import ImageInput, LLMCallConfig, T, ThinkingLevel
 
 # Modelo de texto mais econômico indicado na documentação oficial (developers.openai.com/api/docs/models).
 DEFAULT_OPENAI_MODEL = "gpt-6-luna"
@@ -100,6 +101,24 @@ def map_openai_error(error: Exception, timeout_sec: float) -> AIProviderError:
     return build(AIProviderError("Erro na chamada da OpenAI.", provider="openai"), False)
 
 
+def build_input(prompt: str, images: Sequence[ImageInput]) -> list[dict[str, Any]]:
+    """Uma mensagem do usuário: o prompt e, para cada imagem, o rótulo seguido da imagem inline.
+
+    Formato da documentação oficial ("Images and vision", Responses API): item `input_image`
+    com `image_url` em data URL base64 e `detail` (low/high/auto).
+    """
+    content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
+    for image in images:
+        encoded = base64.b64encode(image.read_bytes()).decode("ascii")
+        content.append({"type": "input_text", "text": image.caption})
+        content.append({
+            "type": "input_image",
+            "image_url": f"data:{image.mime_type};base64,{encoded}",
+            "detail": image.detail,
+        })
+    return [{"role": "user", "content": content}]
+
+
 def is_reasoning_refused(error: Exception) -> bool:
     """True se a API recusou o esforço de raciocínio (ou o parâmetro) para o modelo."""
     text = str(error).lower()
@@ -137,10 +156,17 @@ class OpenAILLMClient(StructuredLLMClient):
     def is_thinking_refused(self, error: Exception) -> bool:
         return is_reasoning_refused(error)
 
-    def _request(self, prompt: str, schema: type[BaseModel], config: LLMCallConfig, level: Optional[ThinkingLevel]) -> Any:
+    def _request(
+        self,
+        prompt: str,
+        schema: type[BaseModel],
+        config: LLMCallConfig,
+        level: Optional[ThinkingLevel],
+        images: Sequence[ImageInput] = (),
+    ) -> Any:
         kwargs: dict[str, Any] = {
             "model": config.model_id,
-            "input": prompt,
+            "input": build_input(prompt, images) if images else prompt,
             "text_format": schema,
             "timeout": config.timeout_sec,
         }

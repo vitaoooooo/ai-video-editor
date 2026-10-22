@@ -1,6 +1,6 @@
 """Cadeia ordenada de modelos (`provedor:modelo`) com troca automática quando um fica indisponível."""
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from ai_video_editor.intelligence.exceptions import (
     AIAuthenticationError,
@@ -12,6 +12,7 @@ from ai_video_editor.intelligence.retry import RetryPolicy
 from ai_video_editor.llm.client import StructuredLLMClient
 from ai_video_editor.llm.registry import create_client, default_fallback, default_model, provider_names
 from ai_video_editor.llm.schema import (
+    ImageInput,
     LLMCallConfig,
     LLMCallMetrics,
     ModelSpec,
@@ -184,8 +185,12 @@ class ModelChain:
     def _switch_label(self, frm: ModelSpec, to: ModelSpec) -> str:
         return to.model_id if to.provider == frm.provider else to.label
 
-    def generate(self, prompt: str, schema: type[T]) -> StructuredResult[T]:
+    def generate(
+        self, prompt: str, schema: type[T], images: Optional[Sequence[ImageInput]] = None
+    ) -> StructuredResult[T]:
         """Chama o modelo atual da cadeia, trocando de modelo quando necessário.
+
+        `images` (opcionais) vão para cada modelo tentado, com as mesmas regras de troca.
 
         `last_metrics` resume a chamada (modelo efetivo, chamadas somadas de todos os
         modelos tentados, tokens da última resposta), mesmo em caso de erro.
@@ -208,6 +213,8 @@ class ModelChain:
                 temperature=self.temperature, timeout_sec=self.timeout_sec,
             )
             try:
+                if images:
+                    return client.generate(prompt, schema, config, self.retry, images)
                 return client.generate(prompt, schema, config, self.retry)
             except AIProviderError as error:
                 if not is_switchable(error):

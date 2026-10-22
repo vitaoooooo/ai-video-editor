@@ -6,6 +6,8 @@ from ai_video_editor.llm.chain import ModelChain, parse_chain, resolve_chain  # 
 from ai_video_editor.llm.client import StructuredLLMClient  # noqa: E402
 from ai_video_editor.llm.registry import create_client, provider_names, register_provider  # noqa: E402
 from ai_video_editor.llm.schema import (  # noqa: E402
+    ImageDetail,
+    ImageInput,
     LLMCallConfig,
     LLMCallMetrics,
     ModelSpec,
@@ -15,6 +17,8 @@ from ai_video_editor.llm.schema import (  # noqa: E402
 )
 
 __all__ = [
+    "ImageDetail",
+    "ImageInput",
     "LLMCallConfig",
     "LLMCallMetrics",
     "ModelChain",

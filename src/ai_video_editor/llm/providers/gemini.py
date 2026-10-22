@@ -1,7 +1,7 @@
 """Provedor Google Gemini (SDK `google-genai`) com saída JSON estruturada."""
 
 import json
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from pydantic import BaseModel
 
@@ -17,13 +17,16 @@ from ai_video_editor.intelligence.retry import RetryPolicy
 from ai_video_editor.llm.client import StructuredLLMClient, as_int
 from ai_video_editor.llm.errors import is_connection_error, redact, retry_after_sec, status_code
 from ai_video_editor.llm.keys import resolve_api_key
-from ai_video_editor.llm.schema import LLMCallConfig, T, ThinkingLevel
+from ai_video_editor.llm.schema import ImageInput, LLMCallConfig, T, ThinkingLevel
 
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 # Família 3.x: `thinking_level`. Família 2.5 (legado): `thinking_budget` em tokens (-1 = dinâmico).
 _THINKING_LEVELS = {"off": "MINIMAL", "low": "LOW", "high": "HIGH"}
 _THINKING_BUDGETS = {"off": 0, "low": 1024, "high": -1}
+# Detalhe da imagem → `media_resolution` (docs "Media resolution": Gemini 3 cobra 280 tokens por
+# imagem em LOW e 1120 em HIGH, que é o padrão).
+_MEDIA_RESOLUTIONS = {"low": "MEDIA_RESOLUTION_LOW", "high": "MEDIA_RESOLUTION_HIGH"}
 
 
 def resolve_gemini_api_key() -> str:
@@ -79,6 +82,29 @@ def map_gemini_error(error: Exception, timeout_sec: float) -> AIProviderError:
     return build(AIProviderError("Erro na chamada do Gemini.", provider="gemini"), False)
 
 
+def build_contents(prompt: str, images: Sequence[ImageInput]):
+    """Uma mensagem do usuário: o prompt e, para cada imagem, o rótulo seguido dos bytes inline.
+
+    Formato da documentação oficial ("Image understanding", imagens inline com
+    `types.Part.from_bytes`); cada pedido inline tem limite de 20 MB no total.
+    """
+    from google.genai import types
+
+    parts = [types.Part.from_text(text=prompt)]
+    for image in images:
+        parts.append(types.Part.from_text(text=image.caption))
+        parts.append(types.Part.from_bytes(data=image.read_bytes(), mime_type=image.mime_type))
+    return [types.Content(role="user", parts=parts)]
+
+
+def media_resolution(images: Sequence[ImageInput]) -> Optional[str]:
+    """`media_resolution` da chamada: o maior detalhe pedido entre as imagens (None = padrão do modelo)."""
+    details = {image.detail for image in images} - {"auto"}
+    if not details:
+        return None
+    return _MEDIA_RESOLUTIONS["high" if "high" in details else "low"]
+
+
 def is_thinking_level_unsupported(error: Exception) -> bool:
     """True se o erro do SDK é a recusa 400 do nível de raciocínio pelo modelo."""
     text = str(error).lower()
@@ -120,18 +146,30 @@ class GeminiLLMClient(StructuredLLMClient):
         name, value = self.thinking_setting(model_id, level)
         return types.ThinkingConfig(**{name: value})
 
-    def _request(self, prompt: str, schema: type[BaseModel], config: LLMCallConfig, level: Optional[ThinkingLevel]) -> Any:
+    def _request(
+        self,
+        prompt: str,
+        schema: type[BaseModel],
+        config: LLMCallConfig,
+        level: Optional[ThinkingLevel],
+        images: Sequence[ImageInput] = (),
+    ) -> Any:
         from google.genai import types
 
+        extra: dict[str, Any] = {}
+        resolution = media_resolution(images)
+        if resolution is not None:
+            extra["media_resolution"] = resolution
         return self.get_client().models.generate_content(
             model=config.model_id,
-            contents=prompt,
+            contents=build_contents(prompt, images) if images else prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=schema,
                 temperature=config.temperature,
                 thinking_config=self.build_thinking_config(config.model_id, level or config.thinking),
                 http_options=build_http_options(config.timeout_sec),
+                **extra,
             ),
         )
 

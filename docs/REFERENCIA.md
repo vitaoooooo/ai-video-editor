@@ -60,6 +60,9 @@ Inspeciona metadados com `ffprobe` e extrai frames representativos com timestamp
 ```
 
 ### Opção B: Análise Multimodal com IA e Relatório Markdown (`report-ai`)
+
+> **Legado.** `report-ai` (e o módulo `intelligence/`) continua funcionando, mas será substituído pelo comando `visual` (opção J), que analisa tomadas de projetos com clipes pela camada `llm/` com imagens.
+
 Interpreta os frames extraídos com IA multimodal e gera um relatório Markdown (`ai_report.md`) com linha do tempo visual e dados estruturados (`ai_analysis.json`). Cada execução também grava `ai_run_metrics.json` (provedor, modelo, frames enviados, latência, tokens quando o provedor informa, `success` e `error_type`), inclusive em caso de falha, e o relatório inclui a seção "Métricas da execução":
 
 #### 1. Configuração Segura da API Key (Google Gemini)
@@ -410,6 +413,43 @@ O **Produtor** lê o pedido e um resumo do material e escreve o **briefing** da 
 * **Estimativa** (sem preços): clipes nos papéis a usar, áudio a transcrever (duração dos clipes com fala ou fala desconhecida nesses papéis, se a receita transcreve), chamadas de IA previstas na edição (etapas de IA da receita, hoje `director`; até o dobro com novas tentativas) e chamadas já feitas pelo Produtor.
 * **Saída:** `briefing.json` (`Briefing`, `schema_version` 1: o conteúdo + pedido, receita forçada, origem, resumo do material, estimativa, cadeia de modelos, modelo efetivo, trocas e tentativas) na pasta do projeto: a do catálogo (pasta) ou a que o `edit` usaria (arquivo: `<nome>-<hash do arquivo>`). No terminal: "Entendi: ...", receita e origem, tipo, metas, papéis, instruções, estimativa e avisos.
 
+### Opção J: Análise visual das tomadas (`visual`)
+
+Divide cada clipe do projeto em **tomadas**, mede a imagem sem IA (FFmpeg) e pede à IA uma descrição de cada tomada a partir de 3 miniaturas. É o material dos futuros Diretores visuais (cobertura com B-roll/drone/POV). A IA vê só IDs (`P007.T03`, `P007.T03.F2`), nunca tempos; o código guarda os tempos e valida as respostas.
+
+```bash
+# 1. Quanto vai custar? Gera tomadas e medidas (sem IA) e mostra tomadas, imagens, chamadas e tokens
+.\.venv\Scripts\python.exe -m ai_video_editor.cli visual "D:\Vlog Viagem" --so-estimar
+
+# 2. Análise com o Gemini (GEMINI_API_KEY), só principal e b-roll, miniaturas em baixa resolução
+.\.venv\Scripts\python.exe -m ai_video_editor.cli visual "D:\Vlog Viagem" --papeis principal,broll --detalhe-imagem low
+```
+
+| Opção | Padrão | Efeito |
+| --- | --- | --- |
+| `--papeis LISTA` | todos | Papéis analisados, separados por vírgula (aceita os sinônimos das pastas, ex.: `b-roll`) |
+| `--so-estimar` | desligado | Para depois das tomadas e medidas e mostra tomadas a analisar, imagens, chamadas e tokens estimados; não chama a IA e não grava `visual/` |
+| `--visual-provider` | `gemini` | `gemini`, `openai`, `mock` (respostas simuladas, sem rede) ou `none` (só tomadas e medidas) |
+| `--visual-model` / `--visual-fallback` | os do provedor | Modelo e cadeia de reserva, como no Diretor (`provedor:modelo,...`; `none` desliga). Padrão no Gemini: `gemini-3.8-flash` → `gemini-3.6-flash` → `gemini-3.5-flash-lite` |
+| `--visual-thinking` | `low` | Raciocínio `off`/`low`/`high` (cada provedor traduz) |
+| `--visual-timeout` | `180` | Tempo limite de cada chamada, em segundos |
+| `--detalhe-imagem` | `auto` | Resolução com que a IA lê as miniaturas: `low` (Gemini 3: 280 tokens/imagem; OpenAI `detail: low`), `auto` (padrão do provedor; Gemini 3: 1120) ou `high` |
+| `--api-retries N` | `4` | Novas tentativas em falhas temporárias |
+| `--force` | desligado | Refaz tomadas e medidas (as análises da IA em cache continuam valendo se as tomadas não mudarem) |
+| `--projects-dir` / `--no-live` | `output/projects` / desligado | Como no `catalog` |
+
+* **Pasta:** a pasta de clipes (a mesma do `catalog`) ou a pasta do projeto. Se o catálogo não existir, ele é gerado pela API do `catalog/` com as opções padrão (para `--papel`/`--ajuste-relogio`, rode o `catalog` antes).
+* **Tomadas** (`visual/shots.py`, uma passada do FFmpeg por clipe, em `ANALYSIS_WIDTH` = 480 px): mudança de cena pelo `scene` score do filtro `select` ≥ `SCENE_THRESHOLD` (0,30), ignorando cortes a menos de `MIN_SHOT_SEC` (1 s) do anterior ou do fim. Tomadas mais longas que `MAX_SHOT_SEC` (8 s) viram janelas iguais, para achar o trecho ruim dentro de um clipe longo. `boundary`: `inicio`, `cena` ou `janela`. IDs `<clipe>.T01`, `T02`...
+* **Miniaturas:** 3 por tomada (início+10%, meio, fim−10%), 512 px de largura, JPEG `-q:v 5`, IDs `<tomada>.F1..F3`, em `visual/frames/<ID>.jpg`. O tempo de cada uma fica só no `visual.json`.
+* **Medidas** (na mesma passada, a `MEASURE_FPS` = 2 quadros/s; são dicas): desfoque = mediana do `blurdetect` (≥ 9 = `borrão alto`; quadro sem bordas não tem valor), brilho = luma média (< 0,15 escura, > 0,88 estourada), movimento = mediana do `YDIF` do `signalstats` entre amostras (≥ 0,08 = `movimento alto`; a amostra que atravessa um corte é ignorada) e **tela uniforme** = 60% das amostras com faixa de luma (YHIGH − YLOW) < 0,10 (parede, câmera tapada). Fala por tomada: sobreposição com os trechos de fala do catálogo (≥ 1 s ou 30% da tomada).
+* **IA em lotes** (`visual/describer.py`): até 8 tomadas / 24 miniaturas por chamada, cada imagem precedida do seu ID. Resposta por tomada: `description`, `tags`, `face_to_camera`, `people_count`, `issues` (`obstruida`, `desfocada`, `tremida`, `escura`, `estourada`, `borrao_movimento`, `nenhuma`), `usable` (`sim`/`nao`/`parcial`), `best_frames` (IDs F1..F3 da própria tomada, em ordem), `beauty` (1–5) e `summary_for_editor`. As medidas vão no prompt como dica; a IA pode discordar.
+* **Validação:** cada tomada do lote respondida exatamente uma vez, IDs existentes, `best_frames` da própria tomada, em ordem e não vazio se a tomada é utilizável. As tomadas recusadas voltam num novo pedido com o erro (até 3 tentativas por lote); persistindo, ficam `sem_analise` sem derrubar o resto. Erro da API (fora autenticação) marca o lote como `sem_analise`; depois de 2 lotes seguidos com erro, os restantes não são enviados. Sem chave = erro na hora.
+* **Cache por clipe** em `<projects-dir>/_cache/clips/visual-<chave>/` (chave = caminho + tamanho + mtime + parâmetros das tomadas): `shots.json`, miniaturas e `ai-<fingerprint>.json` (fingerprint = cadeia pedida + raciocínio + detalhe + versão do prompt). Tomadas analisadas não são pedidas de novo; as `sem_analise`, sim.
+* **Estimativa** (`--so-estimar`): chamadas = lotes (sem novas tentativas); tokens de entrada = imagens × `IMAGE_TOKENS` (Gemini 3, documentação "Media resolution": 1120 no padrão, 280 em `low`) + 900 por chamada + 60 por tomada; saída ≈ 150 por tomada. Não há preços: converta pela tabela do provedor.
+* **Saídas** em `visual/`: `visual.json` (`ProjectVisual` com `schema_version`, clipes `ClipVisual`, tomadas `Shot` com `ShotFrame`, `ShotMeasures` e `ShotAnalysis`, e `VisualAIRun` com modelo efetivo, lotes, chamadas, imagens, tokens e trocas de modelo), `visual.md` e `frames/`.
+* **`visual.md`:** resumo (tomadas por papel, % utilizável, com rosto, com problema), **Atenção** (trechos do principal com fala — ou fala desconhecida — e imagem obstruída ou com borrão de movimento, juntando tomadas seguidas; sem análise, valem as medidas `tela uniforme`/`borrão alto`: candidatos a cobertura obrigatória) e, por clipe, a tabela de tomadas com tempo, links das miniaturas, descrição, tags, problemas (da IA e das medidas), utilizável/melhor trecho e nota de beleza.
+* **Terminal:** `[1/4] Catálogo`, `[2/4] Tomadas e medidas` (clipes ao vivo), `[3/4] Descrição por IA` (`lote 3/25 · gemini:gemini-3.8-flash`, novas tentativas e trocas de modelo), `[4/4] Relatório`; no fim, modelo efetivo, lotes, chamadas, imagens, tokens e tempo total.
+
 ### Usando a GPU
 A transcrição usa a GPU NVIDIA automaticamente quando ela existe e as bibliotecas CUDA estão instaladas (`--whisper-device auto`, o padrão); senão, volta para a CPU com um aviso. Para instalar as bibliotecas (cuBLAS para CUDA 12 e cuDNN 9, compatíveis com o ctranslate2 4.x do faster-whisper) no Windows:
 
@@ -445,7 +485,8 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 * [`src/ai_video_editor/analyzer/extractor.py`](../src/ai_video_editor/analyzer/extractor.py): Extração determinística de frames com timestamps rastreáveis.
 * [`src/ai_video_editor/analyzer/service.py`](../src/ai_video_editor/analyzer/service.py): Orquestrador de análise técnica em lote.
 
-### Módulo Intelligence (Fase 3)
+### Módulo Intelligence (Fase 3) — legado
+Usado por `analyze`/`report-ai`; a análise visual passa para `visual/`. As exceções e o `retry.py` continuam sendo a base da camada `llm/`.
 * [`src/ai_video_editor/intelligence/schema.py`](../src/ai_video_editor/intelligence/schema.py): Modelos Pydantic (`VisualObservation`, `SceneTransitionHypothesis`, `VisualAnalysisResponse`, `AIAnalysisConfig`, `CompleteAIReport`).
 * [`src/ai_video_editor/intelligence/exceptions.py`](../src/ai_video_editor/intelligence/exceptions.py): Exceções padronizadas de IA (`AIAuthenticationError`, `AIRateLimitError`, `AITimeoutError`, `AIUnavailableError`, `AIResponseValidationError`).
 * [`src/ai_video_editor/intelligence/retry.py`](../src/ai_video_editor/intelligence/retry.py): `RetryPolicy` e `call_with_retry` (nova tentativa com espera exponencial, jitter e `Retry-After`; `sleep` injetável).
@@ -479,7 +520,8 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 * [`src/ai_video_editor/revision/providers/`](../src/ai_video_editor/revision/providers): `LLMReviser` (cadeia de modelos, como o Diretor), o atalho `GeminiReviser` e `MockReviser` determinístico.
 
 ### Módulo LLM (provedores de IA com saída estruturada)
-* [`src/ai_video_editor/llm/client.py`](../src/ai_video_editor/llm/client.py): interface `StructuredLLMClient` (`generate(prompt, schema, config, retry)` → objeto validado + `LLMCallMetrics`), com novas tentativas, subida do nível de raciocínio e métricas já implementadas.
+* [`src/ai_video_editor/llm/client.py`](../src/ai_video_editor/llm/client.py): interface `StructuredLLMClient` (`generate(prompt, schema, config, retry, images=None)` → objeto validado + `LLMCallMetrics`), com novas tentativas, subida do nível de raciocínio e métricas já implementadas.
+* **Imagens** (opcionais): lista de `ImageInput` (`llm/schema.py`: caminho do JPEG, `label` = ID citado no prompt, `mime_type`, `detail` `low`/`auto`/`high`). O provedor envia o prompt e, para cada imagem, o texto `Imagem <label>:` seguido dos bytes inline — Gemini: `types.Part.from_bytes` numa `Content` do usuário, com `media_resolution` quando o detalhe não é `auto`; OpenAI: itens `input_text` e `input_image` (data URL base64, `detail`). Mesmas novas tentativas, mapeamento de erros e `ModelChain`; `LLMCallMetrics.images` registra quantas foram. Sem imagens, a chamada ao SDK é a mesma de antes (texto puro), assim como os fingerprints. O `MockLLMClient` guarda as imagens em `image_calls` e aceita funções `(prompt, imagens, schema) → resposta` na lista de respostas.
 * [`src/ai_video_editor/llm/registry.py`](../src/ai_video_editor/llm/registry.py): `register_provider`/`create_client` (`gemini`, `openai`, `mock`, com import tardio).
 * [`src/ai_video_editor/llm/chain.py`](../src/ai_video_editor/llm/chain.py): `ModelChain` (troca automática de modelo) e `resolve_chain`/`parse_chain` (`provedor:modelo,...`).
 * [`src/ai_video_editor/llm/providers/`](../src/ai_video_editor/llm/providers): `GeminiLLMClient` (`google-genai`, `response_schema`), `OpenAILLMClient` (SDK `openai`, Responses API com `text_format` / JSON schema estrito; as novas tentativas do SDK ficam desligadas) e `MockLLMClient`.
@@ -510,6 +552,12 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 * [`src/ai_video_editor/producer/service.py`](../src/ai_video_editor/producer/service.py): `validate_content`, `recipe_problems`, `fallback_content`, `estimate_work` e `run_producer` (nova tentativa com o erro e fallback).
 * [`src/ai_video_editor/producer/material.py`](../src/ai_video_editor/producer/material.py): catálogo atual ou novo (pasta) ou resumo mínimo (arquivo) e a pasta do projeto.
 * [`src/ai_video_editor/producer/provider.py`](../src/ai_video_editor/producer/provider.py), [`prompt.py`](../src/ai_video_editor/producer/prompt.py) e `providers/`: interface `BriefingProducer`, prompt, `LLMProducer` (cadeia de modelos) e `MockProducer`.
+
+### Módulo Visual (comando `visual`)
+* [`src/ai_video_editor/visual/builder.py`](../src/ai_video_editor/visual/builder.py): `VisualBuilder` (catálogo existente ou gerado, tomadas por clipe em paralelo com cache, IA em lotes com cache por fingerprint, estimativa, saídas).
+* [`src/ai_video_editor/visual/shots.py`](../src/ai_video_editor/visual/shots.py): passada do FFmpeg (`scan_clip`: cena + `blurdetect`/`signalstats`), `split_shots`, `measure_shot`, `frame_times` e `extract_frames`, com as constantes nomeadas.
+* [`src/ai_video_editor/visual/describer.py`](../src/ai_video_editor/visual/describer.py): `VisualDescriber` (sobre `ModelChain`), prompt, lotes, `validate_batch`, estimativa de tokens e `mock_visual_responder`.
+* [`src/ai_video_editor/visual/schema.py`](../src/ai_video_editor/visual/schema.py) e [`report.py`](../src/ai_video_editor/visual/report.py): `ProjectVisual`, `ClipVisual`, `Shot`, `ShotFrame`, `ShotMeasures`, `ShotAnalysis`, `VisualBatchResponse`, `VisualAIRun` e o `visual.md`.
 
 ### Módulo Pipeline (comandos `edit` e `revise`)
 * [`src/ai_video_editor/pipeline/runner.py`](../src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que executa as etapas da receita (uma por método, na ordem de `recipe.steps`) com cache por fingerprint e callbacks de eventos (`on_progress`) e de andamento da etapa em curso (`on_stage_progress`, com `StageProgress`); `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis. O transcriber (`transcribe(..., on_progress)`) e o executor (`execute(plan, on_progress)`) informam o progresso; o pipeline só repassa, sem depender do terminal.

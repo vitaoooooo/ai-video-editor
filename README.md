@@ -189,6 +189,8 @@ python -m ai_video_editor.cli revise output\projects\aula-<hash> "mantém a fras
 python -m ai_video_editor.cli versions output\projects\aula-<hash>
 python -m ai_video_editor.cli catalog D:\vlog   # catálogo de uma pasta de clipes (papéis, IDs, datas, fala, folhas de contato)
 python -m ai_video_editor.cli briefing D:\vlog --pedido "vlog de 8 minutos, abre com drone"   # Produtor: receita, metas e estimativa
+python -m ai_video_editor.cli visual D:\vlog --so-estimar   # tomadas e medidas; estimativa de imagens e tokens da IA
+python -m ai_video_editor.cli visual D:\vlog                # descrição das tomadas por IA (visual/visual.md)
 
 # Benchmark de transcrição
 python -m ai_video_editor.cli benchmark transcription --audio aula.webm --reference ref.txt --language en --configs small:cpu:int8 large-v3-turbo:cuda:float16

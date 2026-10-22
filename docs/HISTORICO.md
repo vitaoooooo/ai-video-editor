@@ -198,6 +198,23 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   - 📊 505 → 547 testes automatizados (catálogo: 22 novos; Produtor: 20); suíte completa em 5min 08s.
 - ❌ **Fora desta tarefa:** o `edit` lendo o briefing (integração pendente: receita, metas e instruções ainda vêm das opções do `edit`), o Diretor de cobertura (só recebe o texto em `coverage_instructions`), `--papel`/`--ajuste-relogio` no `briefing` (rodar `catalog` antes) e a calibração dos limites de log com o material real.
 
+## Projetos com clipes, rodada 2: análise visual das tomadas (2026-10-22)
+
+- ✅ **Imagens na camada `llm/`** (aditivo): `generate(..., images=[ImageInput])`, com o prompt seguido de `Imagem <ID>:` + os bytes inline de cada miniatura — Gemini com `types.Part.from_bytes` (e `media_resolution` quando o detalhe não é `auto`), OpenAI com `input_text`/`input_image` (data URL base64, `detail`), mock com `image_calls` e respostas por função. Mesmas novas tentativas, mapeamento de erros, `ModelChain` e métricas (`images`).
+  - **Por quê aditivo:** o Diretor e o revisor não podem mudar; sem imagens, a chamada ao SDK continua sendo o prompt em texto puro (testado nos dois provedores) e nada do fingerprint muda. O teste de referência do `edit` continua passando sem regenerar.
+- ✅ **Comando `visual <pasta>`** (`visual/`): lê o catálogo (ou o gera pela API do `catalog/`), divide cada clipe em **tomadas** e descreve cada uma com IA a partir de 3 miniaturas.
+  - **Tomadas sem IA:** uma passada do FFmpeg por clipe (480 px) faz ao mesmo tempo a detecção de cena (`select` com `scene` ≥ 0,30) e as medidas a 2 quadros/s (`blurdetect` e `signalstats`: desfoque, brilho, movimento por `YDIF`, tela uniforme pela faixa de luma), gravando cada ramo num arquivo de metadados. Tomadas acima de 8 s viram janelas.
+  - **Por quê janelas:** no material real há um clipe de 1:13 com a câmera na parede amarela enquanto a pessoa fala, sem corte de cena; sem fatiar, o clipe inteiro vira uma tomada "talvez boa". Com janelas, o trecho ruim aparece por ID e vai para a seção **Atenção** do `visual.md` (fala com imagem obstruída/borrão = candidato a cobertura obrigatória na rodada 3).
+  - **Por quê medidas no prompt:** são baratas e pegam o óbvio (parede, borrão), mas erram em céu liso ou água; vão como dica e a IA pode discordar.
+  - **IA em lotes** de até 8 tomadas / 24 miniaturas rotuladas com IDs (`P007.T03.F2`); a IA nunca vê tempos. O código valida (tomada respondida exatamente uma vez, IDs existentes, `best_frames` da própria tomada e em ordem) e refaz o pedido só com as tomadas recusadas, avisando o erro; persistindo, a tomada fica `sem_analise` sem derrubar o resto, e é pedida de novo na próxima execução.
+  - **Cache** por clipe em `_cache/clips/visual-<chave>/` (tomadas, miniaturas e análises da IA por fingerprint da cadeia/raciocínio/detalhe/prompt): rodar de novo não paga a IA de novo, nem com `--force`.
+  - `--so-estimar` mostra tomadas, imagens, chamadas e tokens (constante por imagem da documentação do Gemini 3: 1120 no padrão, 280 em `--detalhe-imagem low`), sem preços.
+  - 🔁 Miniaturas: as 3 de uma tomada saem num único FFmpeg (3 entradas com busca), porque no Windows a partida do processo pesa mais que a extração; os testes do módulo caíram de ~1min 40s para ~1 min.
+- 🔁 **`intelligence/` vira legado** (docstring e referência): `analyze`/`report-ai` continuam usando; a análise visual nova está em `visual/`.
+- 📊 Vídeo sintético (padrão nítido 4 s → parede amarela 10 s → padrão desfocado 4 s): cortes em 4,0 e 14,0 s, 4 tomadas (a parede em 2 janelas), parede marcada como uniforme e o trecho final como borrão alto (blurdetect ≈ 5 nítido, ≈ 20 desfocado).
+- 📊 505 → 537 testes automatizados (10 de imagens no `llm/`, 22 do `visual`; o teste de referência do `edit` passa sem regenerar); suíte completa em 3min 43s.
+- ❌ **Fora desta tarefa:** usar a análise visual nas decisões (Diretor de cobertura, rodada 3), estabilização/tremor por `vidstabdetect` (só a diferença entre quadros), calibração das constantes no material real, preços, e `--papel`/`--ajuste-relogio` no `visual` (rodar o `catalog` antes).
+
 ---
 
 ## 🔄 Em andamento
@@ -216,7 +233,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 
 ## 🔮 Projetos com clipes (próximas rodadas; ver [ARQUITETURA.md](ARQUITETURA.md))
 
-- **Rodada 2:** ~~Produtor (pedido + catálogo → briefing validado)~~ (feito: comando `briefing`; falta o `edit` ler o briefing) ∥ espinha falada multiclipe (IDs de frase com o clipe) ∥ análise visual dos clipes (proxies; a análise visual da Fase 3 volta aqui).
+- **Rodada 2:** ~~Produtor (pedido + catálogo → briefing validado)~~ (feito: comando `briefing`; falta o `edit` ler o briefing) ∥ espinha falada multiclipe (IDs de frase com o clipe) ∥ ~~análise visual dos clipes~~ (feita: comando `visual`). Pendente da análise visual: rodar no material real (41 clipes) e calibrar as constantes das medidas.
 - **Calibrar os limites de perfil log** com os valores do `catalog.md` do material real.
 - **Rodada 3:** Diretor de cobertura + render com cobertura.
 - **Rodada 4:** `revise` multitrilha + relatórios.

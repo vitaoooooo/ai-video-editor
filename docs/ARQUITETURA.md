@@ -30,6 +30,7 @@ O editor deixa de ser só de vídeos falados e passa a editar qualquer tipo de v
 - **Projeto com clipes.** Um vídeo único é um projeto de 1 clipe; uma pasta é um projeto de N clipes (ex.: vlog com subpastas `principal/`, `drone/`, `pov/`, `broll/`). O **catálogo** (`catalog <pasta>`) é a porta de entrada: cada clipe ganha um papel (pela subpasta), um ID estável (`P001`, `D001`, `V001`, `B001`, `X001`), dados técnicos, data de gravação com origem, detecção de fala, sinais simples de cor e miniaturas. É o vocabulário de IDs que as IAs vão usar.
 - **Pedido do usuário.** O usuário descreve o que quer (`--pedido`).
 - **Produtor (IA; comando `briefing`, rodada 2).** Lê o pedido e um resumo do catálogo (por papel: quantidade, duração, fala, formatos; nunca a lista de clipes) e devolve um **briefing**: tipo de vídeo, uma receita registrada, "Entendi: ...", metas (duração, intensidade, ritmo), instruções para o Diretor de cortes e para o de cobertura, papéis a usar. O código valida o briefing contra o registro de receitas (lido na hora) e o material (receita de 1 vídeo com vários clipes falados, receita de fala sem fala, papéis e duração alvo); inválido → nova tentativa com o erro → fallback determinístico registrado. O Produtor escolhe e ajusta, nunca cria etapas. **Implementado como comando** (`briefing <arquivo-ou-pasta>`, salva `briefing.json`); a **integração com o `edit` está pendente** (o `edit` ainda não lê o briefing).
+- **Análise visual (`visual`, rodada 2).** Cada clipe vira **tomadas** (`P007.T03`: mudança de cena ou janela de até 8 s), com 3 miniaturas (`P007.T03.F1..F3`) e medidas sem IA (desfoque, brilho, movimento, tela uniforme). Uma IA multimodal descreve as tomadas em lotes vendo só miniaturas rotuladas com IDs: descrição, tags, rosto, problemas, se é utilizável, o melhor trecho (por IDs de miniatura) e a beleza como cobertura. Os tempos ficam no código. É o vocabulário visual dos Diretores de cobertura, e a seção "Atenção" já aponta a fala com imagem ruim (cobertura obrigatória).
 - **Diretores especializados.** O Diretor de fala (o de hoje) decide por IDs de frases; os próximos decidem por IDs de clipes e trechos (ex.: Diretor de cobertura: qual B-roll cobre qual trecho da fala).
 - **Timeline com trilhas.** Substitui o `EditPlan` (lista única de trechos) por trilhas: fala principal, cobertura de vídeo, áudio. Já existe (`core/timeline.py`, executada pelo comando `render`); o `edit` passa a gerá-la na rodada 2.
 
@@ -37,6 +38,8 @@ O editor deixa de ser só de vídeos falados e passa a editar qualquer tipo de v
 flowchart LR
     U[Pedido do usuário] --> P[Produtor - IA]
     C[Catálogo: clipes com IDs] --> P
+    C --> V[Análise visual: tomadas com IDs]
+    V --> D
     P -->|briefing validado| R[Receitas e peças]
     R --> D[Diretores - IA: só IDs]
     D -->|IDs validados| T[Timeline com trilhas]
@@ -48,6 +51,6 @@ flowchart LR
 Cada rodada tem tarefas em paralelo (um worktree por tarefa):
 
 1. **Catálogo + receitas** ∥ **Timeline + render.** Catálogo de pastas de clipes, receitas como dados (`fala` = o `edit` atual), teste de referência do perfil falado; em paralelo, a Timeline com trilhas e o render dela.
-2. **Produtor** ∥ **espinha falada multiclipe** ∥ **análise visual.** Briefing a partir do pedido + catálogo; a receita de fala sobre vários clipes principais em sequência (IDs de frase passam a incluir o clipe); análise visual dos clipes (proxies, descrição de cena) para os Diretores visuais.
+2. **Produtor** ∥ **espinha falada multiclipe** ∥ **análise visual.** Briefing a partir do pedido + catálogo; a receita de fala sobre vários clipes principais em sequência (IDs de frase passam a incluir o clipe); análise visual dos clipes (tomadas, miniaturas, medidas e descrição por IA — feita: comando `visual`) para os Diretores visuais.
 3. **Diretor de cobertura** + **render com cobertura.** B-roll/drone/POV cobrindo trechos da fala, por IDs de clipes e de frases.
 4. **`revise` multitrilha** + **relatórios.** Pedidos em linguagem natural sobre a Timeline inteira, e relatórios/linha do tempo por trilha.
