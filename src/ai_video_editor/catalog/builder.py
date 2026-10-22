@@ -12,6 +12,7 @@ projeto: acrescentar um clipe muda o hash do projeto, mas não reprocessa os out
 import hashlib
 import json
 import os
+import re
 import shutil
 import statistics
 import time
@@ -24,7 +25,7 @@ from ai_video_editor.analyzer.exceptions import NoVideoStreamError, VideoIngestE
 from ai_video_editor.catalog.dates import is_future, recording_date
 from ai_video_editor.catalog.media import probe_clip, thumbnails_and_color
 from ai_video_editor.catalog.report import build_catalog_markdown
-from ai_video_editor.catalog.roles import format_offset, normalize_name, role_for_folder
+from ai_video_editor.catalog.roles import format_offset, match_folder_role, normalize_name
 from ai_video_editor.catalog.schema import (
     ROLE_PREFIX,
     ROLES,
@@ -67,6 +68,10 @@ CATALOG_STAGE_LABELS = {
 
 # Um papel cujas datas ficam a mais que isso do intervalo do principal tem relógio suspeito.
 CLOCK_TOLERANCE = timedelta(minutes=30)
+
+# Um clipe que "começa" antes de o anterior da mesma câmera terminar (data + duração), com esta
+# folga para arredondamentos, indica datas de exportação em vez de gravação.
+OVERLAP_TOLERANCE_SEC = 1.0
 
 # (etapa, evento, detalhe); eventos: "start", "done", "cached", "notice".
 CatalogProgress = Callable[[str, str, str], None]
@@ -123,6 +128,7 @@ def assign_roles(
     """Papel de cada subpasta de primeiro nível; `overrides` (nome da pasta → papel) tem prioridade."""
     by_key = {normalize_name(name): role for name, role in overrides.items()}
     assignments: list[RoleAssignment] = []
+    warnings: list[str] = []
     used: set[str] = set()
     for folder in folders:
         key = normalize_name(folder)
@@ -133,13 +139,61 @@ def assign_roles(
             used.add(key)
             assignments.append(RoleAssignment(folder=folder, role=by_key[key], source="--papel"))
         else:
-            assignments.append(RoleAssignment(folder=folder, role=role_for_folder(folder), source="padrão"))
-    warnings = [
+            role, source, found = match_folder_role(folder)
+            assignments.append(RoleAssignment(folder=folder, role=role, source=source))
+            if len(found) > 1:
+                warnings.append(
+                    f"Pasta \"{folder}\" cita mais de um papel ({', '.join(found)}); ficou como outro. "
+                    f"Use --papel \"{folder}=papel\"."
+                )
+    warnings += [
         f"--papel {name}={role}: nenhuma subpasta com esse nome."
         for name, role in overrides.items()
         if normalize_name(name) not in used and normalize_name(name) != ""
     ]
     return assignments, warnings
+
+
+def natural_key(text: str) -> list:
+    """Ordenação natural: `clip (4)` < `clip (15)` < `clip (27)`; sem diferenciar maiúsculas."""
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", text)]
+
+
+def _name_key(clip: CatalogClip) -> tuple:
+    return natural_key(Path(clip.relative_path).name), natural_key(clip.relative_path)
+
+
+def date_conflicts(clips: list[CatalogClip]) -> list[tuple[CatalogClip, CatalogClip]]:
+    """Pares (anterior, seguinte) da mesma pasta em que o seguinte "começa" antes de o anterior terminar.
+
+    A comparação é por pasta (uma câmera): câmeras diferentes no mesmo papel podem gravar ao mesmo tempo.
+    """
+    conflicts: list[tuple[CatalogClip, CatalogClip]] = []
+    for folder in sorted({c.folder for c in clips}):
+        dated = sorted(
+            (c for c in clips if c.folder == folder and c.adjusted_at is not None and c.media is not None),
+            key=lambda c: (c.adjusted_at, _name_key(c)),
+        )
+        for before, after in zip(dated, dated[1:]):
+            end = before.adjusted_at + timedelta(seconds=before.media.duration_sec - OVERLAP_TOLERANCE_SEC)
+            if after.adjusted_at < end:
+                conflicts.append((before, after))
+    return conflicts
+
+
+def order_role(members: list[CatalogClip]) -> list[CatalogClip]:
+    """Ordem dos clipes de um papel: pela data; se as datas parecerem de exportação, pelo nome.
+
+    Com datas sobrepostas, as datas do papel são marcadas como não confiáveis (`reliable=False`)
+    e a origem da ordem fica em `order_source = "nome"`.
+    """
+    if not date_conflicts(members):
+        return sorted(members, key=lambda c: (c.adjusted_at, _name_key(c)))
+    for clip in members:
+        clip.order_source = "nome"
+        if clip.recorded_at is not None:
+            clip.recorded_at = clip.recorded_at.model_copy(update={"reliable": False})
+    return sorted(members, key=_name_key)
 
 
 class CatalogBuilder:
@@ -404,10 +458,7 @@ class CatalogBuilder:
 
         ordered: list[CatalogClip] = []
         for role in ROLES:
-            members = sorted(
-                (c for c in clips if c.role == role and c.error is None),
-                key=lambda c: (c.adjusted_at, Path(c.relative_path).name.lower(), c.relative_path.lower()),
-            )
+            members = order_role([c for c in clips if c.role == role and c.error is None])
             for n, clip in enumerate(members, start=1):
                 clip.id = f"{ROLE_PREFIX[role]}{n:03d}"
             ordered += members
@@ -480,6 +531,15 @@ def project_warnings(clips: list[CatalogClip], clock_adjustments: dict[Role, flo
             warnings.append(
                 f"Relógio suspeito no papel {role}{note}: nenhuma data dentro do intervalo do principal "
                 f"(diferença de ~{abs(hours):.1f}h); confira e, se for o caso, use {hint}."
+            )
+    for role in ROLES:
+        conflicts = date_conflicts(by_role[role])
+        if conflicts:
+            pairs = [f"{after.id} começa antes de {before.id} terminar" for before, after in conflicts]
+            shown = "; ".join(pairs[:3]) + (f"; e mais {len(pairs) - 3}" if len(pairs) > 3 else "")
+            warnings.append(
+                f"Datas não confiáveis ({role}): {shown}. As datas parecem de exportação, não de gravação; "
+                "o papel foi ordenado pelo número no nome do arquivo (ordem natural)."
             )
     for role in ROLES:
         from_mtime = [c for c in by_role[role] if c.recorded_at and c.recorded_at.source == "mtime"]

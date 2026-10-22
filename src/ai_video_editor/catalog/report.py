@@ -53,13 +53,12 @@ def _speech(clip: CatalogClip) -> str:
 
 
 def _signals(clip: CatalogClip) -> str:
+    """Valores medidos (para calibrar os limites) e a suspeita de log, se houver."""
     color = clip.color
     if color is None:
         return "—"
-    if color.log_suspect:
-        return "suspeita: perfil log"
-    flags = [label for flag, label in ((color.low_contrast, "baixo contraste"), (color.low_saturation, "baixa saturação")) if flag]
-    return ("suspeita: " + ", ".join(flags)) if flags else "—"
+    values = f"luma {color.luma_spread:.2f} · sat {color.saturation:.3f}"
+    return f"{values} — suspeita: perfil log" if color.log_suspect else values
 
 
 def _speech_share(clips: list[CatalogClip]) -> str:
@@ -105,12 +104,17 @@ def build_catalog_markdown(catalog: ProjectCatalog) -> str:
             span = _local(min(dates))
             if max(dates) != min(dates):
                 span += f" → {_local(max(dates))}"
+        if any(c.order_source == "nome" for c in members):
+            span = f"não confiáveis ⚠ ({span})"
         lines.append(
             f"| {role} | {', '.join(folders)} | {len(members)} | {_clock(sum(c.media.duration_sec for c in members))} | "
             f"{', '.join(sorted({c.media.resolution for c in members}))} | "
             f"{', '.join(sorted({f'{c.media.fps:g}' for c in members}, key=float))} | "
             f"{', '.join(sorted({c.media.codec for c in members}))} | {span} | {_speech_share(members)} |"
         )
+    contains = [a for a in catalog.roles if a.source == "contém"]
+    if contains:
+        lines += ["", "Papéis pela palavra no nome da pasta: " + ", ".join(f"`{a.folder}` → {a.role}" for a in contains) + "."]
     overrides = [a for a in catalog.roles if a.source == "--papel"]
     if overrides:
         lines += ["", "Papéis definidos por `--papel`: " + ", ".join(f"`{a.folder}` → {a.role}" for a in overrides) + "."]
@@ -138,6 +142,8 @@ def build_catalog_markdown(catalog: ProjectCatalog) -> str:
             origin = _DATE_SOURCE_LABELS[c.recorded_at.source] if c.recorded_at else "—"
             if c.clock_offset_sec:
                 origin += f", {format_offset(c.clock_offset_sec)}"
+            if c.order_source == "nome":
+                origin += ", não confiável; ordem pelo nome"
             rotation = f" ↻{m.rotation}°" if m.rotation else ""
             lines.append(
                 f"| {c.id} | `{c.relative_path}` | {_clock(m.duration_sec)} | {m.resolution}{rotation} | {m.fps:g} | "

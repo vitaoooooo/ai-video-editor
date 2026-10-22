@@ -2,8 +2,9 @@
 
 import re
 import unicodedata
+from typing import Optional
 
-from ai_video_editor.catalog.schema import ROLES, Role
+from ai_video_editor.catalog.schema import ROLES, Role, RoleSource
 
 # Nome normalizado (sem acentos, minúsculo, só letras e números) → papel.
 _SYNONYMS: dict[str, Role] = {
@@ -20,6 +21,9 @@ _SYNONYMS: dict[str, Role] = {
     "outros": "outro",
 }
 
+# Valem só como nome exato da pasta: "outro" dentro de um nome maior não diz nada.
+_EXACT_ONLY: frozenset[Role] = frozenset({"outro"})
+
 _OFFSET_RE = re.compile(r"^([+-])?(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?$")
 
 
@@ -28,20 +32,50 @@ def normalize_name(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", ascii_name.lower())
 
 
-def role_for_folder(folder: str) -> Role:
-    """`Drone`, `B-Roll`, `GoPros`, `Câmera`... → papel; o que não for reconhecido vira `outro`."""
-    key = normalize_name(folder)
+def _lookup(key: str) -> Optional[Role]:
+    """Sinônimo exato, ou o plural dele (drones, povs)."""
     if key in _SYNONYMS:
         return _SYNONYMS[key]
-    if key.endswith("s") and key[:-1] in _SYNONYMS:  # plural: drones, povs
+    if key.endswith("s") and key[:-1] in _SYNONYMS:
         return _SYNONYMS[key[:-1]]
-    return "outro"
+    return None
+
+
+def _tokens(name: str) -> list[str]:
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return [t for t in re.split(r"[^a-z0-9]+", ascii_name.lower()) if t]
+
+
+def match_folder_role(folder: str) -> tuple[Role, RoleSource, list[Role]]:
+    """Papel da pasta, de onde ele veio e todos os papéis encontrados no nome.
+
+    1. Nome inteiro igual a um sinônimo (`Drone`, `B-Roll`, `GoPros`) → `padrão`.
+    2. Senão, um sinônimo como palavra do nome (`Osmo Pocket - PRINCIPAL`, `Imagens de Drone`),
+       inclusive duas palavras vizinhas juntas (`Fx30 - B Roll`) → `contém`.
+    Nenhum papel, ou papéis diferentes no mesmo nome (`Drone e POV`) → `outro`.
+    """
+    exact = _lookup(normalize_name(folder))
+    if exact is not None:
+        return exact, "padrão", [exact]
+    tokens = _tokens(folder)
+    found: list[Role] = []
+    for candidate in tokens + [a + b for a, b in zip(tokens, tokens[1:])]:
+        role = _lookup(candidate)
+        if role is not None and role not in _EXACT_ONLY and role not in found:
+            found.append(role)
+    if len(found) == 1:
+        return found[0], "contém", found
+    return "outro", "padrão", found
+
+
+def role_for_folder(folder: str) -> Role:
+    """`Drone`, `B-Roll`, `Osmo Pocket - PRINCIPAL`... → papel; o que não for reconhecido vira `outro`."""
+    return match_folder_role(folder)[0]
 
 
 def parse_role(value: str) -> Role:
     """Papel escrito pelo usuário (aceita os mesmos sinônimos das pastas)."""
-    key = normalize_name(value)
-    role = _SYNONYMS.get(key) or (_SYNONYMS.get(key[:-1]) if key.endswith("s") else None)
+    role = _lookup(normalize_name(value))
     if role is None:
         raise ValueError(f"papel desconhecido '{value}' (use: {', '.join(ROLES)})")
     return role
