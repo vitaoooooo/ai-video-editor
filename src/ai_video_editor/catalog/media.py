@@ -16,11 +16,6 @@ from ai_video_editor.renderer.ffmpeg_locator import get_ffmpeg_path, get_ffprobe
 THUMBNAIL_POSITIONS = (0.10, 0.50, 0.90)
 THUMBNAIL_WIDTH = 320
 
-# Abaixo disso, suspeita de perfil de cor log (imagem "lavada"): faixa entre os percentis 10 e 90
-# da luma e saturação média, normalizadas 0–1. Vídeo comum fica bem acima (≈0,7 e ≈0,25).
-LOW_CONTRAST_SPREAD = 0.45
-LOW_SATURATION = 0.08
-
 _STAT_RE = re.compile(r"lavfi\.signalstats\.(YLOW|YHIGH|SATAVG)=([\d.]+)")
 
 
@@ -143,7 +138,5 @@ def thumbnails_and_color(
             frames=len(frames),
             luma_spread=round(spread, 3),
             saturation=round(saturation, 3),
-            low_contrast=spread < LOW_CONTRAST_SPREAD,
-            low_saturation=saturation < LOW_SATURATION,
         )
     return names, color, warnings

@@ -659,6 +659,99 @@ def handle_catalog(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_producer(args: argparse.Namespace):
+    """Produtor com as opções do Diretor; None com `--director-provider none` (só a regra determinística)."""
+    if args.director == "none":
+        return None
+    if args.director == "mock":
+        from ai_video_editor.producer.providers.mock import MockProducer
+
+        return MockProducer()
+    from ai_video_editor.producer.providers.llm import LLMProducer
+
+    chain = ModelChain(
+        resolve_chain(args.director, args.director_model, args.director_fallback),
+        thinking=args.director_thinking,
+        timeout_sec=args.director_timeout,
+        retry=RetryPolicy(
+            max_retries=args.api_retries,
+            on_retry=lambda event: print(f"[produtor] {event.message}", flush=True),
+        ),
+        on_event=lambda message: print(f"[produtor] {message}", flush=True),
+    )
+    return LLMProducer(chain)
+
+
+def _origin_label(briefing) -> str:
+    if briefing.origin == "ia":
+        label = f"IA ({briefing.effective_model or briefing.provider})"
+    else:
+        label = f"regra sem IA: {briefing.origin_reason}"
+    return f"--receita; resto por {label}" if briefing.forced_recipe else label
+
+
+def handle_briefing(args: argparse.Namespace) -> int:
+    """Escreve o briefing (receita, metas, instruções) para um vídeo ou pasta de clipes, sem editar nada."""
+    from ai_video_editor.producer import BRIEFING_FILE, run_producer
+    from ai_video_editor.producer.material import load_material
+
+    target = Path(args.target)
+    if not target.exists():
+        print(f"Erro: arquivo ou pasta não encontrado: {target}", file=sys.stderr)
+        return 1
+    if args.receita is not None:
+        try:
+            get_recipe(args.receita)
+        except RecipeError as e:
+            print(f"Erro: {e}", file=sys.stderr)
+            return 1
+
+    status = LiveStatus(live=False if args.no_live else None)
+    printer = CatalogProgressPrinter(status)
+    try:
+        with status:
+            material = load_material(
+                target, Path(args.projects_dir), on_progress=printer, on_stage_progress=printer.progress
+            )
+        producer = _build_producer(args)
+        if producer is not None and producer.model_chain:
+            print(f"[produtor] {producer.model_chain[0]}", flush=True)
+        briefing = run_producer(producer, args.pedido or "", material.summary, args.receita)
+    except Exception as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    path = material.project_dir / BRIEFING_FILE
+    briefing.save(path)
+    if material.catalog is not None:
+        print(f"Catálogo ({material.source}): {material.project_dir / 'catalog'}")
+    estimate = briefing.estimate
+    target_text = format_duration(briefing.target_duration_sec) if briefing.target_duration_sec else "livre"
+    print()
+    print(briefing.understood)
+    print(f"Receita: {briefing.recipe} ({_origin_label(briefing)})")
+    print(f"Tipo de vídeo: {briefing.video_type}")
+    print(f"Metas: duração {target_text} | intensidade {briefing.intensity} | ritmo {briefing.pace}")
+    print(f"Papéis: {', '.join(briefing.roles_to_use)}")
+    if briefing.director_instructions:
+        print(f"Diretor de cortes: {briefing.director_instructions}")
+    if briefing.coverage_instructions:
+        print(f"Cobertura: {briefing.coverage_instructions}")
+    steps = ", ".join(estimate.ai_steps) or "nenhuma"
+    print(
+        f"Estimativa: {estimate.clips} clipe(s); {format_duration(estimate.audio_to_transcribe_sec)} de áudio a "
+        f"transcrever ({estimate.clips_to_transcribe} clipe(s)); {estimate.ai_calls} chamada(s) de IA prevista(s) "
+        f"na edição ({steps}; até {estimate.ai_calls_max} com novas tentativas); Produtor: "
+        f"{estimate.producer_calls} chamada(s)"
+    )
+    if briefing.warnings:
+        print(f"Avisos ({len(briefing.warnings)}):")
+        for warning in briefing.warnings:
+            print(f"  - {warning}")
+    print(f"Briefing: {path}")
+    return 0
+
+
 def _non_negative_int(value: str) -> int:
     number = int(value)
     if number < 0:
@@ -1018,6 +1111,43 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-live", action="store_true", help="Sem linha de andamento ao vivo; só as linhas finais de cada etapa"
     )
 
+    # Subcomando: briefing
+    briefing_parser = subparsers.add_parser(
+        "briefing", help="Produtor: lê o pedido e o material e escreve o briefing da edição (não edita nada)"
+    )
+    briefing_parser.add_argument("target", help="Vídeo ou pasta de clipes (a pasta é catalogada se preciso)")
+    briefing_parser.add_argument("--pedido", default="", help='Pedido livre, ex: "vlog de 8 minutos, ritmo rápido"')
+    briefing_parser.add_argument(
+        "--receita", default=None, metavar="NOME",
+        help=f"Força a receita; a IA só preenche o resto (disponíveis: {', '.join(recipe_names())})",
+    )
+    briefing_parser.add_argument(
+        "--director-provider", "--director", dest="director", choices=["none", "mock", *_llm_providers()],
+        default="gemini",
+        help="Provedor de IA do Produtor (as mesmas opções do Diretor; none = só a regra sem IA; padrão: gemini)",
+    )
+    briefing_parser.add_argument("--director-model", default=None, help="Modelo (padrão: o do provedor)")
+    briefing_parser.add_argument(
+        "--director-fallback", default=None, metavar="LISTA",
+        help="Modelos de reserva \"provedor:modelo,...\"; \"none\" desliga (padrão: os do provedor)",
+    )
+    briefing_parser.add_argument(
+        "--director-thinking", choices=["off", "low", "high"], default="low", help="Raciocínio (padrão: low)"
+    )
+    briefing_parser.add_argument(
+        "--director-timeout", type=float, default=120.0, help="Tempo limite em segundos da chamada (padrão: 120)"
+    )
+    briefing_parser.add_argument(
+        "--api-retries", type=_non_negative_int, default=DEFAULT_API_RETRIES, metavar="N",
+        help=f"Novas tentativas da API em falhas temporárias (padrão: {DEFAULT_API_RETRIES})",
+    )
+    briefing_parser.add_argument(
+        "--projects-dir", default="output/projects", help="Diretório base dos projetos (padrão: output/projects)"
+    )
+    briefing_parser.add_argument(
+        "--no-live", action="store_true", help="Sem linha de andamento ao vivo (se o catálogo precisar rodar)"
+    )
+
     # Subcomando: benchmark
     benchmark_parser = subparsers.add_parser("benchmark", help="Benchmarks reproduzíveis")
     benchmark_sub = benchmark_parser.add_subparsers(dest="benchmark_command", required=True)
@@ -1085,6 +1215,8 @@ def main() -> None:
         sys.exit(handle_versions(args))
     elif args.command == "catalog":
         sys.exit(handle_catalog(args))
+    elif args.command == "briefing":
+        sys.exit(handle_briefing(args))
     elif args.command == "benchmark":
         if args.benchmark_command == "rescore":
             sys.exit(handle_benchmark_rescore(args))

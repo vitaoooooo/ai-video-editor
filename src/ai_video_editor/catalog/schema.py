@@ -4,14 +4,31 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 # Sobe quando o formato do catalog.json muda.
-CATALOG_SCHEMA_VERSION = 1
+CATALOG_SCHEMA_VERSION = 2
 
 Role = Literal["principal", "drone", "pov", "broll", "outro"]
 ROLES: tuple[Role, ...] = ("principal", "drone", "pov", "broll", "outro")
 ROLE_PREFIX: dict[Role, str] = {"principal": "P", "drone": "D", "pov": "V", "broll": "B", "outro": "X"}
+
+# padrão: nome da pasta igual a um sinônimo; contém: sinônimo como palavra do nome;
+# --papel: definido pelo usuário; raiz: arquivos soltos na pasta do projeto.
+RoleSource = Literal["padrão", "contém", "--papel", "raiz"]
+
+# data: ordem pela data de gravação; nome: datas não confiáveis (parecem de exportação), ordem natural do nome.
+OrderSource = Literal["data", "nome"]
+
+# Suspeita de perfil de cor log (imagem "lavada"): só quando contraste E saturação estão baixos ao
+# mesmo tempo. Valores normalizados 0–1 sobre o pico da profundidade de bits do clipe.
+# - Faixa de luma = YHIGH − YLOW do signalstats (percentis 90 e 10).
+# - Saturação = SATAVG.
+# Estimativa inicial (a calibrar com o material real; o catalog.md mostra os dois valores por clipe):
+# vídeo comum ≈0,35–0,75 de faixa e ≈0,06–0,20 de saturação; log ≈0,2–0,3 e ≈0,01–0,04. Os limites
+# antigos (0,45 e 0,08) pegavam vídeo comum: cena clara ou pouco colorida já ficava abaixo dos dois.
+LOG_MAX_LUMA_SPREAD = 0.30
+LOG_MAX_SATURATION = 0.04
 
 # container: tag do container (format); stream: tag da trilha de vídeo; quicktime: com.apple.quicktime.creationdate;
 # filename: padrão de data no nome do arquivo; mtime: data de modificação (pouco confiável).
@@ -74,12 +91,12 @@ class ColorSignals(BaseModel):
     frames: int
     luma_spread: float = Field(description="(YHIGH − YLOW) normalizado 0–1, média dos frames")
     saturation: float = Field(description="SATAVG normalizado 0–1, média dos frames")
-    low_contrast: bool
-    low_saturation: bool
 
+    @computed_field
     @property
     def log_suspect(self) -> bool:
-        return self.low_contrast and self.low_saturation
+        """Calculado dos valores (não fica no cache): mudar os limites vale para clipes já analisados."""
+        return self.luma_spread < LOG_MAX_LUMA_SPREAD and self.saturation < LOG_MAX_SATURATION
 
 
 class ClipAnalysis(BaseModel):
@@ -113,13 +130,14 @@ class CatalogClip(BaseModel):
     thumbnails: list[str] = Field(default_factory=list, description="Relativas à pasta catalog/")
     warnings: list[str] = Field(default_factory=list)
     error: Optional[str] = None
+    order_source: OrderSource = Field(default="data", description="O que definiu a posição do clipe no papel")
     cached: bool = Field(default=False, description="Análise reaproveitada do cache nesta execução")
 
 
 class RoleAssignment(BaseModel):
     folder: str
     role: Role
-    source: Literal["padrão", "--papel", "raiz"]
+    source: RoleSource
 
 
 class StageTime(BaseModel):

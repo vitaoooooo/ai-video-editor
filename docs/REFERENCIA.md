@@ -359,18 +359,56 @@ Lê uma pasta de clipes **sem modificar nada nela** e gera o catálogo do projet
 
 * **Projeto:** `<projects-dir>/<nome-da-pasta>-<hash>/catalog/`. O hash vem da lista de vídeos (caminho relativo, tamanho e data de modificação); o conteúdo dos vídeos não é lido para isso. Acrescentar, remover ou alterar um vídeo cria outro projeto.
 * **Arquivos:** só extensões de vídeo (`.mp4`, `.mov`, `.mkv`, `.mts`, `.mxf`, `.insv`...), em qualquer profundidade; o resto (inclusive `.LRV`/`.THM` das câmeras, ocultos e `._*` do macOS) é ignorado e contado.
-* **Papel** pela subpasta de primeiro nível, sem diferenciar maiúsculas, acentos, hífens e plural: `principal`/`main`/`a-roll`/`a-cam` → `principal`; `drone` → `drone`; `pov`/`gopro` → `pov`; `broll`/`b-roll`/`b-cam` → `broll`; o resto → `outro`. Arquivos na raiz da pasta → `principal`.
-* **IDs** por papel, na ordem de gravação (desempate pelo nome do arquivo): `P001` (principal), `D001` (drone), `V001` (pov), `B001` (broll), `X001` (outro). Arquivos com problema não ganham ID.
+* **Papel** pela subpasta de primeiro nível, sem diferenciar maiúsculas, acentos, hífens e plural: `principal`/`main`/`a-roll`/`a-cam` → `principal`; `drone` → `drone`; `pov`/`gopro` → `pov`; `broll`/`b-roll`/`b-cam` → `broll`; o resto → `outro`. Arquivos na raiz da pasta → `principal`. A origem fica em `roles[].source`:
+  * `padrão`: o nome inteiro é um sinônimo (`Drone`, `B-Roll`, `GoPros`);
+  * `contém`: um sinônimo aparece como **palavra** do nome, ou como duas palavras vizinhas juntas: `Osmo Pocket - PRINCIPAL` → principal, `Fx30 - BROLL` → broll, `Go3S - POV` → pov, `Imagens de Drone` → drone, `Fx30 - B Roll` → broll. Pedaço de palavra não conta (`Dronezinho`, `Povo` → outro); `outro` só vale pelo nome exato;
+  * nome que cita **dois papéis diferentes** (`Drone e POV`) → `outro`, com aviso pedindo `--papel`;
+  * `--papel` e `raiz`.
+* **IDs** por papel, na ordem de gravação: `P001` (principal), `D001` (drone), `V001` (pov), `B001` (broll), `X001` (outro). Desempate pela **ordem natural** do nome do arquivo (`(4)` < `(15)` < `(27)`). Arquivos com problema não ganham ID.
+* **Datas de exportação:** se, numa mesma subpasta (uma câmera), um clipe "começa" antes de o anterior terminar (data + duração, com 1s de folga), as datas parecem de exportação, não de gravação (ex.: arquivos reexportados, em que `creation_time` é a hora da exportação). As datas do papel inteiro viram não confiáveis (`recorded_at.reliable = false`), o papel é ordenado pela **ordem natural do nome do arquivo** (`order_source = "nome"`) e sai um aviso. Câmeras diferentes no mesmo papel podem gravar ao mesmo tempo, por isso a comparação é por subpasta. Datas não confiáveis ficam fora da verificação de relógio suspeito.
 * **Dados técnicos** (ffprobe, em paralelo): duração, resolução (já girada pela rotação, via `probe_rotation`), fps, codec, bit depth e `pix_fmt`, rotação, áudio (codec), bitrate e tamanho.
 * **Data de gravação**, com a origem em `recorded_at.source`: tags do arquivo (`com.apple.quicktime.creationdate` → `creation_time` do container → da trilha de vídeo; relógios zerados como 1904/1970 são ignorados) → padrão no nome (`DJI_20240115123045`, `VID_20240115_123045`, `PXL_...`, `IMG_...`, `2024-01-15 12-30-45`) → data de modificação do arquivo (`mtime`, marcada como pouco confiável, porque muda ao copiar). Tudo é guardado em UTC: tags sem fuso são UTC; datas do nome são lidas no fuso desta máquina.
 * **Fala** (clipes com áudio): VAD Silero do faster-whisper (extra `.[transcription]`, import tardio) sobre o áudio decodificado pelo FFmpeg a 16 kHz mono, lido em blocos de 60s. Resultado: proporção da duração com fala, segundos e trechos. Sem faster-whisper: `desconhecido` e um aviso (na próxima execução com ele instalado, só a fala é refeita). Sem áudio: `sem_audio`.
-* **Sinais de cor** (sem IA, rotulados como suspeita): `signalstats` nos três frames das miniaturas. Faixa entre os percentis 10 e 90 da luma < 0,45 = baixo contraste; saturação média < 0,08 = baixa saturação; os dois juntos = **suspeita de perfil log**.
+* **Sinais de cor** (sem IA, rotulados como suspeita): `signalstats` nos três frames das miniaturas: faixa entre os percentis 10 e 90 da luma (`luma_spread`) e saturação média (`saturation`), normalizadas 0–1. **Suspeita de perfil log** só quando os dois estão baixos ao mesmo tempo: `luma_spread < LOG_MAX_LUMA_SPREAD` (0,30) **e** `saturation < LOG_MAX_SATURATION` (0,04), constantes em `catalog/schema.py`. `log_suspect` é calculado dos valores (mudar os limites vale para o cache). O `catalog.md` mostra os valores medidos em cada clipe (`luma 0.42 · sat 0.061`) para calibrar os limites com material real; contraste ou saturação baixos sozinhos não geram aviso.
 * **Miniaturas:** 3 por clipe (10%, 50% e 90% da duração), 320px de largura, em `catalog/thumbs/<ID>_<pct>.jpg`; e uma **folha de contato por papel** (`contact_sheet_<papel>.jpg`, Pillow): a miniatura do meio de cada clipe, em ordem, com `ID · duração` escrito.
 * **Cache por clipe** em `<projects-dir>/_cache/clips/<chave>/` (análise + miniaturas), com a chave = caminho absoluto + tamanho + data de modificação. Fica fora da pasta do projeto: acrescentar um clipe muda o hash do projeto, mas os outros clipes não são reprocessados. Papéis, IDs e ajustes de relógio não entram no cache (são recalculados a cada execução, em milissegundos).
 * **Arquivo com problema** (corrompido, sem trilha de vídeo) vira aviso e uma linha em "Arquivos com problema", nunca erro fatal.
-* **Saídas** em `catalog/`: `catalog.json` (`ProjectCatalog` com `schema_version`, papéis, ajustes, clipes `CatalogClip`, avisos, tempos), `catalog.md` (resumo por papel: quantidade, duração, resoluções/fps/codecs, intervalo de datas e proporção com fala; avisos; tabela por clipe; arquivos com problema), as folhas de contato e `thumbs/`.
-* **Avisos:** arquivos com problema; relógio suspeito (data no futuro, ou um papel sem nenhuma data no intervalo do principal ±30 min, com a sugestão de `--ajuste-relogio`); datas vindas de `mtime`; formatos misturados num papel (resoluções, fps, codecs) e fps diferentes no projeto; clipes sem áudio; suspeita de perfil log.
+* **Saídas** em `catalog/`: `catalog.json` (`ProjectCatalog` com `schema_version` 2, papéis, ajustes, clipes `CatalogClip`, avisos, tempos), `catalog.md` (resumo por papel: quantidade, duração, resoluções/fps/codecs, intervalo de datas e proporção com fala; avisos; tabela por clipe; arquivos com problema), as folhas de contato e `thumbs/`.
+* **Avisos:** arquivos com problema; relógio suspeito (data no futuro, ou um papel sem nenhuma data no intervalo do principal ±30 min, com a sugestão de `--ajuste-relogio`); datas de exportação (ordem pelo nome); datas vindas de `mtime`; formatos misturados num papel (resoluções, fps, codecs) e fps diferentes no projeto; clipes sem áudio; suspeita de perfil log.
 * **Terminal:** `[1/4] Varredura`, `[2/4] Metadados e miniaturas` e `[3/4] Detecção de fala` (com `12/40 clipes (30%)` ao vivo) e `[4/4] Catálogo`; no fim, o resumo por papel, os avisos e o tempo total.
+
+### Opção I: Briefing do Produtor (`briefing`)
+
+O **Produtor** lê o pedido e um resumo do material e escreve o **briefing** da edição: tipo de vídeo, receita (uma das registradas), "Entendi: ...", metas (duração, intensidade, ritmo), instruções para o Diretor de cortes e para a cobertura, papéis a usar e avisos. Não edita nada; hoje o `edit` ainda não lê o briefing (integração pendente).
+
+```bash
+# Pasta (cataloga se faltar o catálogo ou se a pasta mudou; reaproveita o cache por clipe)
+.\.venv\Scripts\python.exe -m ai_video_editor.cli briefing "D:\Vlog Viagem" --pedido "vlog de 8 minutos, abre com drone, ritmo rápido"
+
+# Um vídeo, sem pedido (1 vídeo falado: nem chama a IA)
+.\.venv\Scripts\python.exe -m ai_video_editor.cli briefing aula.mp4
+
+# Forçando a receita: a IA só preenche o resto
+.\.venv\Scripts\python.exe -m ai_video_editor.cli briefing aula.mp4 --receita fala --pedido "corta as piadas"
+```
+
+| Opção | Padrão | Efeito |
+| --- | --- | --- |
+| `--pedido` | vazio | Pedido livre do usuário |
+| `--receita NOME` | — | Força a receita (precisa estar registrada); se ela não combinar com o material, vira aviso |
+| `--director-provider` | `gemini` | Provedor do Produtor (mesmas opções e chaves do Diretor). `mock` = simulado; `none` = só a regra sem IA |
+| `--director-model`, `--director-fallback`, `--director-thinking`, `--director-timeout`, `--api-retries` | como no `edit` | Modelo, cadeia de reserva, raciocínio, tempo limite e novas tentativas |
+| `--projects-dir` | `output/projects` | Diretório base dos projetos |
+| `--no-live` | desligado | Sem linha de andamento ao vivo (quando o catálogo precisa rodar) |
+
+* **Entrada da IA:** o pedido, um **resumo compacto do material** (por papel: quantidade, duração, % do tempo com fala e clipes com fala, formatos, suspeitas de log; nunca a lista de clipes nem caminhos) e o nome, a descrição e as características das **receitas registradas**, lidas do registro na hora (receitas novas aparecem sozinhas).
+* **Características da receita:** `multi_clip` (edita vários clipes) vem do atributo `multi_clip` da receita, se ela declarar (sem ele = receita de 1 vídeo, como a `fala`); `needs_speech` vem do atributo `needs_speech`, ou, sem ele, da etapa `transcription`.
+* **Validação pelo código** (além do Pydantic): a receita existe; combina com o material (receita de 1 vídeo com vários clipes com fala → inválido; receita que precisa de fala sem nenhum clipe com fala → inválido; fala desconhecida conta como possível fala); papéis citados existem no material; duração alvo maior que zero e menor que a duração dos papéis a usar; tipo e "Entendi" preenchidos. Ajustes sem decisão: prefixo `Entendi: `, papéis vazios = todos.
+* **Nova tentativa e fallback:** resposta inválida → nova chamada com o erro; inválida de novo, ou falha de comunicação (sem chave, cota, timeout) → **fallback determinístico**: `--receita`, se houver; 1 clipe → `fala`; pasta com papel principal com fala → `vlog` se estiver registrada, senão `fala` com aviso; sem fala no principal → `fala` com aviso. O pedido vai inteiro em `director_instructions`. `origin` (`ia`/`fallback`) e `origin_reason` registram de onde veio.
+* **Atalho:** pedido vazio + 1 vídeo falado (ou com fala não analisada) → fallback direto, sem chamar a IA (registrado em `origin_reason`).
+* **Material:** pasta → catálogo atual (mesmo hash da listagem e `schema_version`) ou um novo (`catalog` com cache por clipe); arquivo → resumo mínimo (ffprobe + detecção de fala, `catalog.builder.describe_clip`, sem miniaturas).
+* **Estimativa** (sem preços): clipes nos papéis a usar, áudio a transcrever (duração dos clipes com fala ou fala desconhecida nesses papéis, se a receita transcreve), chamadas de IA previstas na edição (etapas de IA da receita, hoje `director`; até o dobro com novas tentativas) e chamadas já feitas pelo Produtor.
+* **Saída:** `briefing.json` (`Briefing`, `schema_version` 1: o conteúdo + pedido, receita forçada, origem, resumo do material, estimativa, cadeia de modelos, modelo efetivo, trocas e tentativas) na pasta do projeto: a do catálogo (pasta) ou a que o `edit` usaria (arquivo: `<nome>-<hash do arquivo>`). No terminal: "Entendi: ...", receita e origem, tipo, metas, papéis, instruções, estimativa e avisos.
 
 ### Usando a GPU
 A transcrição usa a GPU NVIDIA automaticamente quando ela existe e as bibliotecas CUDA estão instaladas (`--whisper-device auto`, o padrão); senão, volta para a CPU com um aviso. Para instalar as bibliotecas (cuBLAS para CUDA 12 e cuDNN 9, compatíveis com o ctranslate2 4.x do faster-whisper) no Windows:
@@ -459,12 +497,19 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 * [`src/ai_video_editor/recipes/registry.py`](../src/ai_video_editor/recipes/registry.py): `register_recipe`, `get_recipe`, `recipe_names` e a receita `fala`.
 
 ### Módulo Catalog (comando `catalog`)
-* [`src/ai_video_editor/catalog/builder.py`](../src/ai_video_editor/catalog/builder.py): `CatalogBuilder` (varredura, hash da listagem, cache por clipe, etapas em paralelo, IDs, avisos).
+* [`src/ai_video_editor/catalog/builder.py`](../src/ai_video_editor/catalog/builder.py): `CatalogBuilder` (varredura, hash da listagem, cache por clipe, etapas em paralelo, IDs, avisos), ordem dos papéis (`order_role`, `date_conflicts`, `natural_key`), `current_catalog` (catálogo ainda válido da pasta) e `describe_clip` (resumo mínimo de um vídeo avulso).
 * [`src/ai_video_editor/catalog/schema.py`](../src/ai_video_editor/catalog/schema.py): `ProjectCatalog`, `CatalogClip`, `ClipMedia`, `RecordingDate`, `SpeechDetection`, `ColorSignals` e `ClipAnalysis` (o que vai para o cache).
 * [`src/ai_video_editor/catalog/roles.py`](../src/ai_video_editor/catalog/roles.py) e [`dates.py`](../src/ai_video_editor/catalog/dates.py): papéis por pasta, `--papel`, `--ajuste-relogio` e a data de gravação com origem.
 * [`src/ai_video_editor/catalog/media.py`](../src/ai_video_editor/catalog/media.py): ffprobe do clipe, miniaturas e `signalstats`.
 * [`src/ai_video_editor/catalog/speech.py`](../src/ai_video_editor/catalog/speech.py): interface `SpeechDetector`, `FasterWhisperVAD` e `MockSpeechDetector`.
 * [`src/ai_video_editor/catalog/sheets.py`](../src/ai_video_editor/catalog/sheets.py) e [`report.py`](../src/ai_video_editor/catalog/report.py): folhas de contato e `catalog.md`.
+
+### Módulo Producer (comando `briefing`)
+* [`src/ai_video_editor/producer/schema.py`](../src/ai_video_editor/producer/schema.py): `BriefingContent` (o schema pedido à IA), `Briefing` (+ origem, material, estimativa, métricas; `briefing.json`), `MaterialSummary`/`RoleSummary`, `RecipeInfo`, `WorkEstimate`, `ProducerContext`.
+* [`src/ai_video_editor/producer/summary.py`](../src/ai_video_editor/producer/summary.py): resumo do material por papel e receitas registradas (`registered_recipes`, lidas na hora).
+* [`src/ai_video_editor/producer/service.py`](../src/ai_video_editor/producer/service.py): `validate_content`, `recipe_problems`, `fallback_content`, `estimate_work` e `run_producer` (nova tentativa com o erro e fallback).
+* [`src/ai_video_editor/producer/material.py`](../src/ai_video_editor/producer/material.py): catálogo atual ou novo (pasta) ou resumo mínimo (arquivo) e a pasta do projeto.
+* [`src/ai_video_editor/producer/provider.py`](../src/ai_video_editor/producer/provider.py), [`prompt.py`](../src/ai_video_editor/producer/prompt.py) e `providers/`: interface `BriefingProducer`, prompt, `LLMProducer` (cadeia de modelos) e `MockProducer`.
 
 ### Módulo Pipeline (comandos `edit` e `revise`)
 * [`src/ai_video_editor/pipeline/runner.py`](../src/ai_video_editor/pipeline/runner.py): `EditPipeline`, que executa as etapas da receita (uma por método, na ordem de `recipe.steps`) com cache por fingerprint e callbacks de eventos (`on_progress`) e de andamento da etapa em curso (`on_stage_progress`, com `StageProgress`); `TranscriptionProvider`, `EditDirector` e `RenderExecutor` são injetáveis. O transcriber (`transcribe(..., on_progress)`) e o executor (`execute(plan, on_progress)`) informam o progresso; o pipeline só repassa, sem depender do terminal.

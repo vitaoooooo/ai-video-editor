@@ -10,16 +10,31 @@ import pytest
 
 from ai_video_editor.catalog import CatalogBuilder, MockSpeechDetector, ProjectCatalog
 from ai_video_editor.catalog import builder as builder_module
-from ai_video_editor.catalog.builder import assign_roles, project_warnings, scan_folder
+from ai_video_editor.catalog.builder import (
+    assign_roles,
+    date_conflicts,
+    natural_key,
+    order_role,
+    project_warnings,
+    scan_folder,
+)
 from ai_video_editor.catalog.dates import date_from_filename, date_from_mtime, date_from_tags
 from ai_video_editor.catalog.roles import (
     format_offset,
+    match_folder_role,
     parse_clock_adjustment,
     parse_offset,
     parse_role_override,
     role_for_folder,
 )
-from ai_video_editor.catalog.schema import CatalogClip, ClipMedia, RecordingDate
+from ai_video_editor.catalog.schema import (
+    LOG_MAX_LUMA_SPREAD,
+    LOG_MAX_SATURATION,
+    CatalogClip,
+    ClipMedia,
+    ColorSignals,
+    RecordingDate,
+)
 from ai_video_editor.catalog.speech import merge_segments
 from ai_video_editor.cli import CatalogProgressPrinter, build_parser, handle_catalog
 from ai_video_editor.live_status import LiveStatus, describe_progress
@@ -41,6 +56,41 @@ from tests.conftest import create_corrupted_media_file, create_synthetic_audio_o
 )
 def test_role_for_folder_tolerates_case_accents_and_synonyms(folder, role):
     assert role_for_folder(folder) == role
+
+
+@pytest.mark.parametrize(
+    "folder, role",
+    [
+        # pastas do material real
+        ("Osmo Pocket - PRINCIPAL", "principal"), ("Fx30 - BROLL", "broll"), ("Go3S - POV", "pov"),
+        ("Imagens de Drone", "drone"),
+        ("Fx30 - B Roll", "broll"), ("A cam Sony", "principal"), ("Câmera Drones DJI", "drone"),
+    ],
+)
+def test_role_for_folder_containing_a_synonym_as_a_word(folder, role):
+    assert match_folder_role(folder) == (role, "contém", [role])
+
+
+@pytest.mark.parametrize("folder", ["Dronezinho", "Povo", "Mainstream", "Outros"])
+def test_role_contains_needs_whole_words(folder):
+    role, source, _ = match_folder_role(folder)
+    assert (role, source) == ("outro", "padrão")
+
+
+def test_assign_roles_contains_ambiguous_and_override():
+    assignments, warnings = assign_roles(
+        ["Drone", "Osmo Pocket - PRINCIPAL", "Drone e POV", "Fx30 - BROLL"], {"fx30 - broll": "outro"}
+    )
+    roles = {a.folder: (a.role, a.source) for a in assignments}
+    assert roles == {
+        "Drone": ("drone", "padrão"),
+        "Osmo Pocket - PRINCIPAL": ("principal", "contém"),
+        "Drone e POV": ("outro", "padrão"),
+        "Fx30 - BROLL": ("outro", "--papel"),
+    }
+    assert warnings == [
+        'Pasta "Drone e POV" cita mais de um papel (drone, pov); ficou como outro. Use --papel "Drone e POV=papel".'
+    ]
 
 
 def test_role_override_and_clock_adjustment_parsing():
@@ -141,6 +191,99 @@ def test_project_warnings_clock_mtime_mixed_formats_and_silent():
     assert "Formatos misturados (principal): resoluções 1920x1080, 3840x2160." in warnings
     assert "Taxas de quadros diferentes no projeto: 25, 30 fps." in warnings
     assert "Clipes sem áudio: D001." in warnings
+
+
+def _timed(name, start, duration, folder="Drone", role="drone"):
+    """Clipe com data `start` e duração; o ID vem da ordem de `order_role`."""
+    return CatalogClip(
+        role=role, folder=folder, relative_path=f"{folder}/{name}", size_bytes=1,
+        media=ClipMedia(duration_sec=duration, width=1920, height=1080, fps=30, codec="h264", has_audio=True),
+        recorded_at=RecordingDate(value=start, source="container", raw="x"), adjusted_at=start,
+    )
+
+
+def _with_ids(clips, prefix="D"):
+    ordered = order_role(clips)
+    for n, clip in enumerate(ordered, start=1):
+        clip.id = f"{prefix}{n:03d}"
+    return ordered
+
+
+def test_natural_key_orders_numbers_by_value():
+    names = ["OsmoPocket_FullHD (27).mp4", "OsmoPocket_FullHD (4).mp4", "OsmoPocket_FullHD (15).mp4", "osmopocket_fullhd (5).MP4"]
+    assert sorted(names, key=natural_key) == [
+        "OsmoPocket_FullHD (4).mp4", "osmopocket_fullhd (5).MP4", "OsmoPocket_FullHD (15).mp4", "OsmoPocket_FullHD (27).mp4",
+    ]
+
+
+def test_export_dates_overlap_mark_role_unreliable_and_order_by_name():
+    day = datetime(2025, 3, 1, tzinfo=timezone.utc)
+    # Material real: Drone (1) tem 2:02 e "começa" 13:39:56; Drone (2) "começa" 13:40:45.
+    drone1 = _timed("Drone (1).mp4", day.replace(hour=13, minute=39, second=56), 122)
+    drone2 = _timed("Drone (2).mp4", day.replace(hour=13, minute=40, second=45), 40)
+    assert [(a.relative_path, b.relative_path) for a, b in date_conflicts([drone2, drone1])] == [
+        ("Drone/Drone (1).mp4", "Drone/Drone (2).mp4")
+    ]
+
+    # Exportados em lote: o (27) foi exportado antes do (4); a ordem passa a ser a do nome.
+    clips = [
+        _timed("OsmoPocket_FullHD (27).mp4", day, 60, folder="Osmo", role="principal"),
+        _timed("OsmoPocket_FullHD (4).mp4", day + timedelta(seconds=20), 60, folder="Osmo", role="principal"),
+        _timed("OsmoPocket_FullHD (15).mp4", day + timedelta(seconds=45), 60, folder="Osmo", role="principal"),
+    ]
+    ordered = _with_ids(clips, "P")
+    assert [Path(c.relative_path).name for c in ordered] == [
+        "OsmoPocket_FullHD (4).mp4", "OsmoPocket_FullHD (15).mp4", "OsmoPocket_FullHD (27).mp4",
+    ]
+    assert all(c.order_source == "nome" and not c.recorded_at.reliable for c in ordered)
+    export = [w for w in project_warnings(ordered, {}) if w.startswith("Datas não confiáveis (principal)")]
+    assert len(export) == 1
+    assert "P001 começa antes de P003 terminar" in export[0]
+    assert "As datas parecem de exportação, não de gravação" in export[0]
+    assert "ordenado pelo número no nome do arquivo" in export[0]
+
+
+def test_dates_without_overlap_keep_date_order_with_natural_tiebreak():
+    day = datetime(2025, 3, 1, 12, 0, tzinfo=timezone.utc)
+    ordered = _with_ids([_timed("clip (2).mp4", day + timedelta(minutes=5), 60), _timed("clip (10).mp4", day, 60)])
+    assert [c.relative_path for c in ordered] == ["Drone/clip (10).mp4", "Drone/clip (2).mp4"]
+    assert all(c.order_source == "data" and c.recorded_at.reliable for c in ordered)
+    # mesma data e duração curta (sem sobreposição): desempate natural, não alfabético
+    tied = _with_ids([_timed("clip (10).mp4", day, 0.5), _timed("clip (9).mp4", day, 0.5)])
+    assert [c.relative_path for c in tied] == ["Drone/clip (9).mp4", "Drone/clip (10).mp4"]
+    assert not any(w.startswith("Datas não confiáveis") for w in project_warnings(ordered, {}))
+
+
+def test_two_cameras_in_the_same_role_may_record_at_the_same_time():
+    day = datetime(2025, 3, 1, 12, 0, tzinfo=timezone.utc)
+    clips = [
+        _timed("a.mp4", day, 120, folder="Osmo", role="principal"),
+        _timed("b.mp4", day + timedelta(seconds=30), 120, folder="Celular", role="principal"),
+    ]
+    assert date_conflicts(clips) == []
+    assert [c.order_source for c in order_role(clips)] == ["data", "data"]
+
+
+@pytest.mark.parametrize(
+    "spread, saturation, suspect",
+    [
+        (0.25, 0.03, True),
+        (0.25, 0.10, False),  # só contraste baixo: cena clara, não é log
+        (0.60, 0.02, False),  # só saturação baixa: cena pouco colorida
+        (0.40, 0.07, False),  # marcado pelos limites antigos (0,45 e 0,08)
+        (LOG_MAX_LUMA_SPREAD, LOG_MAX_SATURATION - 0.01, False),
+    ],
+)
+def test_log_suspect_needs_low_contrast_and_low_saturation(spread, saturation, suspect):
+    color = ColorSignals(frames=3, luma_spread=spread, saturation=saturation)
+    assert color.log_suspect is suspect
+    dumped = color.model_dump()
+    assert (dumped["luma_spread"], dumped["saturation"], dumped["log_suspect"]) == (spread, saturation, suspect)
+
+
+def test_color_signals_from_old_cache_ignore_old_flags():
+    old = '{"frames": 3, "luma_spread": 0.4, "saturation": 0.07, "low_contrast": true, "low_saturation": true}'
+    assert ColorSignals.model_validate_json(old).log_suspect is False
 
 
 def test_cli_catalog_rejects_bad_options(tmp_path, capsys):
@@ -274,7 +417,7 @@ def test_catalog_end_to_end(tmp_path, clips_folder):
 
     # sinais de cor
     assert gopro.color.log_suspect
-    assert not clips["Principal/a.mp4"].color.low_contrast
+    assert not clips["Principal/a.mp4"].color.log_suspect
 
     # arquivos com problema viram aviso
     assert clips["B-Roll/quebrado.mp4"].error == "arquivo ilegível ou corrompido"
@@ -289,7 +432,7 @@ def test_catalog_end_to_end(tmp_path, clips_folder):
     # saídas
     catalog_dir = project / "catalog"
     loaded = ProjectCatalog.load(catalog_dir / "catalog.json")
-    assert loaded.schema_version == 1 and len(loaded.clips) == 9
+    assert loaded.schema_version == 2 and len(loaded.clips) == 9
     assert clips["Principal/b.mp4"].thumbnails == ["thumbs/P001_10.jpg", "thumbs/P001_50.jpg", "thumbs/P001_90.jpg"]
     assert len(list((catalog_dir / "thumbs").glob("*.jpg"))) == 7 * 3
     assert set(catalog.contact_sheets) == {"principal", "drone", "pov", "broll", "outro"}
@@ -299,7 +442,10 @@ def test_catalog_end_to_end(tmp_path, clips_folder):
     assert md.startswith("# Catálogo — Viagem Serra")
     assert "| principal | (raiz), Principal | 3 |" in md
     assert "| P001 | `Principal/b.mp4` | 0:02 | 640x360 | 30 | h264 | 8 (yuv420p) | aac | 50% |" in md
-    assert "(modificação ⚠)" in md and "suspeita: perfil log" in md
+    assert "(modificação ⚠)" in md and "— suspeita: perfil log" in md
+    color = clips["Principal/a.mp4"].color
+    assert f"| luma {color.luma_spread:.2f} · sat {color.saturation:.3f} |" in md
+    assert "suspeita: baixa" not in md and "suspeita: baixo" not in md
     assert "## Arquivos com problema" in md and "`B-Roll/so_audio.mp4` | sem trilha de vídeo" in md
 
 
