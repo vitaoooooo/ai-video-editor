@@ -191,6 +191,7 @@ python -m ai_video_editor.cli catalog D:\vlog   # catálogo de uma pasta de clip
 python -m ai_video_editor.cli briefing D:\vlog --pedido "vlog de 8 minutos, abre com drone"   # Produtor: receita, metas e estimativa
 python -m ai_video_editor.cli visual D:\vlog --so-estimar   # tomadas e medidas; estimativa de imagens e tokens da IA
 python -m ai_video_editor.cli visual D:\vlog                # descrição das tomadas por IA (visual/visual.md)
+python -m ai_video_editor.cli edit D:\vlog --transcribe --director gemini --pedido "vlog de 8 minutos, ritmo rápido"   # o Produtor escreve (ou reaproveita) o briefing e o edit segue: receita, intensidade, ritmo, instruções
 python -m ai_video_editor.cli edit D:\vlog --transcribe --language pt --director gemini   # espinha falada (clipes principais com fala, em ordem, sem pausas nem tomadas repetidas) + cobertura de drone/b-roll/POV e respiros, se a pasta já passou pelo `visual`
 
 # Benchmark de transcrição

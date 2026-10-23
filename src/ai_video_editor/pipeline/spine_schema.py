@@ -13,6 +13,7 @@ from ai_video_editor.pipeline.schema import (
     EditDiff,
     EditPipelineParams,
     EditPipelineResult,
+    EditSettings,
     RunTimings,
     StageRecord,
     VersionRecord,
@@ -140,6 +141,9 @@ class SpineManifest(BaseModel):
     versions: list[VersionRecord] = Field(default_factory=list)
     current_version: Optional[int] = None
     last_run: Optional[RunTimings] = None
+    settings: Optional[EditSettings] = Field(
+        default=None, description="Valores efetivos do último `edit` pela CLI e a origem de cada um"
+    )
 
     def ensure_stages(self, steps: list[str]) -> None:
         for step in steps:

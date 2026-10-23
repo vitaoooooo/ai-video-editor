@@ -10,7 +10,7 @@ from ai_video_editor.core.schema import LoudnessPreset
 from ai_video_editor.director.schema import DirectorThinking, SentenceParams, UserBrief
 from ai_video_editor.llm.chain import resolve_chain
 from ai_video_editor.llm.schema import ModelSpec
-from ai_video_editor.planning.schema import PausePreset, SilenceCutParams
+from ai_video_editor.planning.schema import PausePreset, SilenceCutParams, apply_pause_preset
 from ai_video_editor.subtitles.schema import SubtitleParams
 from ai_video_editor.transcription.schema import TranscriptionConfig
 
@@ -41,6 +41,9 @@ class EditPipelineParams(BaseModel):
     )
     min_silence_sec: float = Field(default=0.5, gt=0.0, description="Duração mínima do silêncio")
     cut: SilenceCutParams = Field(default_factory=SilenceCutParams)
+    pacing: PausePreset = Field(
+        default="normal", description="Ritmo das pausas aplicado sobre `cut`: natural, normal ou tight"
+    )
     transcribe: bool = Field(default=False, description="Gera transcript.json (necessário para o Diretor)")
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     director: str = Field(
@@ -81,6 +84,66 @@ class EditPipelineParams(BaseModel):
     def director_chain(self) -> list[ModelSpec]:
         """Cadeia pedida do Diretor: o modelo principal seguido das reservas."""
         return resolve_chain(self.director, self.director_model, self.director_fallback)
+
+    @property
+    def effective_cut(self) -> SilenceCutParams:
+        """`cut` com o ritmo das pausas aplicado (`normal` = o próprio `cut`)."""
+        return apply_pause_preset(self.cut, self.pacing)
+
+    def fingerprint_view(self) -> dict:
+        """Os parâmetros como entram no fingerprint do relatório. O ritmo `normal` fica de fora: os
+        projetos de antes do ritmo no `edit` continuam com o mesmo fingerprint."""
+        return self.model_dump(mode="json", exclude={"pacing"} if self.pacing == "normal" else None)
+
+
+# Origem de um valor efetivo do `edit`: opção explícita da CLI, briefing do Produtor ou padrão do código.
+SettingOrigin = Literal["cli", "briefing", "padrao"]
+# gerado: o Produtor rodou nesta execução; reaproveitado: `briefing.json` atual (mesmo pedido e material);
+# desligado: `--sem-briefing`; sem_briefing: sem pedido e sem `briefing.json` atual.
+BriefingUse = Literal["gerado", "reaproveitado", "desligado", "sem_briefing"]
+
+SETTING_ORIGIN_LABELS: dict[str, str] = {"cli": "opção da CLI", "briefing": "briefing", "padrao": "padrão"}
+
+
+class EditSetting(BaseModel):
+    """Um valor efetivo do `edit` e de onde ele veio."""
+
+    value: Optional[Union[float, str]] = None
+    origin: SettingOrigin
+
+    @property
+    def origin_label(self) -> str:
+        return SETTING_ORIGIN_LABELS[self.origin]
+
+
+class EditSettings(BaseModel):
+    """Valores efetivos do `edit` e a origem de cada um (opção da CLI > briefing > padrão)."""
+
+    briefing: BriefingUse = "sem_briefing"
+    briefing_origin: Optional[str] = Field(default=None, description="`ia` ou `fallback` (do briefing)")
+    request: Optional[str] = Field(default=None, description="Pedido que gerou o briefing")
+    understood: Optional[str] = Field(default=None, description="O \"Entendi: ...\" do briefing")
+    recipe: EditSetting
+    intensity: EditSetting
+    pace: EditSetting
+    instructions: EditSetting = Field(description="Texto que chega ao Diretor como pedido do usuário")
+    target_duration_sec: EditSetting
+    notes: list[str] = Field(default_factory=list, description="Avisos sobre o briefing (ignorado, refeito...)")
+
+    @property
+    def uses_briefing(self) -> bool:
+        return self.briefing in ("gerado", "reaproveitado")
+
+    def fingerprint_view(self) -> dict:
+        """O que o relatório mostra: sem o estado do briefing (gerado/reaproveitado) nem os avisos, para um
+        briefing igual não refazer o relatório."""
+        return self.model_dump(mode="json", exclude={"briefing", "notes"})
+
+
+def settings_fingerprint(settings: Optional[EditSettings]) -> tuple:
+    """Parte do fingerprint do relatório: os valores e origens só quando há briefing (é quando o relatório
+    os mostra); sem briefing, o fingerprint de antes."""
+    return (settings.fingerprint_view(),) if settings is not None and settings.uses_briefing else ()
 
 
 class StageRecord(BaseModel):
@@ -178,6 +241,9 @@ class ProjectManifest(BaseModel):
     current_version: Optional[int] = Field(default=None, description="Número da versão atual")
     last_run: Optional[RunTimings] = Field(
         default=None, description="Tempos da última execução de `edit` ou `revise`"
+    )
+    settings: Optional[EditSettings] = Field(
+        default=None, description="Valores efetivos do último `edit` pela CLI e a origem de cada um"
     )
 
     @field_validator("stages")

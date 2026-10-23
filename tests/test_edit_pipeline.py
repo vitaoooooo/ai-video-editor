@@ -374,7 +374,7 @@ def test_director_requires_transcription(tmp_path, short_video):
 def test_cli_edit_director_options(tmp_path, monkeypatch):
     captured = {}
 
-    def fake_run(self, video_path, params, force=False):
+    def fake_run(self, video_path, params, force=False, **kwargs):
         captured["params"] = params
         raise RuntimeError("parar aqui")
 
@@ -547,7 +547,7 @@ def test_subtitles_skipped_without_transcript_or_when_disabled(tmp_path, lesson_
 def test_cli_edit_subtitle_options(tmp_path, monkeypatch):
     captured = {}
 
-    def fake_run(self, video_path, params, force=False):
+    def fake_run(self, video_path, params, force=False, **kwargs):
         captured["params"] = params
         raise RuntimeError("parar aqui")
 

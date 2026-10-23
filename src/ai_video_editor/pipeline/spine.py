@@ -80,7 +80,13 @@ from ai_video_editor.pipeline.project import (
     slugify,
 )
 from ai_video_editor.pipeline.runner import EditPipeline, ProgressCallback, StageProgressCallback, _Run
-from ai_video_editor.pipeline.schema import EditPipelineParams, StageOutcome, StageProgress
+from ai_video_editor.pipeline.schema import (
+    EditPipelineParams,
+    EditSettings,
+    StageOutcome,
+    StageProgress,
+    settings_fingerprint,
+)
 from ai_video_editor.pipeline.spine_report import (
     build_spine_diff,
     build_spine_report,
@@ -181,6 +187,8 @@ class _SpineState:
     render_warnings: list[str] = field(default_factory=list)
     encoder_label: str = "cpu"
     subtitle_blocks: Optional[int] = None
+    settings: Optional[EditSettings] = None
+    use_briefing: bool = True
 
     @property
     def clips(self) -> list[SpineClip]:
@@ -290,10 +298,14 @@ class SpinePipeline(EditPipeline):
         params: Optional[EditPipelineParams] = None,
         force: bool = False,
         coverage: Optional[CoverageParams] = None,
+        settings: Optional[EditSettings] = None,
+        use_briefing: bool = True,
     ) -> SpineResult:
         """Executa (ou retoma do cache) as etapas da receita sobre a pasta e devolve o resumo.
 
         `coverage`: IA da cobertura (receita `vlog_cobertura`); sem ela, a do Diretor (`CoverageParams.inherit`).
+        `settings`: valores efetivos e origens (só `project.json` e relatório). `use_briefing=False`
+        (`--sem-briefing` ou briefing de outro material): a cobertura não lê o `briefing.json`.
         """
         source_dir = Path(source_dir).resolve()
         if not source_dir.is_dir():
@@ -308,6 +320,7 @@ class SpinePipeline(EditPipeline):
             manifest.source_dir, manifest.params, manifest.recipe = source_dir, params, self.recipe.name
         else:
             manifest = SpineManifest(source_dir=source_dir, recipe=self.recipe.name, params=params)
+        manifest.settings = settings
         manifest.ensure_stages(list(self.recipe.steps))
         manifest.save(manifest_path)
 
@@ -323,6 +336,8 @@ class SpinePipeline(EditPipeline):
                 params.director, params.director_model, params.director_fallback, params.director_thinking,
                 params.director_timeout_sec, params.api_retries,
             ),
+            settings=settings,
+            use_briefing=use_briefing,
         )
         steps: dict[str, Callable[[_SpineState], StageOutcome]] = {
             "catalog": self._catalog,
@@ -582,7 +597,7 @@ class SpinePipeline(EditPipeline):
         fps = spine_fps([c.fps for c in s.clips])
         thresholds = [s.audio[c.id].params.threshold_db for c in s.clips]
         s.fp_timeline = fingerprint(
-            "timeline", TIMELINE_FORMAT, s.fp_silences, thresholds, s.fp_director, params.cut,
+            "timeline", TIMELINE_FORMAT, s.fp_silences, thresholds, s.fp_director, params.effective_cut,
             [str(c.path) for c in s.clips], fps, SPINE_RESOLUTION, params.loudness,
         )
 
@@ -599,7 +614,7 @@ class SpinePipeline(EditPipeline):
                 clip_removed = None if removed_ids is None else {x.id for x in clip_sentences} & removed_ids
                 base = ClipPlan(clip_id=clip.id, threshold_db=audio.params.threshold_db)
                 try:
-                    keep, results = plan_keep_ranges(audio, clip_sentences, clip_removed, params.cut)
+                    keep, results = plan_keep_ranges(audio, clip_sentences, clip_removed, params.effective_cut)
                 except NoSpeechDetectedError:
                     everything = bool(clip_sentences) and clip_removed is not None and len(clip_removed) == len(clip_sentences)
                     reason = "todas as frases removidas pelo Diretor" if everything else "nenhuma fala nos silêncios detectados"
@@ -673,7 +688,7 @@ class SpinePipeline(EditPipeline):
     def _briefing(self, s: _SpineState) -> tuple[list[str], list[str]]:
         """(instruções de cobertura, papéis a usar) do `briefing.json` do projeto, se existir."""
         path = s.project_dir / BRIEFING_FILE
-        if not path.is_file():
+        if not s.use_briefing or not path.is_file():
             return [], []
         from ai_video_editor.producer.schema import Briefing
 
@@ -871,8 +886,9 @@ class SpinePipeline(EditPipeline):
         """Relatório por clipe (+ transcrição comparativa e linha do tempo, que exigem transcrição)."""
         params = s.params
         fp_report = fingerprint(
-            "report", REPORT_FORMAT, s.fp_render, s.fp_director, s.fp_subtitles, s.fp_transcript, params,
-            s.selection, s.encoder_label, *([s.fp_coverage_result] if s.fp_coverage else []),
+            "report", REPORT_FORMAT, s.fp_render, s.fp_director, s.fp_subtitles, s.fp_transcript,
+            params.fingerprint_view(), s.selection, s.encoder_label, *([s.fp_coverage_result] if s.fp_coverage else []),
+            *settings_fingerprint(s.settings),
         )
         coverage = s.coverage_run if s.fp_coverage is not None else None
         final = s.final_timeline if coverage is not None else None
@@ -906,6 +922,7 @@ class SpinePipeline(EditPipeline):
                 encoder=s.encoder_label,
                 recipe_name=self.recipe.name,
                 coverage=coverage,
+                settings=s.settings,
             )
             (s.project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
             merged = diff.merged()

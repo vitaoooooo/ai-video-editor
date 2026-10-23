@@ -27,10 +27,19 @@ from ai_video_editor.pipeline.report import (
     _cell,
     _loudness_section,
     application_cell,
+    briefing_section,
     format_timestamp,
     model_rows,
+    pacing_rows,
 )
-from ai_video_editor.pipeline.schema import DiffEntry, EditPipelineParams, RunTimings, _plural, format_seconds
+from ai_video_editor.pipeline.schema import (
+    DiffEntry,
+    EditPipelineParams,
+    EditSettings,
+    RunTimings,
+    _plural,
+    format_seconds,
+)
 from ai_video_editor.pipeline.spine_schema import ClipDiff, SpineDiff, SpinePlan, SpineSelection, UnusedClip
 from ai_video_editor.pipeline.timing import build_timings_section
 from ai_video_editor.planning import removed_ranges
@@ -505,6 +514,7 @@ def build_spine_report(
     encoder: Optional[str] = None,
     recipe_name: str = "vlog",
     coverage: Optional[CoverageRun] = None,
+    settings: Optional[EditSettings] = None,
 ) -> str:
     """Markdown do `edit_report.md`: resumo, resumo por clipe, clipes não usados, parâmetros, volume,
     Diretor, cobertura (se houve), o que saiu de cada clipe (categoria, motivo, aplicação) e tempos."""
@@ -519,7 +529,7 @@ def build_spine_report(
     rounded = {round(f, 3) for f in plan.source_fps if abs(f - round(f)) > 0.001}
     if rounded:
         fps_note = f" (clipes a {', '.join(f'{f:g}'.replace('.', ',') for f in sorted(rounded))} fps convertidos)"
-    cut = params.cut
+    cut = params.effective_cut
     cuts = removed_range_count(plan, diff)
 
     lines = [f"# Relatório de edição — {source_dir.name}", ""]
@@ -596,11 +606,13 @@ def build_spine_report(
         )
     lines += ["", "## Clipes não usados", "", *_unused_lines(diff.unused), ""]
     lines += [
+        *briefing_section(settings),
         "## Parâmetros",
         "",
         "| Parâmetro | Valor |",
         "| --- | --- |",
         f"| threshold_db | {params.threshold_db}{'' if params.threshold_db == 'auto' else ' dB'} (por clipe) |",
+        *pacing_rows(params),
         f"| min_silence_sec | {params.min_silence_sec}s |",
         f"| padding_before_sec | {cut.padding_before_sec}s |",
         f"| padding_after_sec | {cut.padding_after_sec}s |",
