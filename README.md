@@ -226,7 +226,7 @@ src/ai_video_editor/
 ├── audio/        silêncios (silencedetect) e limite adaptativo (níveis em janelas de 50 ms)
 ├── transcription/  interface de transcrição; faster-whisper (GPU/CPU) e mock
 ├── director/     frases a partir da transcrição, prompt, validação e Diretor (LLM e mock)
-├── coverage/     Diretor de cobertura: janelas obrigatórias, b-roll por cima da fala e respiros, por IDs (LLM e mock)
+├── coverage/     Diretor de cobertura: janelas com imagem ruim, b-roll relacionado por cima da fala e respiros, por IDs (LLM e mock)
 ├── revision/     revisor de pedidos em linguagem natural (LLM e mock)
 ├── llm/          StructuredLLMClient, provedores gemini/openai/mock, cadeia de modelos, chaves e erros
 ├── planning/     corte de silêncio, aplicação dos cortes de frase e regra do pedaço de palavra

@@ -1,0 +1,216 @@
+{
+ "coverages": [
+  {
+   "from_sentence": "S000",
+   "to_sentence": "S001",
+   "shot_id": "D002.T15",
+   "reason": "Rodovia margeando o lago: a viagem de ônibus até San Martín.",
+   "windows": [
+    "O1"
+   ]
+  },
+  {
+   "from_sentence": "S003",
+   "to_sentence": "S003",
+   "shot_id": "B004.T02",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S021",
+   "to_sentence": "S021",
+   "shot_id": "P008.T01",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O2"
+   ]
+  },
+  {
+   "from_sentence": "S022",
+   "to_sentence": "S022",
+   "shot_id": "D002.T12",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O2"
+   ]
+  },
+  {
+   "from_sentence": "S023",
+   "to_sentence": "S023",
+   "shot_id": "D002.T13",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O2"
+   ]
+  },
+  {
+   "from_sentence": "S024",
+   "to_sentence": "S024",
+   "shot_id": "D002.T07",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S034",
+   "to_sentence": "S036",
+   "shot_id": "B006.T01",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S038",
+   "to_sentence": "S041",
+   "shot_id": "D002.T06",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S042",
+   "to_sentence": "S043",
+   "shot_id": "B005.T01",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S052",
+   "to_sentence": "S054",
+   "shot_id": "B003.T01",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O3"
+   ]
+  },
+  {
+   "from_sentence": "S056",
+   "to_sentence": "S057",
+   "shot_id": "B007.T02",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O4"
+   ]
+  },
+  {
+   "from_sentence": "S060",
+   "to_sentence": "S064",
+   "shot_id": "B008.T01",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S072",
+   "to_sentence": "S074",
+   "shot_id": "P010.T01",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S085",
+   "to_sentence": "S088",
+   "shot_id": "D002.T16",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S126",
+   "to_sentence": "S126",
+   "shot_id": "B001.T02",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O5"
+   ]
+  },
+  {
+   "from_sentence": "S127",
+   "to_sentence": "S128",
+   "shot_id": "D002.T31",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S129",
+   "to_sentence": "S130",
+   "shot_id": "D002.T29",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O6"
+   ]
+  },
+  {
+   "from_sentence": "S132",
+   "to_sentence": "S132",
+   "shot_id": "P012.T01",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O7"
+   ]
+  },
+  {
+   "from_sentence": "S133",
+   "to_sentence": "S134",
+   "shot_id": "P025.T05",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  },
+  {
+   "from_sentence": "S135",
+   "to_sentence": "S136",
+   "shot_id": "P012.T02",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O8"
+   ]
+  },
+  {
+   "from_sentence": "S140",
+   "to_sentence": "S140",
+   "shot_id": "P011.T01",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O9"
+   ]
+  },
+  {
+   "from_sentence": "S156",
+   "to_sentence": "S158",
+   "shot_id": "P026.T01",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": [
+    "O10"
+   ]
+  },
+  {
+   "from_sentence": "S166",
+   "to_sentence": "S168",
+   "shot_id": "P027.T03",
+   "reason": "Imagem do lugar de que se fala.",
+   "windows": []
+  }
+ ],
+ "breaths": [
+  {
+   "after_sentence": "S002",
+   "shot_id": "D002.T01",
+   "size": "medium",
+   "reason": "Chegada a San Martín: vista da orla."
+  },
+  {
+   "after_sentence": "S044",
+   "shot_id": "D001.T06",
+   "size": "long",
+   "reason": "Troca da caminhada para a ilha."
+  },
+  {
+   "after_sentence": "S125",
+   "shot_id": "V001.T01",
+   "size": "short",
+   "reason": "Depois do mergulho na água gelada."
+  },
+  {
+   "after_sentence": "S169",
+   "shot_id": "D002.T08",
+   "size": "long",
+   "reason": "Fechamento com o lago e as montanhas."
+  }
+ ],
+ "summary": "Drone e b-roll do lago nas falas sobre o lugar; trilha com as tomadas de caminhada."
+}

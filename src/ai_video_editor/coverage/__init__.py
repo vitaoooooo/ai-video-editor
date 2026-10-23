@@ -3,6 +3,7 @@
 from ai_video_editor.coverage.assemble import AssembledCoverage, assemble_coverage
 from ai_video_editor.coverage.material import (
     CoverageError,
+    annotate_screen,
     build_visual_material,
     coverage_candidates,
     coverage_roles,
@@ -21,8 +22,9 @@ from ai_video_editor.coverage.schema import (
     MandatoryWindow,
     VisualMaterial,
     VisualShot,
+    WindowDecision,
 )
-from ai_video_editor.coverage.service import coverage_problems, fill_windows, run_coverage
+from ai_video_editor.coverage.service import CoverageState, fill_windows, review_decision, run_coverage
 
 __all__ = [
     "COVERAGE_PROMPT_VERSION",
@@ -35,17 +37,20 @@ __all__ = [
     "CoverageError",
     "CoverageParams",
     "CoverageRun",
+    "CoverageState",
     "MandatoryWindow",
     "VisualMaterial",
     "VisualShot",
+    "WindowDecision",
+    "annotate_screen",
     "assemble_coverage",
     "build_coverage_prompt",
     "build_visual_material",
     "coverage_candidates",
-    "coverage_problems",
     "coverage_roles",
     "coverage_sentences",
     "fill_windows",
     "find_mandatory_windows",
+    "review_decision",
     "run_coverage",
 ]

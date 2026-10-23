@@ -1,7 +1,9 @@
 """Testes do Diretor de cobertura e do render com cobertura (`edit <pasta>`, receita `vlog_cobertura`):
-janelas obrigatórias, validação, nova tentativa e fallback, IDs → tempos, respiros deslocando legendas e
-relatórios, pipeline e render ponta a ponta."""
+janelas com imagem ruim, validação item a item, duração decidida pelo código, nova tentativa e fallback
+com tomadas relacionadas, IDs → tempos, respiros deslocando legendas e relatórios, pipeline e render
+ponta a ponta, e a resposta real do Gemini no vlog "Trilha La Islita" (`tests/data/coverage_real/`)."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -20,20 +22,23 @@ from ai_video_editor.coverage import (
     CoverageError,
     CoverageParams,
     CoverageRun,
+    VisualMaterial,
+    WindowDecision,
+    annotate_screen,
     assemble_coverage,
     build_coverage_prompt,
     build_visual_material,
     coverage_candidates,
-    coverage_problems,
     coverage_roles,
     coverage_sentences,
     find_mandatory_windows,
     run_coverage,
 )
-from ai_video_editor.coverage.assemble import shot_segment
+from ai_video_editor.coverage.assemble import distribute, shot_segment
 from ai_video_editor.coverage.providers.mock import MockCoverageDirector
-from ai_video_editor.coverage.schema import AcceptedBreath, AcceptedCoverage, CoverageSentence, MandatoryWindow, VisualShot
-from ai_video_editor.coverage.service import excluded_shots
+from ai_video_editor.coverage.schema import AcceptedBreath, AcceptedCoverage, CoverageSentence, VisualShot
+from ai_video_editor.coverage.service import MAX_COVERAGE_SEC, MIN_COVERAGE_SEC, excluded_shots, shot_frames
+from ai_video_editor.intelligence.exceptions import AIResponseValidationError
 from ai_video_editor.director.schema import Sentence
 from ai_video_editor.pipeline import EditPipelineParams, SpinePipeline
 from ai_video_editor.pipeline.clips import catalog_location, catalog_path
@@ -54,13 +59,17 @@ FPS = 30
 # --- material sintético (sem FFmpeg) ---
 
 
-def _measures(uniform: bool = False) -> ShotMeasures:
-    return ShotMeasures(samples=4, blur=4.0, brightness=0.5, motion=0.02, luma_spread=0.05 if uniform else 0.4, uniform=uniform)
+def _measures(uniform: bool = False, blurry: bool = False) -> ShotMeasures:
+    return ShotMeasures(
+        samples=4, blur=9.0 if blurry else 4.0, brightness=0.5, motion=0.02, luma_spread=0.05 if uniform else 0.4,
+        uniform=uniform, blurry=blurry,
+    )
 
 
 def _shot(
     clip_id: str, n: int, start: float, end: float, has_speech: Optional[bool] = False, usable: str = "sim",
     issues: Optional[list[str]] = None, beauty: int = 3, status: str = "analisada", uniform: bool = False,
+    tags: Optional[list[str]] = None, blurry: bool = False,
 ) -> Shot:
     shot_id = f"{clip_id}.T{n:02d}"
     times = [start + (end - start) * f for f in (0.1, 0.5, 0.9)]
@@ -68,13 +77,13 @@ def _shot(
     analysis = None
     if status == "analisada":
         analysis = ShotAnalysis(
-            description=f"imagem de {clip_id}", tags=["paisagem"], face_to_camera=clip_id.startswith("P") and bool(has_speech),
+            description=f"imagem de {clip_id}", tags=tags or ["paisagem"], face_to_camera=clip_id.startswith("P") and bool(has_speech),
             people_count=0, issues=issues or ["nenhuma"], usable=usable,
             best_frames=[frames[1].id, frames[2].id] if usable != "nao" else [], beauty=beauty, summary_for_editor="ok",
         )
     return Shot(
         id=shot_id, index=n, start_sec=start, end_sec=end, boundary="inicio" if n == 1 else "janela", frames=frames,
-        measures=_measures(uniform), has_speech=has_speech, status=status, analysis=analysis,
+        measures=_measures(uniform, blurry), has_speech=has_speech, status=status, analysis=analysis,
     )
 
 
@@ -86,9 +95,11 @@ def _clip_entry(clip_id: str, role: str, relative: str, duration: float, has_aud
     )
 
 
-def _synthetic_project(tmp_path: Path) -> tuple[ProjectVisual, ProjectCatalog]:
-    """P001 (fala; T02 inutilizável, T03 com borrão), P002 (fala; T01 sem análise mas tela uniforme),
-    P003 (principal sem fala), B001 (b-roll), D001 (drone sem áudio, sem análise), B002 (inutilizável)."""
+def _synthetic_project(tmp_path: Path, p001_t02_usable: str = "nao") -> tuple[ProjectVisual, ProjectCatalog]:
+    """P001 (fala dentro da van; T02 obstruída e inutilizável, T03 com borrão), P002 (fala; T01 sem análise
+    mas tela uniforme), P003 (principal sem fala, lago, gravada logo depois de P002), B001 (b-roll da praia),
+    D001 (drone sem áudio, sem análise), B002 (inutilizável)."""
+    van = ["interior", "veículo"]
     entries = [
         _clip_entry("P001", "principal", "principal/a.mp4", 10.0),
         _clip_entry("P002", "principal", "principal/b.mp4", 6.0),
@@ -100,13 +111,13 @@ def _synthetic_project(tmp_path: Path) -> tuple[ProjectVisual, ProjectCatalog]:
     catalog = ProjectCatalog(source_dir=tmp_path / "viagem", project_dir=tmp_path / "p", listing_hash="h", clips=entries)
     shots = {
         "P001": [
-            _shot("P001", 1, 0.0, 3.0, has_speech=True),
-            _shot("P001", 2, 3.0, 6.0, has_speech=True, usable="nao", issues=["obstruida"]),
-            _shot("P001", 3, 6.0, 10.0, has_speech=True, usable="parcial", issues=["borrao_movimento"]),
+            _shot("P001", 1, 0.0, 3.0, has_speech=True, tags=van),
+            _shot("P001", 2, 3.0, 6.0, has_speech=True, usable=p001_t02_usable, issues=["obstruida"], tags=van),
+            _shot("P001", 3, 6.0, 10.0, has_speech=True, usable="parcial", issues=["borrao_movimento"], tags=van),
         ],
         "P002": [_shot("P002", 1, 0.0, 3.0, has_speech=None, status="sem_analise", uniform=True), _shot("P002", 2, 3.0, 6.0, has_speech=True)],
-        "P003": [_shot("P003", 1, 0.0, 5.0, has_speech=False, beauty=5)],
-        "B001": [_shot("B001", 1, 0.0, 6.0, beauty=4), _shot("B001", 2, 6.0, 9.0, beauty=2)],
+        "P003": [_shot("P003", 1, 0.0, 5.0, has_speech=False, beauty=5, tags=["lago"])],
+        "B001": [_shot("B001", 1, 0.0, 6.0, beauty=4, tags=["praia", "lago"]), _shot("B001", 2, 6.0, 9.0, beauty=2, tags=["praia"])],
         "B002": [_shot("B002", 1, 0.0, 3.0, usable="nao", issues=["desfocada"])],
         "D001": [_shot("D001", 1, 0.0, 8.0, status="sem_analise")],
     }
@@ -139,21 +150,24 @@ SENTENCES = [
 ]
 
 
-def _context(tmp_path: Path, roles: Optional[list[str]] = None) -> tuple[CoverageContext, Timeline, list[VisualShot]]:
-    visual, catalog = _synthetic_project(tmp_path)
+def _context(
+    tmp_path: Path, roles: Optional[list[str]] = None, p001_t02_usable: str = "nao"
+) -> tuple[CoverageContext, Timeline, list[VisualShot]]:
+    visual, catalog = _synthetic_project(tmp_path, p001_t02_usable)
     material = build_visual_material(visual, catalog, tmp_path / "visual.json", ["P001", "P002"])
     spine = _spine(tmp_path)
     kept = coverage_sentences(SENTENCES, {3}, spine)
+    screen = annotate_screen(kept, material)
     allowed = coverage_roles(roles or [])
     context = CoverageContext(
         project_name="viagem", fps=FPS, spine_duration_sec=spine.duration_sec, sentences=kept,
         windows=find_mandatory_windows(kept, material, ["P001", "P002"]),
-        candidates=coverage_candidates(material, allowed), roles=allowed,
+        candidates=coverage_candidates(material, allowed), screen_shots=screen, roles=allowed,
     )
     return context, spine, material.shots
 
 
-# --- janelas obrigatórias e frases → frames ---
+# --- janelas com imagem ruim, o que está na tela e frases → frames ---
 
 
 def test_mandatory_windows_only_where_kept_speech_meets_bad_image(tmp_path):
@@ -167,6 +181,32 @@ def test_mandatory_windows_only_where_kept_speech_meets_bad_image(tmp_path):
     assert windows["O2"].sentence_ids == ["S004"] and windows["O2"].reasons == ["tela uniforme"]
     # P001.T03 tem borrão, mas a única fala nela (S003) foi removida: nenhuma janela.
     assert len(context.windows) == 2
+    # Inutilizável e tela uniforme: as duas exigem cobertura.
+    assert windows["O1"].required and windows["O2"].required
+
+
+def test_window_requires_cover_only_when_every_bad_shot_is_severe(tmp_path):
+    from ai_video_editor.coverage.material import is_severe
+
+    # Obstruída mas "parcial" (ex.: os bancos do ônibus na frente): a IA pode manter.
+    partial, _, _ = _context(tmp_path, p001_t02_usable="parcial")
+    assert not partial.windows[0].required and partial.windows[1].required
+    blur = VisualShot(
+        id="P009.T01", clip_id="P009", role="principal", source_path=Path("p.mp4"), start_sec=0.0, end_sec=3.0,
+        status="analisada", usable="parcial", issues=["borrao_movimento"],
+    )
+    assert not is_severe(blur)  # borrão só pela IA
+    assert is_severe(blur.model_copy(update={"blurry": True}))  # confirmado pela medida `borrão alto`
+    assert is_severe(blur.model_copy(update={"uniform": True})) and is_severe(blur.model_copy(update={"usable": "nao"}))
+
+
+def test_screen_lists_the_principal_shots_under_each_sentence(tmp_path):
+    context, _, _ = _context(tmp_path)
+    by_id = {s.id: s for s in context.sentences}
+    assert by_id["S000"].screen == ["P001.T01"]
+    assert by_id["S001"].screen == ["P001.T01", "P001.T02"]  # 1,0 s na T01, 0,8 s na T02
+    assert by_id["S002"].screen == ["P001.T02"] and by_id["S004"].screen == ["P002.T01"]
+    assert [s.id for s in context.screen_shots] == ["P001.T01", "P001.T02", "P002.T01", "P002.T02"]
 
 
 def test_sentence_trimmed_by_silence_starts_at_first_kept_frame(tmp_path):
@@ -196,129 +236,215 @@ def test_visual_from_another_catalog_is_refused(tmp_path):
         build_visual_material(visual, catalog, tmp_path / "visual.json", ["P001"])
 
 
-def test_prompt_lists_ids_windows_and_candidates_without_times(tmp_path):
+def test_prompt_shows_screen_windows_relations_and_recording_proximity(tmp_path):
     context, _, _ = _context(tmp_path)
     context = context.model_copy(update={"instructions": ["Use bastante drone"]})
     prompt = build_coverage_prompt(context)
-    assert "O1: S001–S002 (clipe P001" in prompt and "tela uniforme" in prompt
+    assert "O1: S001–S002 (clipe P001, ~2.8s) — imagem inutilizável, obstruída/parede — EXIGE COBERTURA" in prompt
+    assert "O2: S004 (clipe P002, ~2.0s) — tela uniforme — EXIGE COBERTURA" in prompt
+    # O que está na tela: na janela e na lista de frases, quando a tomada muda.
+    assert "   ~ tela: P001.T01 imagem de P001 [interior, veículo]\n[S000] P001 1.6s Bom dia, pessoal." in prompt
+    assert "   ~ tela: P001.T02 imagem de P001 [interior, veículo]\n[S002]" in prompt
     assert "[S004] P002 2.0s Chegamos no lago." in prompt and "S003" not in prompt
-    assert "B001.T01 b-roll, 6.0s, beleza 4, boa" in prompt and "D001.T01" not in prompt
+    # Candidatas relacionadas por janela e proximidade de gravação.
+    assert "relacionadas: P003.T01 (gravada logo depois de P002)" in prompt
+    assert "relacionadas: nenhuma pelo código" in prompt  # O1: nada de dentro da van
+    assert "P003.T01 principal sem fala, 4.9s, beleza 5, boa, gravada logo depois de P002 — imagem de P003 [lago]" in prompt
+    assert "B001.T01 b-roll, 6.0s, beleza 4, boa — imagem de B001 [praia, lago]" in prompt and "D001.T01" not in prompt
+    assert "shot_ids" in prompt and "window_decisions" in prompt and "Contexto acima de beleza" in prompt
     assert "Use bastante drone" in prompt and "timestamps" in prompt
+    partial, _, _ = _context(tmp_path, p001_t02_usable="parcial")
+    assert "obstruída/parede — cobrir ou manter" in build_coverage_prompt(partial)
 
 
-# --- validação ---
+# --- validação item a item ---
 
 
-def _decision(coverages=(), breaths=()) -> CoverageDecision:
-    return CoverageDecision(coverages=list(coverages), breaths=list(breaths), summary="ok")
+def _decision(coverages=(), breaths=(), windows=()) -> CoverageDecision:
+    return CoverageDecision(coverages=list(coverages), breaths=list(breaths), window_decisions=list(windows), summary="ok")
 
 
-def _cov(a: str, b: str, shot: str, windows=()) -> CoverageChoice:
-    return CoverageChoice(from_sentence=a, to_sentence=b, shot_id=shot, reason="combina", windows=list(windows))
+def _cov(a: str, b: str, *shots: str, windows=()) -> CoverageChoice:
+    return CoverageChoice(from_sentence=a, to_sentence=b, shot_ids=list(shots), reason="combina", windows=list(windows))
 
 
-GOOD = [_cov("S001", "S002", "B001.T01", ["O1"]), _cov("S004", "S005", "P003.T01", ["O2"])]
+GOOD = [_cov("S001", "S002", "B001.T01", windows=["O1"]), _cov("S004", "S004", "P003.T01", windows=["O2"])]
 
 
-def _problems(context, shots, decision) -> list[str]:
-    return [p.message for p in coverage_problems(decision, context, excluded_shots(context, shots))]
+def _ai(context, shots, *responses) -> tuple[CoverageRun, MockCoverageDirector]:
+    director = MockCoverageDirector(responses=list(responses))
+    return run_coverage(director, context, shots), director
 
 
-def test_valid_decision_has_no_problems(tmp_path):
+def _candidate(shot_id: str, start: float, end: float, tags: list[str], beauty: int, role: str = "broll") -> VisualShot:
+    clip = shot_id.split(".")[0]
+    return VisualShot(
+        id=shot_id, clip_id=clip, role=role, source_path=Path(f"{clip}.mp4"), start_sec=start, end_sec=end,
+        has_speech=False, status="analisada", usable="sim", tags=tags, beauty=beauty,
+    )
+
+
+def test_valid_decision_is_accepted_without_changes(tmp_path):
     context, _, shots = _context(tmp_path)
     breath = BreathChoice(after_sentence="S002", shot_id="B001.T02", size="short", reason="troca de lugar")
-    assert _problems(context, shots, _decision(GOOD, [breath])) == []
+    decision = _decision(GOOD, [breath])
+    run, director = _ai(context, shots, decision)
+    assert len(director.calls) == 1 and run.origin == "ia" and run.origin_label == "ia"
+    assert [c.origin for c in run.coverages] == ["ia", "ia"] and run.breaths[0].origin == "ia"
+    assert not run.discarded and not run.warnings and not run.notes
+    assert run.window_cover == {"O1": ["C1"], "O2": ["C2"]}
+    assert [(o.window, o.status, o.by) for o in run.window_outcomes] == [("O1", "coberta", ["C1"]), ("O2", "coberta", ["C2"])]
+    assert run.responses == [decision] and run.ai_items == 3
+
+
+def test_single_shot_answer_is_still_accepted():
+    choice = CoverageChoice.model_validate({"from_sentence": "S001", "to_sentence": "S002", "shot_id": "B001.T01", "reason": "x"})
+    assert choice.shot_ids == ["B001.T01"] and choice.shot_id == "B001.T01"
+    assert "shot_id" not in CoverageChoice.model_json_schema()["properties"]  # o schema pedido à IA é só a lista
 
 
 @pytest.mark.parametrize(
-    "coverages, expected",
+    "bad, kind, expected",
     [
-        ([_cov("S001", "S999", "B001.T01")], "a frase S999 não existe"),
-        ([_cov("S001", "S002", "D001.T01")], "D001.T01 não pode ser cobertura (sem análise da IA)"),
-        ([_cov("S001", "S002", "B002.T01")], "B002.T01 não pode ser cobertura (imagem inutilizável"),
-        ([_cov("S001", "S002", "X001.T01")], "a tomada X001.T01 não existe"),
-        ([_cov("S000", "S001", "B001.T01"), _cov("S001", "S002", "B001.T02")], "se sobrepõe"),
-        ([_cov("S004", "S004", "B001.T01"), _cov("S005", "S005", "B001.T01")], "já foi usada"),
-        ([_cov("S002", "S002", "B001.T01")], "menos que o mínimo de 1,5s"),
-        ([_cov("S000", "S002", "B001.T01", ["O9"])], "a janela obrigatória O9 não existe"),
-        ([_cov("S004", "S005", "P003.T01", ["O1"])], "diz atender O1"),
+        (_cov("S001", "S999", "B001.T02"), "ID inexistente", "a frase S999 não existe"),
+        (_cov("S000", "S000", "D001.T01"), "tomada não candidata", "D001.T01 não pode ser cobertura (sem análise da IA)"),
+        (_cov("S000", "S000", "B002.T01"), "tomada não candidata", "B002.T01 não pode ser cobertura (imagem inutilizável"),
+        (_cov("S000", "S000", "X001.T01"), "ID inexistente", "a tomada X001.T01 não existe"),
+        (_cov("S000", "S001", "B001.T02"), "sobreposição", "se sobrepõe a cobertura 1 (S001–S002)"),
+        (_cov("S005", "S005", "B001.T01"), "tomada repetida", "B001.T01 já foi usada em cobertura 1 (S001–S002)"),
     ],
 )
-def test_validation_refuses(tmp_path, coverages, expected):
+def test_invalid_item_is_discarded_and_the_rest_stays(tmp_path, bad, kind, expected):
     context, _, shots = _context(tmp_path)
-    problems = _problems(context, shots, _decision(coverages))
-    assert any(expected in p for p in problems), problems
+    run, director = _ai(context, shots, _decision([*GOOD, bad]))
+    assert len(director.calls) == 1  # 1 de 3 descartado e janelas cobertas: sem nova tentativa
+    assert [d.kind for d in run.discarded] == [kind] and expected in run.discarded[0].message
+    assert run.origin == "ia" and [(c.from_sentence, c.shot_id) for c in run.coverages] == [("S001", "B001.T01"), ("S004", "P003.T01")]
+    assert run.origin_label == "ia (1 descartada)"
+    assert run.warnings[0].startswith(f"cobertura da IA: 3 itens, 1 descartados ({kind})")
+    assert expected in "\n".join(run.notes)
 
 
-def test_validation_refuses_shot_of_the_clip_that_is_speaking(tmp_path):
+def test_shot_of_the_speaking_clip_is_discarded_without_dropping_the_others(tmp_path):
     context, _, shots = _context(tmp_path)
-    p001_silent = VisualShot(
-        id="P001.T09", clip_id="P001", role="principal", source_path=tmp_path / "a.mp4", start_sec=8.0, end_sec=10.0,
-        has_speech=False, status="analisada", usable="sim", beauty=3,
-    )
+    p001_silent = _candidate("P001.T09", 8.0, 10.0, ["lago"], 3, role="principal")
     context = context.model_copy(update={"candidates": [*context.candidates, p001_silent]})
-    problems = _problems(context, shots, _decision([_cov("S001", "S002", "P001.T09")]))
-    assert any("é do clipe P001, que está falando" in p for p in problems)
+    run, director = _ai(context, shots, _decision([_cov("S000", "S000", "P001.T09"), *GOOD]))
+    assert len(director.calls) == 1 and [d.kind for d in run.discarded] == ["clipe que fala"]
+    assert "a tomada P001.T09 é do clipe P001, que está falando nesse trecho" in run.discarded[0].message
+    assert len(run.coverages) == 2 and run.origin == "ia"
 
 
-def test_validation_refuses_uncovered_window_and_breath_inside_coverage(tmp_path):
+def test_invalid_shot_in_a_list_is_removed_and_the_item_adjusted(tmp_path):
     context, _, shots = _context(tmp_path)
-    decision = _decision(
-        [_cov("S001", "S002", "B001.T01", ["O1"])],
-        [BreathChoice(after_sentence="S001", shot_id="B001.T02", size="short", reason="x")],
-    )
-    problems = coverage_problems(decision, context, excluded_shots(context, shots))
-    assert [p.kind for p in problems] == ["invalid", "missing_window"]
-    assert "cai no meio de cobertura 1" in problems[0].message
-    assert "janela obrigatória O2 (S004, tela uniforme) sem cobertura: faltam S004" in problems[1].message
+    run, _ = _ai(context, shots, _decision([_cov("S001", "S002", "X001.T01", "B001.T01", windows=["O1"]), GOOD[1]]))
+    first = run.coverages[0]
+    assert first.shot_ids == ["B001.T01"] and first.origin == "ia-ajustada"
+    assert first.adjustments[0].kind == "ID inexistente" and "retirada" in first.adjustments[0].message
+    assert not run.discarded and run.origin_label == "ia (1 ajustada)"
 
 
-# --- nova tentativa e fallback ---
-
-
-def test_invalid_answer_is_retried_with_the_error(tmp_path):
+def test_short_item_is_extended_to_the_shorter_free_neighbor_or_discarded(tmp_path):
     context, _, shots = _context(tmp_path)
-    director = MockCoverageDirector(responses=[_decision([_cov("S001", "S999", "B001.T01")]), _decision(GOOD)])
-    run = run_coverage(director, context, shots)
-    assert len(director.calls) == 2 and "S999" in director.calls[1].previous_error
-    assert "S999" in build_coverage_prompt(director.calls[1]) and "rejeitada" in build_coverage_prompt(director.calls[1])
+    # S002 (1 s): a vizinha livre mais curta é S001 (S004 é de outro clipe, depois do corte).
+    run, _ = _ai(context, shots, _decision([_cov("S002", "S002", "B001.T01", windows=["O1"]), GOOD[1]]))
+    first = run.coverages[0]
+    assert (first.from_sentence, first.to_sentence) == ("S001", "S002") and first.origin == "ia-ajustada"
+    assert "1,0s é menos que o mínimo; estendida para S001–S002 (3,0s)" in first.adjustments[0].message
+    # Sem vizinha livre (S001 e S004 já cobertas): descartado. O1 aqui pode ser mantida (parcial): sem nova tentativa.
+    partial, _, shots = _context(tmp_path, p001_t02_usable="parcial")
+    decision = _decision([_cov("S000", "S001", "B001.T01"), _cov("S004", "S004", "P003.T01"), _cov("S002", "S002", "B001.T02")])
+    run, director = _ai(partial, shots, decision)
+    assert len(director.calls) == 1 and [d.kind for d in run.discarded] == ["curta demais"]
+    assert "dura 1,0s, menos que o mínimo de 1,5s, e não há frase vizinha livre" in run.discarded[0].message
+
+
+def test_retry_only_when_a_required_window_is_left_uncovered(tmp_path):
+    context, _, shots = _context(tmp_path)
+    run, director = _ai(context, shots, _decision([GOOD[0]]), _decision([GOOD[1]]))
+    assert len(director.calls) == 2
+    retry = director.calls[1]
+    assert retry.previous_error == "- janela O2 (S004, tela uniforme) exige cobertura: faltam S004"
+    assert retry.accepted_items == ["cobertura S001–S002: B001.T01"]
+    prompt = build_coverage_prompt(retry)
+    assert "NOVA TENTATIVA" in prompt and "- cobertura S001–S002: B001.T01" in prompt
+    assert "Responda SÓ com os itens que faltam" in prompt
     assert run.origin == "ia" and [a.success for a in run.attempts] == [False, True]
     assert run.window_cover == {"O1": ["C1"], "O2": ["C2"]} and not run.warnings
 
 
-def test_invalid_twice_falls_back_to_mandatory_windows(tmp_path):
+def test_retry_when_more_than_half_of_the_items_is_discarded(tmp_path):
     context, _, shots = _context(tmp_path)
-    bad = _decision([_cov("S001", "S002", "D001.T01")])
-    run = run_coverage(MockCoverageDirector(responses=[bad, bad]), context, shots)
-    assert run.origin == "fallback" and "inválida em 2 tentativas" in run.origin_reason
-    assert any("Cobertura da IA ignorada" in w for w in run.warnings)
-    assert not run.uncovered_windows and all(c.origin == "fallback" for c in run.coverages)
-    # Tomada livre de maior beleza que caiba: P003.T01 (beleza 5, 5 s) para O1 (S001–S002, 3 s).
-    assert [(c.from_sentence, c.to_sentence, c.shot_id) for c in run.coverages][0] == ("S001", "S002", "P003.T01")
+    bad = [_cov("S000", "S000", "X001.T01"), _cov("S005", "S005", "X002.T01"), _cov("S000", "S000", "X003.T01")]
+    run, director = _ai(context, shots, _decision([*GOOD, *bad]), _decision([_cov("S005", "S005", "B001.T02")]))
+    assert len(director.calls) == 2
+    error = director.calls[1].previous_error
+    assert "X001.T01 não existe" in error and "3 de 5 itens descartados" in error
+    assert [c.from_sentence for c in run.coverages] == ["S001", "S004", "S005"] and len(run.discarded) == 3
+    assert run.origin == "ia"
 
 
-def test_missing_window_only_keeps_ai_choices_and_completes(tmp_path):
+def test_keep_is_accepted_with_a_reason_and_refused_where_cover_is_required(tmp_path):
+    context, _, shots = _context(tmp_path, p001_t02_usable="parcial")  # O1 pode ser mantida; O2 (tela uniforme) não
+    keep = _decision(windows=[
+        WindowDecision(window="O1", action="keep", reason="a van é o assunto da fala"),
+        WindowDecision(window="O2", action="keep", reason="tanto faz"),
+    ])
+    run, director = _ai(context, shots, keep, _decision([GOOD[1]]))
+    assert len(director.calls) == 2 and "O2 exige cobertura (tela uniforme)" in director.calls[1].previous_error
+    assert [d.kind for d in run.discarded] == ["janela exige cobertura"]
+    outcomes = {o.window: o for o in run.window_outcomes}
+    assert (outcomes["O1"].status, outcomes["O1"].reason, outcomes["O1"].origin) == ("mantida", "a van é o assunto da fala", "ia")
+    assert outcomes["O2"].status == "coberta" and run.origin == "ia"
+    assert run.windows_label == "1 cobertas, 1 mantidas de 2"
+
+
+# --- fallback: só tomadas relacionadas ---
+
+
+def test_unreadable_answer_twice_falls_back_to_related_shots_only(tmp_path):
     context, _, shots = _context(tmp_path)
-    partial = _decision([_cov("S004", "S005", "P003.T01", ["O2"])])
-    run = run_coverage(MockCoverageDirector(responses=[partial, partial]), context, shots)
-    assert run.origin == "ia+fallback" and not run.uncovered_windows
-    origins = {(c.from_sentence, c.origin) for c in run.coverages}
-    assert origins == {("S004", "ia"), ("S001", "fallback")}
-    assert run.coverages[0].shot_id == "B001.T01"  # P003.T01 já usada pela IA
+    error = AIResponseValidationError("coverage", details="JSON inválido")
+    run, director = _ai(context, shots, error, error)
+    assert len(director.calls) == 2 and run.origin == "fallback" and run.responses == [None, None]
+    assert any("Cobertura da IA ignorada: JSON inválido" in w for w in run.warnings)
+    # O2: P003.T01 foi gravada logo depois de P002 → coberta. O1 (dentro da van): nada relacionado → imagem
+    # original, com aviso (nunca o b-roll da praia só porque é bonito).
+    assert [(c.from_sentence, c.shot_ids, c.origin) for c in run.coverages] == [("S004", ["P003.T01"], "fallback")]
+    assert "P003.T01 (gravada logo depois de P002)" in run.coverages[0].reason
+    outcomes = {o.window: o for o in run.window_outcomes}
+    assert outcomes["O1"].status == "mantida" and outcomes["O1"].origin == "fallback"
+    assert any("janela O1 (S001–S002): nenhuma tomada relacionada livre" in w for w in run.warnings)
+    assert any("janelas que exigem cobertura sem cobertura completa: O1" in w for w in run.warnings)
 
 
-def test_no_coverage_ai_covers_only_mandatory_windows(tmp_path):
+def test_fallback_uses_tags_in_common_with_the_screen(tmp_path):
     context, _, shots = _context(tmp_path)
+    van_broll = _candidate("B007.T01", 0.0, 6.0, ["veículo", "interior", "estrada"], 3)
+    context = context.model_copy(update={"candidates": [*context.candidates, van_broll]})
     run = run_coverage(None, context, shots)
     assert run.origin == "fallback" and "desligada" in run.origin_reason and run.provider == "none"
+    first = run.coverages[0]
+    assert (first.from_sentence, first.shot_ids) == ("S001", ["B007.T01"]) and "tags veículo, interior" in first.reason
     assert run.window_cover == {"O1": ["C1"], "O2": ["C2"]} and not run.breaths
 
 
-def test_default_mock_covers_windows_and_adds_a_breath_at_clip_change(tmp_path):
+def test_fallback_does_not_repeat_the_clip_in_consecutive_pieces(tmp_path):
+    context, _, shots = _context(tmp_path)
+    van = ["interior", "veículo"]
+    # Tomadas de 1,6 s: O1 (3 s) precisa de duas. B001.T02 é mais bonita que D009.T01, mas repetiria o B001.
+    pool = [_candidate("B001.T01", 0.0, 1.6, van, 5), _candidate("B001.T02", 2.0, 3.6, van, 4), _candidate("D009.T01", 0.0, 1.6, van, 2, "drone")]
+    context = context.model_copy(update={"candidates": pool, "windows": context.windows[:1]})
+    run = run_coverage(None, context, shots)
+    assert run.coverages[0].shot_ids == ["B001.T01", "D009.T01"]
+
+
+def test_default_mock_decides_windows_and_adds_a_breath_at_clip_change(tmp_path):
     context, _, shots = _context(tmp_path)
     director = MockCoverageDirector()
     run = run_coverage(director, context, shots)
-    assert run.origin == "ia" and not run.uncovered_windows
+    assert run.origin == "ia" and not run.uncovered_windows and len(director.calls) == 1
+    assert [c.shot_ids for c in run.coverages] == [["B001.T01"], ["P003.T01"]]
     assert [(b.after_sentence, b.size) for b in run.breaths] == [("S002", "medium")]
 
 
@@ -328,6 +454,133 @@ def test_coverage_params_inherit_the_director():
     other = CoverageParams.inherit("gemini", "gemini-x", "gemini:gemini-y", provider="openai", thinking="off")
     assert (other.provider, other.model, other.fallback, other.thinking) == ("openai", None, None, "off")
     assert CoverageParams.inherit("none").provider == "none" and CoverageParams.inherit("mock").provider == "mock"
+
+
+# --- material real: vlog "Trilha La Islita" (tests/data/coverage_real) ---
+
+REAL = Path(__file__).parent / "data" / "coverage_real"
+
+
+@pytest.fixture(scope="module")
+def real_material() -> tuple[VisualMaterial, dict]:
+    material = VisualMaterial.model_validate_json((REAL / "material.json").read_text(encoding="utf-8"))
+    return material, json.loads((REAL / "spine.json").read_text(encoding="utf-8"))
+
+
+def _real_context(real_material) -> CoverageContext:
+    material, spine = real_material
+    kept = [CoverageSentence.model_validate(s) for s in spine["sentences"]]
+    roles = coverage_roles([])
+    return CoverageContext(
+        project_name="trilha", fps=spine["fps"], spine_duration_sec=spine["duration_sec"], sentences=kept,
+        windows=find_mandatory_windows(kept, material, spine["clips"]), candidates=coverage_candidates(material, roles),
+        screen_shots=annotate_screen(kept, material), roles=roles,
+    )
+
+
+def _gemini() -> CoverageDecision:
+    """Primeira resposta do Gemini (gemini-3.6-flash) no vlog real, na forma antiga (uma tomada por cobertura).
+
+    Reconstruída das mensagens de erro do `coverage_decision.json` daquela execução (as respostas cruas não
+    eram gravadas): mesmos 23 itens, na mesma ordem e com os mesmos trechos, e as duas tomadas do clipe que
+    fala (P025.T05, P027.T03). As outras tomadas e os 4 respiros foram escolhidos aqui, entre as candidatas.
+    Com a validação antiga, ela dá exatamente os 14 erros daquela execução.
+    """
+    return CoverageDecision.model_validate_json((REAL / "gemini_attempt1.json").read_text(encoding="utf-8"))
+
+
+def test_real_material_windows_and_candidates(real_material):
+    context = _real_context(real_material)
+    assert len(context.sentences) == 167 and len(context.candidates) == 90
+    assert [w.id for w in context.windows] == [f"O{n}" for n in range(1, 11)]
+    # Nenhuma exige cobertura: todas têm tomada "parcial" (ônibus com os bancos, tour pelo quarto...).
+    assert not any(w.required for w in context.windows)
+
+
+def test_real_gemini_answer_is_accepted_with_adjustments(real_material):
+    material, _ = real_material
+    run, director = _ai(_real_context(real_material), material.shots, _gemini())
+    # Antes: recusada inteira duas vezes (17 itens por duração, 2 pelo clipe que fala) e fallback geral.
+    assert len(director.calls) == 1 and run.origin == "ia" and run.ai_items == 27
+    assert [(d.item, d.kind) for d in run.discarded] == [
+        ("cobertura 19 (S133–S134)", "clipe que fala"), ("cobertura 23 (S166–S168)", "clipe que fala"),
+    ]
+    assert run.origin_label == "ia (19 ajustadas, 2 descartadas)"
+    assert run.warnings == [
+        "cobertura da IA: 27 itens, 19 ajustados (duração), 2 descartados (clipe que fala); detalhes no edit_report.md"
+    ]
+    assert len(run.coverages) == 21 and len(run.breaths) == 4 and all(b.origin == "ia" for b in run.breaths)
+    assert [o.status for o in run.window_outcomes] == ["coberta"] * 10
+    # Nenhum pedaço passa de 8 s nem fica abaixo de 1,5 s (fora o fim de uma cobertura encurtada).
+    fps = 30
+    for c in run.coverages:
+        caps = [shot_frames(material.by_id()[x], fps) for x in c.shot_ids]
+        assert max(caps) <= MAX_COVERAGE_SEC * fps
+
+
+def test_real_long_items_are_completed_in_windows_shortened_outside_and_short_ones_extended(real_material):
+    material, _ = real_material
+    context = _real_context(real_material)
+    run, _ = _ai(context, material.shots, _gemini())
+    by_start = {c.from_sentence: c for c in run.coverages}
+    order = {s.id: i for i, s in enumerate(context.sentences)}
+
+    def span(c) -> int:
+        return context.sentences[order[c.to_sentence]].end_frame - context.sentences[order[c.from_sentence]].start_frame
+
+    # O1 (S000–S001, 22,9 s) com uma tomada de 7,7 s: completada com tomadas parecidas até cobrir tudo.
+    o1 = by_start["S000"]
+    assert o1.shot_ids[0] == "D002.T15" and len(o1.added_shots) == 3 and o1.windows == ["O1"]
+    assert sum(shot_frames(material.by_id()[x], 30) for x in o1.shot_ids) >= span(o1)
+    assert all(material.by_id()[x].clip_id not in {"P001"} for x in o1.shot_ids)
+    # S085–S088 (21,2 s) fora de janela: encurtada, sem tomada que a IA não escolheu.
+    outside = by_start["S085"]
+    assert outside.shot_ids == ["D002.T16"] and not outside.added_shots
+    assert "encurtada; as tomadas cobrem 7,7s de 21,2s" in outside.adjustments[-1].message
+    # S140 (1,1 s): estendida para a vizinha livre mais curta (S139), em vez de recusada.
+    o9 = by_start["S139"]
+    assert o9.to_sentence == "S140" and "estendida para S139–S140" in o9.adjustments[0].message
+
+
+def test_real_long_item_with_enough_shots_is_distributed(real_material):
+    material, _ = real_material
+    context = _real_context(real_material)
+    three = CoverageDecision(
+        coverages=[CoverageChoice(
+            from_sentence="S000", to_sentence="S001", shot_ids=["D002.T15", "D002.T07", "D002.T08"], reason="estrada e lago",
+        )],
+        summary="x",
+    )
+    run, _ = _ai(context, material.shots, three)
+    first = run.coverages[0]
+    assert first.origin == "ia" and first.shot_ids == ["D002.T15", "D002.T07", "D002.T08"] and not first.adjustments
+    caps = [shot_frames(material.by_id()[x], 30) for x in first.shot_ids]
+    pieces = distribute(687, caps)  # 22,9 s
+    assert pieces == [229, 229, 229] and all(MIN_COVERAGE_SEC * 30 <= p <= MAX_COVERAGE_SEC * 30 for p in pieces)
+    # Janelas sem decisão da IA: o código decide (tomada relacionada ou imagem original).
+    assert run.origin == "ia+fallback" and "janelas sem decisão da IA" in run.origin_reason
+
+
+def test_real_fallback_keeps_bus_and_hotel_and_covers_only_with_related_shots(real_material):
+    material, _ = real_material
+    run = run_coverage(None, _real_context(real_material), material.shots)
+    outcomes = {o.window: o for o in run.window_outcomes}
+    # Ônibus (P001) e tour pelo quarto do hotel (P007): sem tomada relacionada que cubra, a imagem fica.
+    assert outcomes["O1"].status == "mantida" and outcomes["O2"].status == "mantida"
+    # Cachorro perto do lago (P021): o b-roll do homem com o cachorro na beira do lago.
+    o5 = run.coverages[[c.windows for c in run.coverages].index(["O5"])]
+    assert {x.split(".")[0] for x in o5.shot_ids} == {"B001", "B003"}
+    assert all("com tomada relacionada" in c.reason for c in run.coverages)
+    for c in run.coverages:  # pedaços seguidos de clipes diferentes
+        assert all(a.split(".")[0] != b.split(".")[0] for a, b in zip(c.shot_ids, c.shot_ids[1:]))
+
+
+def test_real_prompt_shows_screen_and_recording_proximity(real_material):
+    prompt = build_coverage_prompt(_real_context(real_material))
+    assert "   ~ tela: P001.T01 Interior de uma van ou micro-ônibus de turismo" in prompt
+    assert "P008.T01 principal sem fala, 3.4s, beleza 4, boa, gravada logo depois de P007" in prompt
+    assert "O2: S021–S023 (clipe P007, ~58.7s)" in prompt and "cobrir ou manter" in prompt
+    assert "relacionadas: B001.T01 (tags lago, animal)" in prompt
 
 
 # --- IDs → tempos ---
@@ -346,7 +599,7 @@ def _run(context, coverages=(), breaths=()) -> CoverageRun:
 def test_breath_at_clip_end_shifts_everything_after(tmp_path):
     context, spine, shots = _context(tmp_path)
     breath = BreathChoice(after_sentence="S002", shot_id="B001.T02", size="short", reason="troca de lugar")
-    run = _run(context, [_cov("S004", "S005", "B001.T01", ["O2"])], [breath])
+    run = _run(context, [_cov("S004", "S005", "B001.T01", windows=["O2"])], [breath])
     result = assemble_coverage(spine, context, run, {s.id: s for s in shots})
     final = result.timeline
     assert final.total_frames == spine.total_frames + 60  # respiro curto = 2 s
@@ -383,23 +636,24 @@ def test_breath_between_sentences_without_a_cut_splits_the_item(tmp_path):
     assert [p.concat_frame for p in placements] == [0, 57, 120] and [p.start_frame for p in placements] == [0, 117, 180]
 
 
-def test_shot_shorter_than_window_is_chained_or_shortened(tmp_path):
+def test_coverage_time_is_split_between_its_shots_in_order(tmp_path):
     context, spine, shots = _context(tmp_path)
     by_id = {s.id: s for s in shots}
-    short = by_id["B001.T02"].model_copy(update={"end_sec": 7.0})  # 1 s de tomada
-    by_id["B001.T02"] = short
-    context = context.model_copy(update={"candidates": [short if c.id == short.id else c for c in context.candidates]})
-    # O1 (S001–S002, 3 s) com a tomada de 1 s: completada com a tomada livre de maior beleza.
-    run = _run(context, [_cov("S001", "S002", "B001.T02", ["O1"]), _cov("S004", "S005", "B001.T01", ["O2"])])
+    # O1 (S001–S002, 3 s) com B001.T02 (2,9 s) e P003.T01 (acrescentada): 1,5 s cada, em ordem, sem buraco.
+    run = _run(context, [_cov("S001", "S002", "B001.T02", "P003.T01", windows=["O1"])])
+    run.coverages[0].added_shots = ["P003.T01"]
     result = assemble_coverage(spine, context, run, by_id)
     pieces = result.coverages[0].pieces
     assert [(p.shot_id, p.chained) for p in pieces] == [("B001.T02", False), ("P003.T01", True)]
-    assert pieces[0].timeline_end == pieces[1].timeline_start and pieces[1].timeline_end == pytest.approx(5.0)
-    assert any("completada com P003.T01" in w for w in result.warnings)
-    # Cobertura fora de janela obrigatória com tomada curta: encurtada, com aviso.
-    context2 = context.model_copy(update={"windows": []})
-    result2 = assemble_coverage(spine, context2, _run(context2, [_cov("S004", "S005", "B001.T02")]), by_id)
-    assert len(result2.coverages[0].pieces) == 1 and any("C1 encurtada" in w for w in result2.warnings)
+    assert pieces[0].timeline_start == pytest.approx(2.0) and pieces[0].timeline_end == pieces[1].timeline_start
+    assert pieces[1].timeline_end == pytest.approx(5.0) and len(result.timeline.video_overlay) == 2
+    assert result.coverages[0].shot_ids == ["B001.T02", "P003.T01"] and not result.warnings
+    # Tomadas que não bastam (S004–S005, 5 s, com 2,9 s de tomada): o fim fica com o principal, com aviso.
+    short = assemble_coverage(spine, context, _run(context, [_cov("S004", "S005", "B001.T02")]), by_id)
+    assert short.coverages[0].pieces[-1].timeline_end < short.coverages[0].timeline_end
+    assert any("ficam sem cobertura" in w for w in short.warnings)
+    # Divisão: o mais igual possível, sem passar do limite de cada tomada.
+    assert distribute(10, [100, 100]) == [5, 5] and distribute(10, [3, 100]) == [3, 7] and distribute(10, [2, 3]) == [2, 3]
 
 
 def test_subtitles_follow_each_range_when_a_breath_separates_them():

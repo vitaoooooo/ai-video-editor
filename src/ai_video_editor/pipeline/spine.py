@@ -35,6 +35,7 @@ from ai_video_editor.coverage import (
     CoverageParams,
     CoverageRun,
     VisualMaterial,
+    annotate_screen,
     assemble_coverage,
     build_visual_material,
     coverage_candidates,
@@ -45,6 +46,7 @@ from ai_video_editor.coverage import (
 )
 from ai_video_editor.coverage import assemble as coverage_assemble
 from ai_video_editor.coverage import material as coverage_material
+from ai_video_editor.coverage import related as coverage_related
 from ai_video_editor.coverage import service as coverage_service
 from ai_video_editor.intelligence.retry import RetryEvent, RetryPolicy
 from ai_video_editor.llm.chain import ModelChain
@@ -133,15 +135,17 @@ SPINE_STEPS = (
 DIRECTOR_PROMPT_FORMAT = "spine-prompt-v1"
 TIMELINE_FORMAT = "spine-timeline-v1"
 REPORT_FORMAT = "spine-report-v1"
-VISUAL_MATERIAL_FORMAT = "coverage-shots-v1"
-COVERAGE_FORMAT = "coverage-v1"
+VISUAL_MATERIAL_FORMAT = "coverage-shots-v2"
+COVERAGE_FORMAT = "coverage-v2"
 # Regras do código que mudam o resultado da cobertura (entram no fingerprint da etapa).
 COVERAGE_RULES = (
     coverage_service.MIN_COVERAGE_SEC, coverage_service.MAX_COVERAGE_SEC, coverage_service.BREATH_SECONDS,
     coverage_service.MIN_BREATH_SHOT_SEC, coverage_service.BREATH_EVERY_SEC, coverage_service.SOURCE_END_MARGIN_SEC,
+    coverage_service.MAX_ATTEMPTS, coverage_service.RETRY_DISCARD_RATIO, coverage_service.MAX_UNCOVERED_SEC,
     coverage_material.MIN_BAD_OVERLAP_SEC, coverage_material.COVERAGE_ROLES, coverage_material.BAD_ISSUES,
+    coverage_related.NEIGHBOR_CLIPS, coverage_related.NEIGHBOR_MINUTES, coverage_related.GENERIC_TAGS,
+    coverage_related.MIN_COMMON_TAGS,
     coverage_assemble.BREATH_VOLUME, coverage_assemble.COVERAGE_AMBIENT_VOLUME, coverage_assemble.AMBIENT_FADE_SEC,
-    coverage_assemble.MIN_CHAIN_SEC,
 )
 VISUAL_DIR = "visual"
 VISUAL_JSON = "visual.json"
@@ -761,17 +765,18 @@ class SpinePipeline(EditPipeline):
             sentences, removed = self._kept_sentences(s)
             spine_ids = [c.id for c in s.clips]
             kept = coverage_sentences(sentences, removed, s.timeline)
+            screen = annotate_screen(kept, s.visual)
             context = CoverageContext(
                 project_name=s.source_dir.name, fps=s.timeline.fps, spine_duration_sec=s.timeline.duration_sec,
                 sentences=kept, windows=find_mandatory_windows(kept, s.visual, spine_ids),
-                candidates=coverage_candidates(s.visual, roles), instructions=instructions, roles=roles,
+                candidates=coverage_candidates(s.visual, roles), screen_shots=screen, instructions=instructions, roles=roles,
             )
             run = run_coverage(director, context, s.visual.shots)
             assembled = assemble_coverage(
                 s.timeline, context, run, s.visual.by_id(), title=f"Vlog com cobertura — {s.source_dir.name}"
             )
             run.placed_coverages, run.placed_breaths = assembled.coverages, assembled.breaths
-            run.warnings += assembled.warnings
+            run.notes += assembled.warnings
             run.final_duration_sec = round(assembled.timeline.duration_sec, 3)
             for warning in run.warnings:
                 self._emit("coverage", "notice", warning)
@@ -783,7 +788,11 @@ class SpinePipeline(EditPipeline):
                 "effective_model": run.effective_model_id or run.model_id,
                 "model_switches": len(run.model_switches),
                 "origin": run.origin,
+                "ai_items": run.ai_items,
+                "adjusted": sum(1 for x in [*run.coverages, *run.breaths] if x.origin == "ia-ajustada"),
+                "discarded": len(run.discarded),
                 "windows": len(run.windows),
+                "kept_windows": len(run.kept_window_ids),
                 "uncovered_windows": len(run.uncovered_windows),
                 "coverages": len(run.placed_coverages),
                 "breaths": len(run.placed_breaths),
@@ -792,10 +801,9 @@ class SpinePipeline(EditPipeline):
                 "attempts": len(run.attempts),
                 "duration_sec": run.final_duration_sec,
             }
-            covered = len(run.windows) - len(run.uncovered_windows)
             detail = (
                 f"{len(run.placed_coverages)} coberturas, {len(run.placed_breaths)} respiros (+{breath_sec:.1f}s), "
-                f"{covered}/{len(run.windows)} janelas obrigatórias ({run.origin})"
+                f"janelas com imagem ruim: {run.windows_label} ({run.origin_label})"
             )
             return metrics, detail
 
