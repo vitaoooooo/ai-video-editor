@@ -368,6 +368,12 @@ _ORIGIN_LABELS = {
     "ia+fallback": "IA, completada pelo código",
     "fallback": "código (fallback)",
 }
+_ITEM_ORIGIN_LABELS = {"ia": "IA", "ia-ajustada": "IA (ajustada)", "fallback": "código"}
+_WINDOW_STATUS_LABELS = {
+    "coberta": "coberta",
+    "mantida": "mantida (imagem original)",
+    "descoberta": "**sem cobertura**",
+}
 
 
 def _cover_cell(seconds: float) -> str:
@@ -375,8 +381,9 @@ def _cover_cell(seconds: float) -> str:
 
 
 def coverage_lines(coverage: CoverageRun) -> list[str]:
-    """Seção "Cobertura": modelo e origem, janelas obrigatórias e quem atendeu, coberturas e respiros."""
-    covered = len(coverage.windows) - len(coverage.uncovered_windows)
+    """Seção "Cobertura": modelo e origem, decisão por janela com imagem ruim, coberturas, respiros e o que o
+    código ajustou ou descartou."""
+    adjusted = sum(1 for x in [*coverage.coverages, *coverage.breaths] if x.origin == "ia-ajustada")
     breath_sec = sum(b.duration_sec for b in coverage.placed_breaths)
     model = coverage.effective_model_id or coverage.model_id
     lines = [
@@ -395,8 +402,12 @@ def coverage_lines(coverage: CoverageRun) -> list[str]:
         f"| Raciocínio | {coverage.thinking or '—'} |",
         f"| Origem | {_ORIGIN_LABELS[coverage.origin]}"
         + (f": {_cell(coverage.origin_reason)}" if coverage.origin_reason else "") + " |",
+        *(
+            [f"| Itens da IA | {coverage.ai_items} recebidos, {adjusted} ajustados, {len(coverage.discarded)} descartados |"]
+            if coverage.ai_items else []
+        ),
         f"| Tomadas candidatas | {coverage.candidates} (papéis: {', '.join(coverage.roles) or '—'}) |",
-        f"| Janelas obrigatórias | {covered} de {len(coverage.windows)} cobertas |",
+        f"| Janelas com imagem ruim | {coverage.windows_label} |",
         f"| Coberturas | {len(coverage.placed_coverages)} |",
         f"| Respiros | {len(coverage.placed_breaths)} (+{breath_sec:.1f}s) |",
         f"| Duração | espinha {coverage.spine_duration_sec:.2f}s → final {coverage.final_duration_sec:.2f}s |",
@@ -419,29 +430,40 @@ def coverage_lines(coverage: CoverageRun) -> list[str]:
     if coverage.summary:
         lines += [f"**Resumo:** {coverage.summary}", ""]
 
-    lines += ["### Janelas obrigatórias", ""]
+    lines += ["### Janelas com imagem ruim", ""]
     if coverage.windows:
-        lines += ["| Janela | Clipe | Frases | Motivo | Tomadas ruins | Atendida por |", "| --- | --- | --- | --- | --- | --- |"]
+        lines += [
+            "| Janela | Clipe | Frases | Imagem | Exige cobertura | Tomadas ruins | Decisão | Motivo | Quem decidiu |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        outcomes = {o.window: o for o in coverage.window_outcomes}
         for w in coverage.windows:
-            by = ", ".join(coverage.window_cover.get(w.id, [])) or "**sem cobertura**"
+            o = outcomes.get(w.id)
+            decision = _WINDOW_STATUS_LABELS[o.status] if o else "—"
+            if o and o.by:
+                decision += f" com {', '.join(o.by)}"
+            who = _ITEM_ORIGIN_LABELS.get(o.origin, "—") if o and o.origin else "—"
             lines.append(
-                f"| {w.id} | {w.clip_id} | {w.span_label} | {_cell(', '.join(w.reasons))} | {', '.join(w.shot_ids)} | {by} |"
+                f"| {w.id} | {w.clip_id} | {w.span_label} | {_cell(', '.join(w.reasons))} | {'sim' if w.required else 'não'} | "
+                f"{', '.join(w.shot_ids)} | {decision} | {_cell(o.reason) if o else '—'} | {who} |"
             )
     else:
         lines.append("Nenhuma: a imagem do principal está boa em toda a fala mantida.")
     lines += ["", "### Coberturas (por cima da fala)", ""]
     if coverage.placed_coverages:
         lines += [
-            "| # | Frases | Tomada | No vídeo | Motivo | Obrigatória | Origem |",
+            "| # | Frases | Tomadas | No vídeo | Motivo | Janela | Origem |",
             "| --- | --- | --- | --- | --- | --- | --- |",
         ]
         for c in coverage.placed_coverages:
             span = c.from_sentence if c.from_sentence == c.to_sentence else f"{c.from_sentence}–{c.to_sentence}"
-            shots = ", ".join(dict.fromkeys(p.shot_id for p in c.pieces)) or c.shot_id
+            shots = ", ".join(f"{p.shot_id}{'*' if p.chained else ''}" for p in c.pieces) or ", ".join(c.shot_ids or [c.shot_id])
             lines.append(
                 f"| {c.id} | {span} | {shots} | {_cover_cell(c.timeline_start)}–{_cover_cell(c.timeline_end)} | "
-                f"{_cell(c.reason)} | {', '.join(c.windows) or 'não'} | {c.origin} |"
+                f"{_cell(c.reason)} | {', '.join(c.windows) or 'não'} | {_ITEM_ORIGIN_LABELS.get(c.origin, c.origin)} |"
             )
+        if any(p.chained for c in coverage.placed_coverages for p in c.pieces):
+            lines += ["", "\\* tomada acrescentada pelo código (as escolhidas não bastavam para o trecho)."]
     else:
         lines.append("Nenhuma cobertura.")
     lines += ["", "### Respiros (inseridos entre as falas)", ""]
@@ -453,10 +475,13 @@ def coverage_lines(coverage: CoverageRun) -> list[str]:
         for b in coverage.placed_breaths:
             lines.append(
                 f"| {b.id} | {b.after_sentence} | {b.shot_id} | {BREATH_SIZE_LABELS[b.size]} ({b.duration_sec:.1f}s) | "
-                f"{_cover_cell(b.timeline_start)} | {'da tomada' if b.audio else 'mudo'} | {_cell(b.reason)} | {b.origin} |"
+                f"{_cover_cell(b.timeline_start)} | {'da tomada' if b.audio else 'mudo'} | {_cell(b.reason)} | {_ITEM_ORIGIN_LABELS.get(b.origin, b.origin)} |"
             )
     else:
         lines.append("Nenhum respiro.")
+    if coverage.notes:
+        lines += ["", "### Ajustes e descartes do código", ""]
+        lines += [f"- {_cell(n)}" for n in coverage.notes]
     lines.append("")
     return lines
 
@@ -558,9 +583,8 @@ def build_spine_report(
         *(
             [
                 f"| Cobertura | {len(coverage.placed_coverages)} coberturas, {len(coverage.placed_breaths)} respiros "
-                f"(+{sum(b.duration_sec for b in coverage.placed_breaths):.1f}s), janelas obrigatórias "
-                f"{len(coverage.windows) - len(coverage.uncovered_windows)}/{len(coverage.windows)} "
-                f"({_ORIGIN_LABELS[coverage.origin]}) |"
+                f"(+{sum(b.duration_sec for b in coverage.placed_breaths):.1f}s), janelas com imagem ruim: "
+                f"{coverage.windows_label} ({coverage.origin_label}) |"
             ]
             if coverage is not None
             else []

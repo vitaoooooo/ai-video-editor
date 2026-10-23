@@ -1,0 +1,6716 @@
+{
+ "visual_path": "visual\\visual.json",
+ "roles": [
+  "principal",
+  "drone",
+  "pov",
+  "broll",
+  "outro"
+ ],
+ "shots": [
+  {
+   "id": "P001.T01",
+   "clip_id": "P001",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (4).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.886,
+   "frame_times": {
+    "P001.T01.F1": 0.789,
+    "P001.T01.F2": 3.943,
+    "P001.T01.F3": 7.097
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "obstruida"
+   ],
+   "description": "Interior de uma van ou micro-ônibus de turismo com passageiros nos bancos durante o trajeto.",
+   "tags": [
+    "interior",
+    "veículo",
+    "pessoa"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P001.T01.F1",
+    "P001.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:22:28Z"
+  },
+  {
+   "id": "P001.T02",
+   "clip_id": "P001",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (4).mp4",
+   "start_sec": 7.886,
+   "end_sec": 15.773,
+   "frame_times": {
+    "P001.T02.F1": 8.675,
+    "P001.T02.F2": 11.829,
+    "P001.T02.F3": 14.984
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "obstruida"
+   ],
+   "description": "Visão interna de van em movimento com foco nos bancos e passageiros.",
+   "tags": [
+    "interior",
+    "veículo",
+    "pessoa"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P001.T02.F1",
+    "P001.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:22:28Z"
+  },
+  {
+   "id": "P001.T03",
+   "clip_id": "P001",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (4).mp4",
+   "start_sec": 15.773,
+   "end_sec": 23.659,
+   "last_in_clip": true,
+   "frame_times": {
+    "P001.T03.F1": 16.562,
+    "P001.T03.F2": 19.716,
+    "P001.T03.F3": 22.87
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "obstruida"
+   ],
+   "description": "Interior do veículo de turismo com guia ou passageira ao fundo em pé.",
+   "tags": [
+    "interior",
+    "veículo",
+    "pessoa"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P001.T03.F1",
+    "P001.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:22:28Z"
+  },
+  {
+   "id": "P002.T01",
+   "clip_id": "P002",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (9).mp4",
+   "start_sec": 0.0,
+   "end_sec": 4.426,
+   "frame_times": {
+    "P002.T01.F1": 0.443,
+    "P002.T01.F2": 2.213,
+    "P002.T01.F3": 3.983
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Visão pelo para-brisa de uma rua de cidade serrana com montanhas ao fundo.",
+   "tags": [
+    "cidade",
+    "estrada",
+    "veículo",
+    "paisagem"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P002.T01.F1",
+    "P002.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:22:46Z"
+  },
+  {
+   "id": "P002.T02",
+   "clip_id": "P002",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (9).mp4",
+   "start_sec": 4.426,
+   "end_sec": 8.853,
+   "last_in_clip": true,
+   "frame_times": {
+    "P002.T02.F1": 4.869,
+    "P002.T02.F2": 6.639,
+    "P002.T02.F3": 8.41
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Trajeto de carro por avenida de cidade turística em direção às montanhas.",
+   "tags": [
+    "cidade",
+    "estrada",
+    "veículo",
+    "paisagem"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P002.T02.F1",
+    "P002.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:22:46Z"
+  },
+  {
+   "id": "P003.T01",
+   "clip_id": "P003",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (15).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.12,
+   "last_in_clip": true,
+   "frame_times": {
+    "P003.T01.F1": 0.512,
+    "P003.T01.F2": 2.56,
+    "P003.T01.F3": 4.608
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Bela vista panorâmica de um lago azul calmo cercado por florestas e montanhas com pico nevado.",
+   "tags": [
+    "lago",
+    "paisagem",
+    "água",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 5,
+   "face_to_camera": false,
+   "best_frames": [
+    "P003.T01.F1",
+    "P003.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:06Z"
+  },
+  {
+   "id": "P004.T01",
+   "clip_id": "P004",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (16).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.498,
+   "frame_times": {
+    "P004.T01.F1": 0.75,
+    "P004.T01.F2": 3.749,
+    "P004.T01.F3": 6.748
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Gravação pela janela do veículo revelando árvores e depois um lago entre as montanhas.",
+   "tags": [
+    "estrada",
+    "árvore",
+    "lago",
+    "paisagem"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P004.T01.F2",
+    "P004.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:07Z"
+  },
+  {
+   "id": "P004.T02",
+   "clip_id": "P004",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (16).mp4",
+   "start_sec": 7.498,
+   "end_sec": 14.997,
+   "last_in_clip": true,
+   "frame_times": {
+    "P004.T02.F1": 8.248,
+    "P004.T02.F2": 11.248,
+    "P004.T02.F3": 14.247
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Visão em movimento através da janela mostrando estrada, lago e montanhas ao fundo.",
+   "tags": [
+    "estrada",
+    "lago",
+    "paisagem",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P004.T02.F1",
+    "P004.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:07Z"
+  },
+  {
+   "id": "P005.T01",
+   "clip_id": "P005",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (19).mp4",
+   "start_sec": 0.0,
+   "end_sec": 6.549,
+   "last_in_clip": true,
+   "frame_times": {
+    "P005.T01.F1": 0.655,
+    "P005.T01.F2": 3.275,
+    "P005.T01.F3": 5.894
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rua residencial arborizada de uma pequena cidade com carros estacionados.",
+   "tags": [
+    "cidade",
+    "rua",
+    "veículo",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P005.T01.F1",
+    "P005.T01.F2",
+    "P005.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:37Z"
+  },
+  {
+   "id": "P006.T01",
+   "clip_id": "P006",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (21).mp4",
+   "start_sec": 0.0,
+   "end_sec": 6.835,
+   "frame_times": {
+    "P006.T01.F1": 0.683,
+    "P006.T01.F2": 3.417,
+    "P006.T01.F3": 6.152
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz com gorro e jaqueta preta fala para a câmera em frente a uma construção de madeira.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "cidade",
+    "interior"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P006.T01.F1"
+   ],
+   "recorded_at": "2026-05-07T17:23:43Z"
+  },
+  {
+   "id": "P006.T02",
+   "clip_id": "P006",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (21).mp4",
+   "start_sec": 6.835,
+   "end_sec": 13.67,
+   "frame_times": {
+    "P006.T02.F1": 7.518,
+    "P006.T02.F2": 10.252,
+    "P006.T02.F3": 12.986
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz de gorro caminhando pelo jardim em direção a uma casa de madeira.",
+   "tags": [
+    "pessoa",
+    "cidade",
+    "interior",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P006.T02.F1",
+    "P006.T02.F2",
+    "P006.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:43Z"
+  },
+  {
+   "id": "P006.T03",
+   "clip_id": "P006",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (21).mp4",
+   "start_sec": 13.67,
+   "end_sec": 20.506,
+   "frame_times": {
+    "P006.T03.F1": 14.354,
+    "P006.T03.F2": 17.088,
+    "P006.T03.F3": 19.822
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz caminhando próximo a uma charmosa casa de madeira com gramado.",
+   "tags": [
+    "pessoa",
+    "cidade",
+    "interior",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P006.T03.F1",
+    "P006.T03.F2",
+    "P006.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:43Z"
+  },
+  {
+   "id": "P006.T04",
+   "clip_id": "P006",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (21).mp4",
+   "start_sec": 20.506,
+   "end_sec": 27.341,
+   "frame_times": {
+    "P006.T04.F1": 21.189,
+    "P006.T04.F2": 23.924,
+    "P006.T04.F3": 26.658
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz continuando a caminhada ao lado de uma fachada de madeira.",
+   "tags": [
+    "pessoa",
+    "cidade",
+    "interior"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P006.T04.F1",
+    "P006.T04.F2",
+    "P006.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:43Z"
+  },
+  {
+   "id": "P006.T05",
+   "clip_id": "P006",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (21).mp4",
+   "start_sec": 27.341,
+   "end_sec": 34.176,
+   "last_in_clip": true,
+   "frame_times": {
+    "P006.T05.F1": 28.024,
+    "P006.T05.F2": 30.759,
+    "P006.T05.F3": 33.492
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz sorrindo e olhando para a câmera enquanto caminha pela rua.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "cidade",
+    "interior"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P006.T05.F1",
+    "P006.T05.F2"
+   ],
+   "recorded_at": "2026-05-07T17:23:43Z"
+  },
+  {
+   "id": "P007.T01",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.264,
+   "frame_times": {
+    "P007.T01.F1": 0.726,
+    "P007.T01.F2": 3.632,
+    "P007.T01.F3": 6.538
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Quarto de hotel arrumado com cama de casal e janela iluminada.",
+   "tags": [
+    "interior",
+    "detalhe"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P007.T01.F1",
+    "P007.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P007.T02",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 7.264,
+   "end_sec": 14.528,
+   "frame_times": {
+    "P007.T02.F1": 7.99,
+    "P007.T02.F2": 10.896,
+    "P007.T02.F3": 13.802
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista da rua de uma cidade a partir da janela do quarto.",
+   "tags": [
+    "cidade",
+    "rua",
+    "veículo",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P007.T02.F2",
+    "P007.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P007.T03",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 14.528,
+   "end_sec": 21.792,
+   "frame_times": {
+    "P007.T03.F1": 15.254,
+    "P007.T03.F2": 18.16,
+    "P007.T03.F3": 21.066
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada estática mostrando a rua arborizada de uma cidade com casas e veículos.",
+   "tags": [
+    "paisagem",
+    "cidade",
+    "veículo",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P007.T03.F1",
+    "P007.T03.F2",
+    "P007.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P007.T04",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 21.792,
+   "end_sec": 29.056,
+   "frame_times": {
+    "P007.T04.F1": 22.518,
+    "P007.T04.F2": 25.424,
+    "P007.T04.F3": 28.33
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Câmera se moviendo rapidamente de uma janela para o interior de um quarto de hotel.",
+   "tags": [
+    "interior",
+    "detalhe"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P007.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P007.T05",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 29.056,
+   "end_sec": 36.32,
+   "frame_times": {
+    "P007.T05.F1": 29.782,
+    "P007.T05.F2": 32.688,
+    "P007.T05.F3": 35.594
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Pessoa abrindo a porta de um armário em um quarto de hotel.",
+   "tags": [
+    "interior",
+    "detalhe",
+    "pessoa"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P007.T05.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P007.T06",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 36.32,
+   "end_sec": 43.584,
+   "frame_times": {
+    "P007.T06.F1": 37.046,
+    "P007.T06.F2": 39.952,
+    "P007.T06.F3": 42.858
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada revelando o interior de um banheiro limpo com vaso sanitário e bidê.",
+   "tags": [
+    "interior",
+    "detalhe"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P007.T06.F2",
+    "P007.T06.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P007.T07",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 43.584,
+   "end_sec": 50.848,
+   "frame_times": {
+    "P007.T07.F1": 44.31,
+    "P007.T07.F2": 47.216,
+    "P007.T07.F3": 50.122
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "uniform": true,
+   "usable": "nao",
+   "issues": [
+    "tremida",
+    "borrao_movimento"
+   ],
+   "description": "Movimento de câmera mostrando a parede e detalhes do banheiro.",
+   "tags": [
+    "interior",
+    "detalhe"
+   ],
+   "beauty": 1,
+   "face_to_camera": false,
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P007.T08",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 50.848,
+   "end_sec": 58.112,
+   "frame_times": {
+    "P007.T08.F1": 51.574,
+    "P007.T08.F2": 54.48,
+    "P007.T08.F3": 57.386
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "nao",
+   "issues": [
+    "borrao_movimento",
+    "tremida"
+   ],
+   "description": "Movimento rápido dentro do banheiro em direção ao espelho.",
+   "tags": [
+    "interior"
+   ],
+   "beauty": 1,
+   "face_to_camera": false,
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P007.T09",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 58.112,
+   "end_sec": 65.376,
+   "frame_times": {
+    "P007.T09.F1": 58.838,
+    "P007.T09.F2": 61.744,
+    "P007.T09.F3": 64.65
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem com gorro acenando para a câmera refletida no espelho do banheiro.",
+   "tags": [
+    "interior",
+    "pessoa",
+    "rosto"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P007.T09.F1",
+    "P007.T09.F2",
+    "P007.T09.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P007.T10",
+   "clip_id": "P007",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (26).mp4",
+   "start_sec": 65.376,
+   "end_sec": 72.64,
+   "last_in_clip": true,
+   "frame_times": {
+    "P007.T10.F1": 66.102,
+    "P007.T10.F2": 69.008,
+    "P007.T10.F3": 71.914
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem no espelho e depois mulher aparecendo na porta com gorro amarelo.",
+   "tags": [
+    "interior",
+    "pessoa",
+    "rosto"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P007.T10.F1",
+    "P007.T10.F2",
+    "P007.T10.F3"
+   ],
+   "recorded_at": "2026-05-07T17:23:56Z"
+  },
+  {
+   "id": "P008.T01",
+   "clip_id": "P008",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (27).mp4",
+   "start_sec": 0.0,
+   "end_sec": 3.541,
+   "last_in_clip": true,
+   "frame_times": {
+    "P008.T01.F1": 0.354,
+    "P008.T01.F2": 1.77,
+    "P008.T01.F3": 3.187
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rua de cidade pequena com construções de madeira e montanhas ao fundo.",
+   "tags": [
+    "cidade",
+    "estrada",
+    "veículo",
+    "paisagem",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P008.T01.F1",
+    "P008.T01.F2",
+    "P008.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:11Z"
+  },
+  {
+   "id": "P009.T01",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.612,
+   "frame_times": {
+    "P009.T01.F1": 0.761,
+    "P009.T01.F2": 3.806,
+    "P009.T01.F3": 6.851
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Caminho pavimentado ao lado de um canal de água e vegetação.",
+   "tags": [
+    "trilha",
+    "lago",
+    "árvore",
+    "céu",
+    "paisagem"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P009.T01.F1",
+    "P009.T01.F2",
+    "P009.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T02",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 7.612,
+   "end_sec": 15.224,
+   "frame_times": {
+    "P009.T02.F1": 8.373,
+    "P009.T02.F2": 11.418,
+    "P009.T02.F3": 14.463
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem caminhando e falando para a câmera em trilha ao ar livre.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha",
+    "céu"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P009.T02.F1",
+    "P009.T02.F2"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T03",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 15.224,
+   "end_sec": 22.836,
+   "frame_times": {
+    "P009.T03.F1": 15.985,
+    "P009.T03.F2": 19.03,
+    "P009.T03.F3": 22.075
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Casal conversando ao ar livre mostrando uma lata de bebida.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "detalhe",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P009.T03.F1",
+    "P009.T03.F2",
+    "P009.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T04",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 22.836,
+   "end_sec": 30.448,
+   "frame_times": {
+    "P009.T04.F1": 23.597,
+    "P009.T04.F2": 26.642,
+    "P009.T04.F3": 29.687
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mulher bebendo de uma lata enquanto homem fala para a câmera.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "detalhe"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P009.T04.F1",
+    "P009.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T05",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 30.448,
+   "end_sec": 38.06,
+   "frame_times": {
+    "P009.T05.F1": 31.209,
+    "P009.T05.F2": 34.254,
+    "P009.T05.F3": 37.299
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem fala para a câmera e aponta para a paisagem ao lado de um rio.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "lago",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P009.T05.F1",
+    "P009.T05.F2",
+    "P009.T05.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T06",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 38.06,
+   "end_sec": 45.673,
+   "frame_times": {
+    "P009.T06.F1": 38.821,
+    "P009.T06.F2": 41.867,
+    "P009.T06.F3": 44.912
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Paisagem de rio calmo com árvores e construções ao fundo.",
+   "tags": [
+    "lago",
+    "árvore",
+    "paisagem",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P009.T06.F1",
+    "P009.T06.F2",
+    "P009.T06.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T07",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 45.673,
+   "end_sec": 53.285,
+   "frame_times": {
+    "P009.T07.F1": 46.434,
+    "P009.T07.F2": 49.479,
+    "P009.T07.F3": 52.524
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pessoa apontando para o céu e montanhas com árvores.",
+   "tags": [
+    "paisagem",
+    "céu",
+    "árvore",
+    "pessoa"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P009.T07.F1",
+    "P009.T07.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T08",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 53.285,
+   "end_sec": 60.897,
+   "frame_times": {
+    "P009.T08.F1": 54.046,
+    "P009.T08.F2": 57.091,
+    "P009.T08.F3": 60.136
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem caminha ao ar livre e fala virado para a câmera.",
+   "tags": [
+    "pessoa",
+    "rosto"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P009.T08.F1",
+    "P009.T08.F2",
+    "P009.T08.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T09",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 60.897,
+   "end_sec": 68.509,
+   "frame_times": {
+    "P009.T09.F1": 61.658,
+    "P009.T09.F2": 64.703,
+    "P009.T09.F3": 67.748
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem fala olhando para a câmera em tomada estilo selfie.",
+   "tags": [
+    "pessoa",
+    "rosto"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P009.T09.F1",
+    "P009.T09.F2",
+    "P009.T09.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T10",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 68.509,
+   "end_sec": 76.121,
+   "frame_times": {
+    "P009.T10.F1": 69.27,
+    "P009.T10.F2": 72.315,
+    "P009.T10.F3": 75.36
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem caminha falando para a câmera com céu azul e árvores ao fundo.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "céu",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P009.T10.F1",
+    "P009.T10.F2",
+    "P009.T10.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P009.T11",
+   "clip_id": "P009",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (34).mp4",
+   "start_sec": 76.121,
+   "end_sec": 83.733,
+   "last_in_clip": true,
+   "frame_times": {
+    "P009.T11.F1": 76.882,
+    "P009.T11.F2": 79.927,
+    "P009.T11.F3": 82.972
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem caminha e fala virado para a câmera em ambiente externo.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P009.T11.F1",
+    "P009.T11.F2",
+    "P009.T11.F3"
+   ],
+   "recorded_at": "2026-05-07T17:24:36Z"
+  },
+  {
+   "id": "P010.T01",
+   "clip_id": "P010",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (37).mp4",
+   "start_sec": 0.0,
+   "end_sec": 6.784,
+   "last_in_clip": true,
+   "frame_times": {
+    "P010.T01.F1": 0.678,
+    "P010.T01.F2": 3.392,
+    "P010.T01.F3": 6.106
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Duas pessoas caminham por uma trilha cercada por árvores.",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P010.T01.F1",
+    "P010.T01.F2",
+    "P010.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:25:16Z"
+  },
+  {
+   "id": "P011.T01",
+   "clip_id": "P011",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (38).mp4",
+   "start_sec": 0.0,
+   "end_sec": 2.837,
+   "last_in_clip": true,
+   "frame_times": {
+    "P011.T01.F1": 0.284,
+    "P011.T01.F2": 1.419,
+    "P011.T01.F3": 2.553
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista de uma trilha com árvores e um lago ao fundo.",
+   "tags": [
+    "trilha",
+    "lago",
+    "árvore",
+    "céu",
+    "água"
+   ],
+   "beauty": 5,
+   "face_to_camera": false,
+   "best_frames": [
+    "P011.T01.F1",
+    "P011.T01.F2",
+    "P011.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:25:18Z"
+  },
+  {
+   "id": "P012.T01",
+   "clip_id": "P012",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (40).mp4",
+   "start_sec": 0.0,
+   "end_sec": 6.963,
+   "frame_times": {
+    "P012.T01.F1": 0.696,
+    "P012.T01.F2": 3.482,
+    "P012.T01.F3": 6.267
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Duas pessoas caminham afastando-se pela trilha na floresta.",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P012.T01.F1",
+    "P012.T01.F2",
+    "P012.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:25:26Z"
+  },
+  {
+   "id": "P012.T02",
+   "clip_id": "P012",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (40).mp4",
+   "start_sec": 6.963,
+   "end_sec": 13.926,
+   "frame_times": {
+    "P012.T02.F1": 7.659,
+    "P012.T02.F2": 10.444,
+    "P012.T02.F3": 13.23
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pessoas caminham por trilha arborizada vistas de costas.",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P012.T02.F1",
+    "P012.T02.F2",
+    "P012.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:25:26Z"
+  },
+  {
+   "id": "P012.T03",
+   "clip_id": "P012",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (40).mp4",
+   "start_sec": 13.926,
+   "end_sec": 20.89,
+   "frame_times": {
+    "P012.T03.F1": 14.622,
+    "P012.T03.F2": 17.408,
+    "P012.T03.F3": 20.194
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "nao",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Trilha em meio à vegetação com corrimão de madeira à esquerda",
+   "tags": [
+    "trilha",
+    "árvore",
+    "paisagem"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "recorded_at": "2026-05-07T17:25:26Z"
+  },
+  {
+   "id": "P012.T04",
+   "clip_id": "P012",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (40).mp4",
+   "start_sec": 20.89,
+   "end_sec": 27.853,
+   "frame_times": {
+    "P012.T04.F1": 21.586,
+    "P012.T04.F2": 24.372,
+    "P012.T04.F3": 27.157
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pessoas caminhando ao longe em trilha arborizada",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P012.T04.F1",
+    "P012.T04.F2",
+    "P012.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:25:26Z"
+  },
+  {
+   "id": "P012.T05",
+   "clip_id": "P012",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (40).mp4",
+   "start_sec": 27.853,
+   "end_sec": 34.816,
+   "last_in_clip": true,
+   "frame_times": {
+    "P012.T05.F1": 28.549,
+    "P012.T05.F2": 31.335,
+    "P012.T05.F3": 34.12
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem caminhando na trilha em direção à câmera",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P012.T05.F1",
+    "P012.T05.F2"
+   ],
+   "recorded_at": "2026-05-07T17:25:26Z"
+  },
+  {
+   "id": "P013.T01",
+   "clip_id": "P013",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (42).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.701,
+   "frame_times": {
+    "P013.T01.F1": 0.77,
+    "P013.T01.F2": 3.85,
+    "P013.T01.F3": 6.931
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Detalhe de tronco de árvore com marcas na casca",
+   "tags": [
+    "detalhe",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P013.T01.F2"
+   ],
+   "recorded_at": "2026-05-07T17:25:40Z"
+  },
+  {
+   "id": "P013.T02",
+   "clip_id": "P013",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (42).mp4",
+   "start_sec": 7.701,
+   "end_sec": 15.402,
+   "frame_times": {
+    "P013.T02.F1": 8.471,
+    "P013.T02.F2": 11.551,
+    "P013.T02.F3": 14.632
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mão tocando o tronco de uma árvore na trilha",
+   "tags": [
+    "detalhe",
+    "árvore",
+    "pessoa"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P013.T02.F1",
+    "P013.T02.F2",
+    "P013.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:25:40Z"
+  },
+  {
+   "id": "P013.T03",
+   "clip_id": "P013",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (42).mp4",
+   "start_sec": 15.402,
+   "end_sec": 23.104,
+   "frame_times": {
+    "P013.T03.F1": 16.172,
+    "P013.T03.F2": 19.253,
+    "P013.T03.F3": 22.334
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Close na casca da árvore com textura detalhada",
+   "tags": [
+    "detalhe",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P013.T03.F1",
+    "P013.T03.F2",
+    "P013.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:25:40Z"
+  },
+  {
+   "id": "P013.T04",
+   "clip_id": "P013",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (42).mp4",
+   "start_sec": 23.104,
+   "end_sec": 30.805,
+   "last_in_clip": true,
+   "frame_times": {
+    "P013.T04.F1": 23.874,
+    "P013.T04.F2": 26.954,
+    "P013.T04.F3": 30.035
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Close estático da textura do tronco da árvore",
+   "tags": [
+    "detalhe",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P013.T04.F1",
+    "P013.T04.F2",
+    "P013.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:25:40Z"
+  },
+  {
+   "id": "P014.T01",
+   "clip_id": "P014",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (47).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.824,
+   "last_in_clip": true,
+   "frame_times": {
+    "P014.T01.F1": 0.582,
+    "P014.T01.F2": 2.912,
+    "P014.T01.F3": 5.242
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem sorrindo e olhando ao redor em meio à natureza",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P014.T01.F1",
+    "P014.T01.F2",
+    "P014.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:26:26Z"
+  },
+  {
+   "id": "P015.T01",
+   "clip_id": "P015",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (51).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.435,
+   "frame_times": {
+    "P015.T01.F1": 0.744,
+    "P015.T01.F2": 3.717,
+    "P015.T01.F3": 6.691
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Um homem com gorro fala para a câmera em uma área externa próxima a árvores e cercas.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 2,
+   "face_to_camera": true,
+   "best_frames": [
+    "P015.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:15Z"
+  },
+  {
+   "id": "P015.T02",
+   "clip_id": "P015",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (51).mp4",
+   "start_sec": 7.435,
+   "end_sec": 14.87,
+   "frame_times": {
+    "P015.T02.F1": 8.178,
+    "P015.T02.F2": 11.152,
+    "P015.T02.F3": 14.127
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Um homem de gorro conversa gesticulando para a câmera em um ambiente arborizado.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P015.T02.F1",
+    "P015.T02.F2"
+   ],
+   "recorded_at": "2026-05-07T17:27:15Z"
+  },
+  {
+   "id": "P015.T03",
+   "clip_id": "P015",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (51).mp4",
+   "start_sec": 14.87,
+   "end_sec": 22.304,
+   "frame_times": {
+    "P015.T03.F1": 15.613,
+    "P015.T03.F2": 18.587,
+    "P015.T03.F3": 21.561
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Câmera móvel mostra uma cerca, uma casa com parquinho e uma mulher sorrindo ao fundo.",
+   "tags": [
+    "paisagem",
+    "pessoa",
+    "árvore"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P015.T03.F2"
+   ],
+   "recorded_at": "2026-05-07T17:27:15Z"
+  },
+  {
+   "id": "P015.T04",
+   "clip_id": "P015",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (51).mp4",
+   "start_sec": 22.304,
+   "end_sec": 29.739,
+   "last_in_clip": true,
+   "frame_times": {
+    "P015.T04.F1": 23.047,
+    "P015.T04.F2": 26.021,
+    "P015.T04.F3": 28.995
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Paisagem com árvores, uma placa sinalizadora e uma construção ao fundo.",
+   "tags": [
+    "paisagem",
+    "árvore",
+    "estrada"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P015.T04.F2",
+    "P015.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:15Z"
+  },
+  {
+   "id": "P016.T01",
+   "clip_id": "P016",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (52).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.623,
+   "frame_times": {
+    "P016.T01.F1": 0.762,
+    "P016.T01.F2": 3.812,
+    "P016.T01.F3": 6.861
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "obstruida"
+   ],
+   "description": "Câmera avança por uma estrada de terra exibindo um tripé em primeiro plano e casas ao fundo.",
+   "tags": [
+    "estrada",
+    "paisagem",
+    "detalhe"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P016.T01.F1"
+   ],
+   "recorded_at": "2026-05-07T17:27:21Z"
+  },
+  {
+   "id": "P016.T02",
+   "clip_id": "P016",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (52).mp4",
+   "start_sec": 7.623,
+   "end_sec": 15.246,
+   "frame_times": {
+    "P016.T02.F1": 8.385,
+    "P016.T02.F2": 11.434,
+    "P016.T02.F3": 14.484
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Deslocamento de câmera por estrada de terra com vegetação e construções campestres.",
+   "tags": [
+    "estrada",
+    "paisagem",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P016.T02.F2",
+    "P016.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:21Z"
+  },
+  {
+   "id": "P016.T03",
+   "clip_id": "P016",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (52).mp4",
+   "start_sec": 15.246,
+   "end_sec": 22.869,
+   "last_in_clip": true,
+   "frame_times": {
+    "P016.T03.F1": 16.008,
+    "P016.T03.F2": 19.058,
+    "P016.T03.F3": 22.107
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Panorâmica mostrando uma pequena construção e área arborizada com mesas ao ar livre.",
+   "tags": [
+    "paisagem",
+    "árvore",
+    "interior"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P016.T03.F1",
+    "P016.T03.F2"
+   ],
+   "recorded_at": "2026-05-07T17:27:21Z"
+  },
+  {
+   "id": "P017.T01",
+   "clip_id": "P017",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (53).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.909,
+   "frame_times": {
+    "P017.T01.F1": 0.791,
+    "P017.T01.F2": 3.954,
+    "P017.T01.F3": 7.118
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Câmera aponta para placa sinalizadora de madeira em bifurcação de estrada de terra.",
+   "tags": [
+    "estrada",
+    "paisagem",
+    "detalhe"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P017.T01.F1",
+    "P017.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:26Z"
+  },
+  {
+   "id": "P017.T02",
+   "clip_id": "P017",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (53).mp4",
+   "start_sec": 7.909,
+   "end_sec": 15.819,
+   "frame_times": {
+    "P017.T02.F1": 8.7,
+    "P017.T02.F2": 11.864,
+    "P017.T02.F3": 15.028
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz com touca cinza e jaqueta preta caminhando e conversando com a câmera em uma trilha ao ar livre.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha",
+    "céu",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P017.T02.F2",
+    "P017.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:26Z"
+  },
+  {
+   "id": "P017.T03",
+   "clip_id": "P017",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (53).mp4",
+   "start_sec": 15.819,
+   "end_sec": 23.728,
+   "frame_times": {
+    "P017.T03.F1": 16.61,
+    "P017.T03.F2": 19.774,
+    "P017.T03.F3": 22.937
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz caminhando pela trilha, olhando ao redor e mostrando a paisagem arborizada.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P017.T03.F1",
+    "P017.T03.F2"
+   ],
+   "recorded_at": "2026-05-07T17:27:26Z"
+  },
+  {
+   "id": "P017.T04",
+   "clip_id": "P017",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (53).mp4",
+   "start_sec": 23.728,
+   "end_sec": 31.637,
+   "last_in_clip": true,
+   "frame_times": {
+    "P017.T04.F1": 24.519,
+    "P017.T04.F2": 27.683,
+    "P017.T04.F3": 30.846
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pessoa de costas caminhando por uma estrada de terra cercada por árvores.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore",
+    "estrada",
+    "paisagem"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P017.T04.F2",
+    "P017.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:26Z"
+  },
+  {
+   "id": "P018.T01",
+   "clip_id": "P018",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (57).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.204,
+   "frame_times": {
+    "P018.T01.F1": 0.72,
+    "P018.T01.F2": 3.602,
+    "P018.T01.F3": 6.484
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Placas indicativas de madeira em uma bifurcação de trilha na floresta.",
+   "tags": [
+    "trilha",
+    "árvore",
+    "paisagem",
+    "detalhe"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P018.T01.F2",
+    "P018.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:39Z"
+  },
+  {
+   "id": "P018.T02",
+   "clip_id": "P018",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (57).mp4",
+   "start_sec": 7.204,
+   "end_sec": 14.407,
+   "frame_times": {
+    "P018.T02.F1": 7.924,
+    "P018.T02.F2": 10.806,
+    "P018.T02.F3": 13.687
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Aproximação das placas de sinalização na entrada da trilha na floresta.",
+   "tags": [
+    "trilha",
+    "árvore",
+    "detalhe",
+    "paisagem"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P018.T02.F2",
+    "P018.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:39Z"
+  },
+  {
+   "id": "P018.T03",
+   "clip_id": "P018",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (57).mp4",
+   "start_sec": 14.407,
+   "end_sec": 21.611,
+   "frame_times": {
+    "P018.T03.F1": 15.127,
+    "P018.T03.F2": 18.009,
+    "P018.T03.F3": 20.891
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz falando para a câmera enquanto caminha sob a luz solar entre as árvores.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P018.T03.F2",
+    "P018.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:39Z"
+  },
+  {
+   "id": "P018.T04",
+   "clip_id": "P018",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (57).mp4",
+   "start_sec": 21.611,
+   "end_sec": 28.814,
+   "frame_times": {
+    "P018.T04.F1": 22.331,
+    "P018.T04.F2": 25.212,
+    "P018.T04.F3": 28.094
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz de touca cinza conversando com a câmera durante caminhada na floresta.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P018.T04.F1",
+    "P018.T04.F2"
+   ],
+   "recorded_at": "2026-05-07T17:27:39Z"
+  },
+  {
+   "id": "P018.T05",
+   "clip_id": "P018",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (57).mp4",
+   "start_sec": 28.814,
+   "end_sec": 36.018,
+   "frame_times": {
+    "P018.T05.F1": 29.534,
+    "P018.T05.F2": 32.416,
+    "P018.T05.F3": 35.298
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Rapaz caminhando na trilha e sorrindo enquanto fala para a câmera.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P018.T05.F1",
+    "P018.T05.F2"
+   ],
+   "recorded_at": "2026-05-07T17:27:39Z"
+  },
+  {
+   "id": "P018.T06",
+   "clip_id": "P018",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (57).mp4",
+   "start_sec": 36.018,
+   "end_sec": 43.221,
+   "frame_times": {
+    "P018.T06.F1": 36.738,
+    "P018.T06.F2": 39.62,
+    "P018.T06.F3": 42.501
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem com touca e casaco fala para a câmera em uma área arborizada.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore",
+    "trilha"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P018.T06.F1",
+    "P018.T06.F2",
+    "P018.T06.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:39Z"
+  },
+  {
+   "id": "P018.T07",
+   "clip_id": "P018",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (57).mp4",
+   "start_sec": 43.221,
+   "end_sec": 50.425,
+   "frame_times": {
+    "P018.T07.F1": 43.941,
+    "P018.T07.F2": 46.823,
+    "P018.T07.F3": 49.705
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem continua falando olhando para a câmera em meio às árvores.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P018.T07.F1",
+    "P018.T07.F2",
+    "P018.T07.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:39Z"
+  },
+  {
+   "id": "P018.T08",
+   "clip_id": "P018",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (57).mp4",
+   "start_sec": 50.425,
+   "end_sec": 57.628,
+   "frame_times": {
+    "P018.T08.F1": 51.145,
+    "P018.T08.F2": 54.026,
+    "P018.T08.F3": 56.908
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem caminha ou movimenta a câmera enquanto fala na floresta.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P018.T08.F1",
+    "P018.T08.F2",
+    "P018.T08.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:39Z"
+  },
+  {
+   "id": "P018.T09",
+   "clip_id": "P018",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (57).mp4",
+   "start_sec": 57.628,
+   "end_sec": 64.832,
+   "last_in_clip": true,
+   "frame_times": {
+    "P018.T09.F1": 58.348,
+    "P018.T09.F2": 61.23,
+    "P018.T09.F3": 64.112
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem de touca fala para a câmera com grandes árvores ao fundo.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P018.T09.F1",
+    "P018.T09.F2",
+    "P018.T09.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:39Z"
+  },
+  {
+   "id": "P019.T01",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.472,
+   "frame_times": {
+    "P019.T01.F1": 0.747,
+    "P019.T01.F2": 3.736,
+    "P019.T01.F3": 6.725
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem olha para cima apontando ou observando as árvores.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T01.F1",
+    "P019.T01.F2",
+    "P019.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T02",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 7.472,
+   "end_sec": 14.945,
+   "frame_times": {
+    "P019.T02.F1": 8.219,
+    "P019.T02.F2": 11.209,
+    "P019.T02.F3": 14.198
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem fala para a câmera em plano fechado na floresta.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T02.F1",
+    "P019.T02.F2",
+    "P019.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T03",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 14.945,
+   "end_sec": 22.417,
+   "frame_times": {
+    "P019.T03.F1": 15.692,
+    "P019.T03.F2": 18.681,
+    "P019.T03.F3": 21.67
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem conversa enquanto caminha pela área arborizada.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T03.F1",
+    "P019.T03.F2",
+    "P019.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T04",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 22.417,
+   "end_sec": 29.889,
+   "frame_times": {
+    "P019.T04.F1": 23.164,
+    "P019.T04.F2": 26.153,
+    "P019.T04.F3": 29.142
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem olha para cima e outra pessoa aparece brevemente ao lado.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T04.F1",
+    "P019.T04.F2",
+    "P019.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T05",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 29.889,
+   "end_sec": 37.362,
+   "frame_times": {
+    "P019.T05.F1": 30.636,
+    "P019.T05.F2": 33.626,
+    "P019.T05.F3": 36.615
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem com touca fala para a câmera enquanto caminha por uma trilha em meio a árvores.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T05.F1",
+    "P019.T05.F2",
+    "P019.T05.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T06",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 37.362,
+   "end_sec": 44.834,
+   "frame_times": {
+    "P019.T06.F1": 38.109,
+    "P019.T06.F2": 41.098,
+    "P019.T06.F3": 44.087
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem fala para a câmera em trilha arborizada, com uma pessoa aparecendo ao lado.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T06.F1",
+    "P019.T06.F2",
+    "P019.T06.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T07",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 44.834,
+   "end_sec": 52.306,
+   "frame_times": {
+    "P019.T07.F1": 45.581,
+    "P019.T07.F2": 48.57,
+    "P019.T07.F3": 51.559
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem de touca conversa em trilha cercada por árvores altas.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T07.F1",
+    "P019.T07.F2",
+    "P019.T07.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T08",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 52.306,
+   "end_sec": 59.779,
+   "frame_times": {
+    "P019.T08.F1": 53.053,
+    "P019.T08.F2": 56.043,
+    "P019.T08.F3": 59.032
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Casal sorri e interage diante da câmera durante caminhada na floresta.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T08.F1",
+    "P019.T08.F2",
+    "P019.T08.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T09",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 59.779,
+   "end_sec": 67.251,
+   "frame_times": {
+    "P019.T09.F1": 60.526,
+    "P019.T09.F2": 63.515,
+    "P019.T09.F3": 66.504
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "estourada"
+   ],
+   "description": "Casal caminha sob forte contraluz em meio às árvores da trilha.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 2,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T09.F2",
+    "P019.T09.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T10",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 67.251,
+   "end_sec": 74.723,
+   "frame_times": {
+    "P019.T10.F1": 67.998,
+    "P019.T10.F2": 70.987,
+    "P019.T10.F3": 73.976
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem fala para a câmera enquanto caminha pela floresta.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T10.F1",
+    "P019.T10.F2",
+    "P019.T10.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T11",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 74.723,
+   "end_sec": 82.196,
+   "frame_times": {
+    "P019.T11.F1": 75.47,
+    "P019.T11.F2": 78.459,
+    "P019.T11.F3": 81.449
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem gesticula e sorri enquanto fala para a câmera na trilha.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T11.F1",
+    "P019.T11.F2",
+    "P019.T11.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T12",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 82.196,
+   "end_sec": 89.668,
+   "frame_times": {
+    "P019.T12.F1": 82.943,
+    "P019.T12.F2": 85.932,
+    "P019.T12.F3": 88.921
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem continua conversando com a câmera em meio à paisagem arborizada.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T12.F1",
+    "P019.T12.F2",
+    "P019.T12.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T13",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 89.668,
+   "end_sec": 97.14,
+   "frame_times": {
+    "P019.T13.F1": 90.415,
+    "P019.T13.F2": 93.404,
+    "P019.T13.F3": 96.393
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem com touca e casaco caminhando por uma trilha na floresta enquanto fala para a câmera.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T13.F1",
+    "P019.T13.F2",
+    "P019.T13.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T14",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 97.14,
+   "end_sec": 104.613,
+   "frame_times": {
+    "P019.T14.F1": 97.887,
+    "P019.T14.F2": 100.876,
+    "P019.T14.F3": 103.866
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem de touca continua caminhando e falando para a câmera em meio às árvores.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T14.F1",
+    "P019.T14.F2",
+    "P019.T14.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P019.T15",
+   "clip_id": "P019",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (58).mp4",
+   "start_sec": 104.613,
+   "end_sec": 112.085,
+   "last_in_clip": true,
+   "frame_times": {
+    "P019.T15.F1": 105.36,
+    "P019.T15.F2": 108.349,
+    "P019.T15.F3": 111.338
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "estourada"
+   ],
+   "description": "Homem gravando a si mesmo caminhando pela trilha arborizada com luz solar direta.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 2,
+   "face_to_camera": true,
+   "best_frames": [
+    "P019.T15.F1",
+    "P019.T15.F3"
+   ],
+   "recorded_at": "2026-05-07T17:27:53Z"
+  },
+  {
+   "id": "P020.T01",
+   "clip_id": "P020",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (61).mp4",
+   "start_sec": 0.0,
+   "end_sec": 6.016,
+   "frame_times": {
+    "P020.T01.F1": 0.602,
+    "P020.T01.F2": 3.008,
+    "P020.T01.F3": 5.414
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Close de uma mão tocando a água cristalina e pedras na margem de um lago.",
+   "tags": [
+    "detalhe",
+    "água",
+    "lago"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P020.T01.F1",
+    "P020.T01.F2",
+    "P020.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:32Z"
+  },
+  {
+   "id": "P020.T02",
+   "clip_id": "P020",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (61).mp4",
+   "start_sec": 6.016,
+   "end_sec": 12.032,
+   "frame_times": {
+    "P020.T02.F1": 6.618,
+    "P020.T02.F2": 9.024,
+    "P020.T02.F3": 11.43
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mão tocando a água e pedras rasas na margem do lago.",
+   "tags": [
+    "detalhe",
+    "água",
+    "lago"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P020.T02.F1",
+    "P020.T02.F2",
+    "P020.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:32Z"
+  },
+  {
+   "id": "P020.T03",
+   "clip_id": "P020",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (61).mp4",
+   "start_sec": 12.032,
+   "end_sec": 18.048,
+   "frame_times": {
+    "P020.T03.F1": 12.634,
+    "P020.T03.F2": 15.04,
+    "P020.T03.F3": 17.446
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mão mexendo na água límpida sobre pedras coloridas.",
+   "tags": [
+    "detalhe",
+    "água",
+    "lago"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P020.T03.F1",
+    "P020.T03.F2",
+    "P020.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:32Z"
+  },
+  {
+   "id": "P020.T04",
+   "clip_id": "P020",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (61).mp4",
+   "start_sec": 18.048,
+   "end_sec": 24.064,
+   "last_in_clip": true,
+   "frame_times": {
+    "P020.T04.F1": 18.65,
+    "P020.T04.F2": 21.056,
+    "P020.T04.F3": 23.462
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mão aberta sobre o fundo rochoso e água transparente de um lago.",
+   "tags": [
+    "detalhe",
+    "água",
+    "lago"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P020.T04.F1",
+    "P020.T04.F2",
+    "P020.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:32Z"
+  },
+  {
+   "id": "P021.T01",
+   "clip_id": "P021",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (62).mp4",
+   "start_sec": 0.0,
+   "end_sec": 6.63,
+   "frame_times": {
+    "P021.T01.F1": 0.663,
+    "P021.T01.F2": 3.315,
+    "P021.T01.F3": 5.967
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mulher sentada em um tronco na praia de lago com um cachorro e bela paisagem ao fundo.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "pessoa",
+    "animal",
+    "árvore"
+   ],
+   "beauty": 5,
+   "face_to_camera": false,
+   "best_frames": [
+    "P021.T01.F1",
+    "P021.T01.F2",
+    "P021.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:38Z"
+  },
+  {
+   "id": "P021.T02",
+   "clip_id": "P021",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (62).mp4",
+   "start_sec": 6.63,
+   "end_sec": 13.261,
+   "frame_times": {
+    "P021.T02.F1": 7.293,
+    "P021.T02.F2": 9.945,
+    "P021.T02.F3": 12.598
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mulher sentada na beira de um lago com um cachorro.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "pessoa",
+    "animal",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P021.T02.F1",
+    "P021.T02.F2",
+    "P021.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:38Z"
+  },
+  {
+   "id": "P021.T03",
+   "clip_id": "P021",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (62).mp4",
+   "start_sec": 13.261,
+   "end_sec": 19.891,
+   "frame_times": {
+    "P021.T03.F1": 13.924,
+    "P021.T03.F2": 16.576,
+    "P021.T03.F3": 19.228
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento",
+    "tremida"
+   ],
+   "description": "Câmera se movimenta bruscamente em direção ao cachorro perto do lago.",
+   "tags": [
+    "lago",
+    "animal",
+    "pessoa"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P021.T03.F1"
+   ],
+   "recorded_at": "2026-05-07T17:28:38Z"
+  },
+  {
+   "id": "P021.T04",
+   "clip_id": "P021",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (62).mp4",
+   "start_sec": 19.891,
+   "end_sec": 26.522,
+   "frame_times": {
+    "P021.T04.F1": 20.554,
+    "P021.T04.F2": 23.206,
+    "P021.T04.F3": 25.859
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Câmera pan revela mulher sentada ao lado do lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "pessoa"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P021.T04.F2",
+    "P021.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:38Z"
+  },
+  {
+   "id": "P021.T05",
+   "clip_id": "P021",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (62).mp4",
+   "start_sec": 26.522,
+   "end_sec": 33.152,
+   "last_in_clip": true,
+   "frame_times": {
+    "P021.T05.F1": 27.185,
+    "P021.T05.F2": 29.837,
+    "P021.T05.F3": 32.489
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mulher sentada à beira do lago olhando para o cenário.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "pessoa",
+    "animal"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P021.T05.F1",
+    "P021.T05.F2",
+    "P021.T05.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:38Z"
+  },
+  {
+   "id": "P022.T01",
+   "clip_id": "P022",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (66).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.931,
+   "frame_times": {
+    "P022.T01.F1": 0.593,
+    "P022.T01.F2": 2.966,
+    "P022.T01.F3": 5.338
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "escura"
+   ],
+   "description": "Homem com gorro preto caminhando por uma área arborizada.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore",
+    "trilha"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P022.T01.F1",
+    "P022.T01.F2"
+   ],
+   "recorded_at": "2026-05-07T17:28:56Z"
+  },
+  {
+   "id": "P022.T02",
+   "clip_id": "P022",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (66).mp4",
+   "start_sec": 5.931,
+   "end_sec": 11.861,
+   "frame_times": {
+    "P022.T02.F1": 6.524,
+    "P022.T02.F2": 8.896,
+    "P022.T02.F3": 11.268
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem caminhando e conversando com outra pessoa ao fundo em trilha.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P022.T02.F2",
+    "P022.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:56Z"
+  },
+  {
+   "id": "P022.T03",
+   "clip_id": "P022",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (66).mp4",
+   "start_sec": 11.861,
+   "end_sec": 17.792,
+   "last_in_clip": true,
+   "frame_times": {
+    "P022.T03.F1": 12.454,
+    "P022.T03.F2": 14.827,
+    "P022.T03.F3": 17.199
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "tremida"
+   ],
+   "description": "Homem sorrindo e falando para a câmera em trilha na floresta.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P022.T03.F1",
+    "P022.T03.F2",
+    "P022.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:28:56Z"
+  },
+  {
+   "id": "P023.T01",
+   "clip_id": "P023",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (67).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.196,
+   "frame_times": {
+    "P023.T01.F1": 0.72,
+    "P023.T01.F2": 3.598,
+    "P023.T01.F3": 6.476
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Câmera panorâmica mostrando uma construção de madeira rústica e área aberta.",
+   "tags": [
+    "paisagem",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P023.T01.F2",
+    "P023.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:00Z"
+  },
+  {
+   "id": "P023.T02",
+   "clip_id": "P023",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (67).mp4",
+   "start_sec": 7.196,
+   "end_sec": 14.393,
+   "frame_times": {
+    "P023.T02.F1": 7.916,
+    "P023.T02.F2": 10.794,
+    "P023.T02.F3": 13.673
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Uma pessoa caminha ao ar livre e a câmera gira rapidamente.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha"
+   ],
+   "beauty": 2,
+   "face_to_camera": true,
+   "best_frames": [
+    "P023.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:00Z"
+  },
+  {
+   "id": "P023.T03",
+   "clip_id": "P023",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (67).mp4",
+   "start_sec": 14.393,
+   "end_sec": 21.589,
+   "last_in_clip": true,
+   "frame_times": {
+    "P023.T03.F1": 15.113,
+    "P023.T03.F2": 17.991,
+    "P023.T03.F3": 20.869
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Um rapaz sorri olhando para a câmera em uma área externa com árvores.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P023.T03.F1",
+    "P023.T03.F2",
+    "P023.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:00Z"
+  },
+  {
+   "id": "P024.T01",
+   "clip_id": "P024",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (70).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.2,
+   "frame_times": {
+    "P024.T01.F1": 0.72,
+    "P024.T01.F2": 3.6,
+    "P024.T01.F3": 6.48
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Um homem sorri e conversa olhando para a câmera em uma área arborizada.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P024.T01.F1",
+    "P024.T01.F2",
+    "P024.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:42Z"
+  },
+  {
+   "id": "P024.T02",
+   "clip_id": "P024",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (70).mp4",
+   "start_sec": 7.2,
+   "end_sec": 14.4,
+   "frame_times": {
+    "P024.T02.F1": 7.92,
+    "P024.T02.F2": 10.8,
+    "P024.T02.F3": 13.68
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Um homem fala para a câmera enquanto caminha ao ar livre.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P024.T02.F1",
+    "P024.T02.F2",
+    "P024.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:42Z"
+  },
+  {
+   "id": "P024.T03",
+   "clip_id": "P024",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (70).mp4",
+   "start_sec": 14.4,
+   "end_sec": 21.6,
+   "frame_times": {
+    "P024.T03.F1": 15.12,
+    "P024.T03.F2": 18.0,
+    "P024.T03.F3": 20.88
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Um homem fala para a câmera e depois a tomada muda para pessoas caminhando na trilha.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "trilha"
+   ],
+   "beauty": 2,
+   "face_to_camera": true,
+   "best_frames": [
+    "P024.T03.F1",
+    "P024.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:42Z"
+  },
+  {
+   "id": "P024.T04",
+   "clip_id": "P024",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (70).mp4",
+   "start_sec": 21.6,
+   "end_sec": 28.8,
+   "last_in_clip": true,
+   "frame_times": {
+    "P024.T04.F1": 22.32,
+    "P024.T04.F2": 25.2,
+    "P024.T04.F3": 28.08
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Duas pessoas caminham por uma trilha em meio à floresta.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P024.T04.F1",
+    "P024.T04.F2",
+    "P024.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:42Z"
+  },
+  {
+   "id": "P025.T01",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.797,
+   "frame_times": {
+    "P025.T01.F1": 0.78,
+    "P025.T01.F2": 3.898,
+    "P025.T01.F3": 7.017
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Uma pessoa com mochila caminha por uma trilha cercada por árvores.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P025.T01.F1",
+    "P025.T01.F2",
+    "P025.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T02",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 7.797,
+   "end_sec": 15.595,
+   "frame_times": {
+    "P025.T02.F1": 8.577,
+    "P025.T02.F2": 11.696,
+    "P025.T02.F3": 14.815
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Uma pessoa com mochila caminha por uma trilha na mata.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P025.T02.F1",
+    "P025.T02.F2",
+    "P025.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T03",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 15.595,
+   "end_sec": 23.392,
+   "frame_times": {
+    "P025.T03.F1": 16.375,
+    "P025.T03.F2": 19.494,
+    "P025.T03.F3": 22.612
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Pessoa de moletom roxo e mochila caminhando em trilha de floresta e perdendo o foco no final.",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "árvore",
+    "paisagem"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P025.T03.F1",
+    "P025.T03.F2"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T04",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 23.392,
+   "end_sec": 31.189,
+   "frame_times": {
+    "P025.T04.F1": 24.172,
+    "P025.T04.F2": 27.291,
+    "P025.T04.F3": 30.409
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Câmera em movimento sobre uma trilha na floresta com pessoa caminhando.",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P025.T04.F2",
+    "P025.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T05",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 31.189,
+   "end_sec": 38.987,
+   "frame_times": {
+    "P025.T05.F1": 31.969,
+    "P025.T05.F2": 35.088,
+    "P025.T05.F3": 38.207
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada em POV dos pés caminhando sobre um tronco de árvore no chão da floresta.",
+   "tags": [
+    "trilha",
+    "detalhe"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P025.T05.F1",
+    "P025.T05.F2",
+    "P025.T05.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T06",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 38.987,
+   "end_sec": 46.784,
+   "frame_times": {
+    "P025.T06.F1": 39.767,
+    "P025.T06.F2": 42.886,
+    "P025.T06.F3": 46.004
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "tremida"
+   ],
+   "description": "Pessoa atravessando um tronco de árvore em trilha na floresta.",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P025.T06.F2"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T07",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 46.784,
+   "end_sec": 54.581,
+   "frame_times": {
+    "P025.T07.F1": 47.564,
+    "P025.T07.F2": 50.683,
+    "P025.T07.F3": 53.801
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pessoa falando para a câmera em trilha na floresta e depois a câmera foca nas árvores.",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P025.T07.F1",
+    "P025.T07.F2",
+    "P025.T07.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T08",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 54.581,
+   "end_sec": 62.379,
+   "frame_times": {
+    "P025.T08.F1": 55.361,
+    "P025.T08.F2": 58.48,
+    "P025.T08.F3": 61.599
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Trilha iluminada entre árvores na floresta com grande movimento de câmera no fim.",
+   "tags": [
+    "trilha",
+    "árvore",
+    "paisagem"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P025.T08.F1",
+    "P025.T08.F2"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T09",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 62.379,
+   "end_sec": 70.176,
+   "frame_times": {
+    "P025.T09.F1": 63.159,
+    "P025.T09.F2": 66.278,
+    "P025.T09.F3": 69.396
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pessoa com gorro e brinco caminhando em trilha e falando para a câmera.",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P025.T09.F1",
+    "P025.T09.F2",
+    "P025.T09.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T10",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 70.176,
+   "end_sec": 77.974,
+   "frame_times": {
+    "P025.T10.F1": 70.956,
+    "P025.T10.F2": 74.075,
+    "P025.T10.F3": 77.194
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pessoa com gorro caminhando na floresta e olhando ao redor enquanto fala para a câmera.",
+   "tags": [
+    "trilha",
+    "pessoa",
+    "rosto",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "P025.T10.F1",
+    "P025.T10.F2",
+    "P025.T10.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T11",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 77.974,
+   "end_sec": 85.771,
+   "frame_times": {
+    "P025.T11.F1": 78.754,
+    "P025.T11.F2": 81.873,
+    "P025.T11.F3": 84.991
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem com gorro olha para cima enquanto caminha pela trilha na floresta.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore",
+    "rosto"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P025.T11.F1",
+    "P025.T11.F2",
+    "P025.T11.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T12",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 85.771,
+   "end_sec": 93.568,
+   "frame_times": {
+    "P025.T12.F1": 86.551,
+    "P025.T12.F2": 89.669,
+    "P025.T12.F3": 92.788
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem de gorro sorri e olha para os lados em meio às árvores.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore",
+    "rosto"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P025.T12.F1",
+    "P025.T12.F2",
+    "P025.T12.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T13",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 93.568,
+   "end_sec": 101.366,
+   "frame_times": {
+    "P025.T13.F1": 94.348,
+    "P025.T13.F2": 97.467,
+    "P025.T13.F3": 100.586
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Câmera se movimenta rapidamente pela trilha na floresta revelando um homem caminhando.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "P025.T13.F2",
+    "P025.T13.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P025.T14",
+   "clip_id": "P025",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (72).mp4",
+   "start_sec": 101.366,
+   "end_sec": 109.163,
+   "last_in_clip": true,
+   "frame_times": {
+    "P025.T14.F1": 102.146,
+    "P025.T14.F2": 105.264,
+    "P025.T14.F3": 108.383
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem com mochila caminha pela trilha entre as árvores da floresta.",
+   "tags": [
+    "pessoa",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "P025.T14.F1",
+    "P025.T14.F2",
+    "P025.T14.F3"
+   ],
+   "recorded_at": "2026-05-07T17:29:55Z"
+  },
+  {
+   "id": "P026.T01",
+   "clip_id": "P026",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (75).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.205,
+   "last_in_clip": true,
+   "frame_times": {
+    "P026.T01.F1": 0.521,
+    "P026.T01.F2": 2.603,
+    "P026.T01.F3": 4.684
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Duas pessoas descem a encosta em direção a uma clareira ensolarada.",
+   "tags": [
+    "pessoa",
+    "paisagem",
+    "trilha",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "P026.T01.F1",
+    "P026.T01.F2",
+    "P026.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:30:24Z"
+  },
+  {
+   "id": "P027.T01",
+   "clip_id": "P027",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (76).mp4",
+   "start_sec": 0.0,
+   "end_sec": 6.578,
+   "frame_times": {
+    "P027.T01.F1": 0.658,
+    "P027.T01.F2": 3.289,
+    "P027.T01.F3": 5.92
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pessoa olha para cima na trilha e a câmera transiciona para a bela paisagem de um lago com montanhas.",
+   "tags": [
+    "pessoa",
+    "lago",
+    "paisagem",
+    "céu",
+    "montanha"
+   ],
+   "beauty": 5,
+   "face_to_camera": true,
+   "best_frames": [
+    "P027.T01.F2",
+    "P027.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:30:25Z"
+  },
+  {
+   "id": "P027.T02",
+   "clip_id": "P027",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (76).mp4",
+   "start_sec": 6.578,
+   "end_sec": 13.155,
+   "frame_times": {
+    "P027.T02.F1": 7.236,
+    "P027.T02.F2": 9.867,
+    "P027.T02.F3": 12.497
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Paisagem de lago tranquilo cercado por montanhas com um homem caminhando na praia.",
+   "tags": [
+    "lago",
+    "paisagem",
+    "praia",
+    "montanha",
+    "pessoa"
+   ],
+   "beauty": 5,
+   "face_to_camera": false,
+   "best_frames": [
+    "P027.T02.F1",
+    "P027.T02.F2",
+    "P027.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:30:25Z"
+  },
+  {
+   "id": "P027.T03",
+   "clip_id": "P027",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (76).mp4",
+   "start_sec": 13.155,
+   "end_sec": 19.733,
+   "last_in_clip": true,
+   "frame_times": {
+    "P027.T03.F1": 13.813,
+    "P027.T03.F2": 16.444,
+    "P027.T03.F3": 19.075
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pessoa caminha pela praia de um lago com belas montanhas ao fundo.",
+   "tags": [
+    "lago",
+    "praia",
+    "paisagem",
+    "montanha",
+    "pessoa"
+   ],
+   "beauty": 5,
+   "face_to_camera": false,
+   "best_frames": [
+    "P027.T03.F1",
+    "P027.T03.F2",
+    "P027.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T17:30:25Z"
+  },
+  {
+   "id": "P028.T01",
+   "clip_id": "P028",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (77).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.258,
+   "frame_times": {
+    "P028.T01.F1": 0.526,
+    "P028.T01.F2": 2.629,
+    "P028.T01.F3": 4.732
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem com touca preta e blusa preta ajeita a jaqueta ao ar livre sob céu azul.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "céu"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P028.T01.F1",
+    "P028.T01.F2",
+    "P028.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:30:29Z"
+  },
+  {
+   "id": "P028.T02",
+   "clip_id": "P028",
+   "role": "principal",
+   "source_path": "OsmoPocket_FullHD (77).mp4",
+   "start_sec": 5.258,
+   "end_sec": 10.517,
+   "last_in_clip": true,
+   "frame_times": {
+    "P028.T02.F1": 5.784,
+    "P028.T02.F2": 7.887,
+    "P028.T02.F3": 9.991
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem de touca segura uma mochila e sorri para a câmera.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "céu"
+   ],
+   "beauty": 3,
+   "face_to_camera": true,
+   "best_frames": [
+    "P028.T02.F1",
+    "P028.T02.F2",
+    "P028.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T17:30:29Z"
+  },
+  {
+   "id": "D001.T01",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.6,
+   "frame_times": {
+    "D001.T01.F1": 0.76,
+    "D001.T01.F2": 3.8,
+    "D001.T01.F3": 6.84
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea de drone mostrando um lago cercado por montanhas verdes e uma praia de Areia.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "céu",
+    "água",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T01.F1",
+    "D001.T01.F2",
+    "D001.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T02",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 7.6,
+   "end_sec": 15.2,
+   "frame_times": {
+    "D001.T02.F1": 8.36,
+    "D001.T02.F2": 11.4,
+    "D001.T02.F3": 14.44
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Sobrevoo de drone revelando a margem do lago, a faixa de areia e pequenas construções arborizadas.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "árvore",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T02.F1",
+    "D001.T02.F2",
+    "D001.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T03",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 15.2,
+   "end_sec": 22.8,
+   "frame_times": {
+    "D001.T03.F1": 15.96,
+    "D001.T03.F2": 19.0,
+    "D001.T03.F3": 22.04
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Panorâmica aérea de drone sobre a praia e o lago com barcos ancorados ao fundo.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "veículo",
+    "céu",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T03.F1",
+    "D001.T03.F2",
+    "D001.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T04",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 22.8,
+   "end_sec": 30.4,
+   "frame_times": {
+    "D001.T04.F1": 23.56,
+    "D001.T04.F2": 26.6,
+    "D001.T04.F3": 29.64
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Movimento de drone acompanhando a costa de um grande lago com cidadezinha e barcos.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "cidade",
+    "veículo",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T04.F1",
+    "D001.T04.F2",
+    "D001.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T05",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 30.4,
+   "end_sec": 38.0,
+   "frame_times": {
+    "D001.T05.F1": 31.16,
+    "D001.T05.F2": 34.2,
+    "D001.T05.F3": 37.24
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea estável mostrando a praia, o píer com barcos e a vegetação local.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "veículo",
+    "árvore",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T05.F1",
+    "D001.T05.F2",
+    "D001.T05.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T06",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 38.0,
+   "end_sec": 45.6,
+   "frame_times": {
+    "D001.T06.F1": 38.76,
+    "D001.T06.F2": 41.8,
+    "D001.T06.F3": 44.84
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Cena panorâmica combinando água cristalina do lago, praia e montanhas arborizadas ao fundo.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "céu",
+    "água",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T06.F1",
+    "D001.T06.F2",
+    "D001.T06.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T07",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 45.6,
+   "end_sec": 53.2,
+   "frame_times": {
+    "D001.T07.F1": 46.36,
+    "D001.T07.F2": 49.4,
+    "D001.T07.F3": 52.44
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea de drone mostrando a faixa de areia e a água cristalina de um lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T07.F1",
+    "D001.T07.F2",
+    "D001.T07.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T08",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 53.2,
+   "end_sec": 60.8,
+   "frame_times": {
+    "D001.T08.F1": 53.96,
+    "D001.T08.F2": 57.0,
+    "D001.T08.F3": 60.04
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada de drone em ângulo cenital sobre a praia e a beira da água.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T08.F1",
+    "D001.T08.F2",
+    "D001.T08.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T09",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 60.8,
+   "end_sec": 68.4,
+   "frame_times": {
+    "D001.T09.F1": 61.56,
+    "D001.T09.F2": 64.6,
+    "D001.T09.F3": 67.64
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea vertical da praia com pessoas caminhando à beira do lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "pessoa",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T09.F1",
+    "D001.T09.F2",
+    "D001.T09.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T10",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 68.4,
+   "end_sec": 76.0,
+   "frame_times": {
+    "D001.T10.F1": 69.16,
+    "D001.T10.F2": 72.2,
+    "D001.T10.F3": 75.24
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Movimento de drone afastando-se da praia e revelando uma praça com árvores e calçadão.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T10.F1",
+    "D001.T10.F2",
+    "D001.T10.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T11",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 76.0,
+   "end_sec": 83.6,
+   "frame_times": {
+    "D001.T11.F1": 76.76,
+    "D001.T11.F2": 79.8,
+    "D001.T11.F3": 82.84
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista de drone mostrando troncos de árvores caídos na areia e o calçadão da cidade.",
+   "tags": [
+    "paisagem",
+    "cidade",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T11.F1",
+    "D001.T11.F2",
+    "D001.T11.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T12",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 83.6,
+   "end_sec": 91.2,
+   "frame_times": {
+    "D001.T12.F1": 84.36,
+    "D001.T12.F2": 87.4,
+    "D001.T12.F3": 90.44
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Aproximação de drone em direção a troncos de árvores na margem de uma área verde com árvores ao fundo.",
+   "tags": [
+    "paisagem",
+    "cidade",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T12.F1",
+    "D001.T12.F2",
+    "D001.T12.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T13",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 91.2,
+   "end_sec": 98.8,
+   "frame_times": {
+    "D001.T13.F1": 91.96,
+    "D001.T13.F2": 95.0,
+    "D001.T13.F3": 98.04
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Drone estático ou com movimento sutil sobre troncos na areia próximo a uma área arborizada.",
+   "tags": [
+    "paisagem",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T13.F1",
+    "D001.T13.F2",
+    "D001.T13.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T14",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 98.8,
+   "end_sec": 106.4,
+   "frame_times": {
+    "D001.T14.F1": 99.56,
+    "D001.T14.F2": 102.6,
+    "D001.T14.F3": 105.64
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Drone afastando-se para revelar a paisagem urbana ao fundo com montanhas e árvores.",
+   "tags": [
+    "paisagem",
+    "cidade",
+    "árvore",
+    "estrada"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T14.F1",
+    "D001.T14.F2",
+    "D001.T14.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T15",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 106.4,
+   "end_sec": 114.0,
+   "frame_times": {
+    "D001.T15.F1": 107.16,
+    "D001.T15.F2": 110.2,
+    "D001.T15.F3": 113.24
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea de praça arborizada e área de terra junto a uma cidade.",
+   "tags": [
+    "paisagem",
+    "cidade",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T15.F1",
+    "D001.T15.F2",
+    "D001.T15.F3"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D001.T16",
+   "clip_id": "D001",
+   "role": "drone",
+   "source_path": "Drone_FullHD (1).mp4",
+   "start_sec": 114.0,
+   "end_sec": 121.6,
+   "last_in_clip": true,
+   "frame_times": {
+    "D001.T16.F1": 114.76,
+    "D001.T16.F2": 117.8,
+    "D001.T16.F3": 120.84
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Aproximação em drone de duas pessoas sentadas próximas a troncos de árvore.",
+   "tags": [
+    "pessoa",
+    "árvore",
+    "detalhe"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D001.T16.F1",
+    "D001.T16.F2"
+   ],
+   "recorded_at": "2026-05-07T16:39:56Z"
+  },
+  {
+   "id": "D002.T01",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.745,
+   "frame_times": {
+    "D002.T01.F1": 0.775,
+    "D002.T01.F2": 3.873,
+    "D002.T01.F3": 6.971
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Panorâmica aérea de drone mostrando a orla de um lago e a cidade.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "água"
+   ],
+   "beauty": 5,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T01.F1",
+    "D002.T01.F2"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T02",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 7.745,
+   "end_sec": 15.491,
+   "frame_times": {
+    "D002.T02.F1": 8.52,
+    "D002.T02.F2": 11.618,
+    "D002.T02.F3": 14.716
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Sobrevoo em drone de praia de lago e canal com vegetação.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "praia"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T02.F1",
+    "D002.T02.F2",
+    "D002.T02.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T03",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 15.491,
+   "end_sec": 23.236,
+   "frame_times": {
+    "D002.T03.F1": 16.265,
+    "D002.T03.F2": 19.364,
+    "D002.T03.F3": 22.462
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada zenital de drone sobre praia de lago e margem verde.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "praia"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T03.F1",
+    "D002.T03.F2",
+    "D002.T03.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T04",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 23.236,
+   "end_sec": 30.982,
+   "frame_times": {
+    "D002.T04.F1": 24.011,
+    "D002.T04.F2": 27.109,
+    "D002.T04.F3": 30.207
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Sobrevoo vertical em drone de praia arenosa às margens de lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "praia"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T04.F1",
+    "D002.T04.F2",
+    "D002.T04.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T05",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 30.982,
+   "end_sec": 38.727,
+   "frame_times": {
+    "D002.T05.F1": 31.756,
+    "D002.T05.F2": 34.855,
+    "D002.T05.F3": 37.953
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Deslocamento de drone rente à costa de lago com praia de areia.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "praia"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T05.F1",
+    "D002.T05.F2",
+    "D002.T05.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T06",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 38.727,
+   "end_sec": 46.473,
+   "frame_times": {
+    "D002.T06.F1": 39.502,
+    "D002.T06.F2": 42.6,
+    "D002.T06.F3": 45.698
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Transição em drone de vista da praia para paisagem de montanhas e lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "montanha",
+    "água"
+   ],
+   "beauty": 5,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T06.F1",
+    "D002.T06.F2",
+    "D002.T06.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T07",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 46.473,
+   "end_sec": 54.218,
+   "frame_times": {
+    "D002.T07.F1": 47.248,
+    "D002.T07.F2": 50.346,
+    "D002.T07.F3": 53.444
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea de drone mostrando um lago azul cercado por montanhas verdes.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T07.F1",
+    "D002.T07.F2",
+    "D002.T07.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T08",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 54.218,
+   "end_sec": 61.963,
+   "frame_times": {
+    "D002.T08.F1": 54.993,
+    "D002.T08.F2": 58.091,
+    "D002.T08.F3": 61.189
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada aérea panorâmica de um lago com colinas arborizadas.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T08.F1",
+    "D002.T08.F2",
+    "D002.T08.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T09",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 61.963,
+   "end_sec": 69.709,
+   "frame_times": {
+    "D002.T09.F1": 62.738,
+    "D002.T09.F2": 65.836,
+    "D002.T09.F3": 68.934
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Movimento de drone sobre um lago em direção a uma área costeira com construções.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "árvore",
+    "cidade"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T09.F1",
+    "D002.T09.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T10",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 69.709,
+   "end_sec": 77.454,
+   "frame_times": {
+    "D002.T10.F1": 70.484,
+    "D002.T10.F2": 73.582,
+    "D002.T10.F3": 76.679
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista de drone da margem de um lago com pequena praia e construções.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "cidade",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T10.F1",
+    "D002.T10.F2",
+    "D002.T10.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T11",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 77.454,
+   "end_sec": 85.2,
+   "frame_times": {
+    "D002.T11.F1": 78.229,
+    "D002.T11.F2": 81.327,
+    "D002.T11.F3": 84.425
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Panorâmica de drone revelando a costa de uma cidade à beira de um lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "praia",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T11.F1",
+    "D002.T11.F2",
+    "D002.T11.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T12",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 85.2,
+   "end_sec": 92.945,
+   "frame_times": {
+    "D002.T12.F1": 85.975,
+    "D002.T12.F2": 89.072,
+    "D002.T12.F3": 92.17
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea da cidade costeira com um píer e barcos no lago.",
+   "tags": [
+    "cidade",
+    "lago",
+    "água",
+    "veículo",
+    "paisagem"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T12.F1",
+    "D002.T12.F2",
+    "D002.T12.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T13",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 92.945,
+   "end_sec": 100.691,
+   "frame_times": {
+    "D002.T13.F1": 93.72,
+    "D002.T13.F2": 96.818,
+    "D002.T13.F3": 99.916
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada aérea focada na cidade e nos barcos no lago.",
+   "tags": [
+    "cidade",
+    "lago",
+    "água",
+    "veículo",
+    "paisagem"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T13.F1",
+    "D002.T13.F2",
+    "D002.T13.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T14",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 100.691,
+   "end_sec": 108.436,
+   "frame_times": {
+    "D002.T14.F1": 101.466,
+    "D002.T14.F2": 104.564,
+    "D002.T14.F3": 107.662
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea ampla de cidade litorânea de montanha com barcos no lago.",
+   "tags": [
+    "cidade",
+    "lago",
+    "paisagem",
+    "água",
+    "veículo"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T14.F1",
+    "D002.T14.F2",
+    "D002.T14.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T15",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 108.436,
+   "end_sec": 116.182,
+   "frame_times": {
+    "D002.T15.F1": 109.211,
+    "D002.T15.F2": 112.309,
+    "D002.T15.F3": 115.407
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea de uma rodovia margeando um lago cercado por colinas verdes.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "estrada",
+    "água",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T15.F1",
+    "D002.T15.F2",
+    "D002.T15.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T16",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 116.182,
+   "end_sec": 123.927,
+   "frame_times": {
+    "D002.T16.F1": 116.957,
+    "D002.T16.F2": 120.055,
+    "D002.T16.F3": 123.153
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Panorâmica com drone mostrando a extensão de um lago azul e montanhas arborizadas.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T16.F1",
+    "D002.T16.F2",
+    "D002.T16.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T17",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 123.927,
+   "end_sec": 131.672,
+   "frame_times": {
+    "D002.T17.F1": 124.702,
+    "D002.T17.F2": 127.799,
+    "D002.T17.F3": 130.898
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Voo de drone revelando uma pequena cidade costeira à beira do lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "água",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T17.F1",
+    "D002.T17.F2",
+    "D002.T17.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T18",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 131.672,
+   "end_sec": 139.418,
+   "frame_times": {
+    "D002.T18.F1": 132.447,
+    "D002.T18.F2": 135.545,
+    "D002.T18.F3": 138.643
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista de cima de barcos a vela atracados em águas cristalinas perto da costa.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "veículo",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T18.F1",
+    "D002.T18.F2",
+    "D002.T18.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T19",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 139.418,
+   "end_sec": 147.163,
+   "frame_times": {
+    "D002.T19.F1": 140.192,
+    "D002.T19.F2": 143.291,
+    "D002.T19.F3": 146.389
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada aérea fixa focada em vários veleiros ancorados no lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "veículo",
+    "água"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T19.F1",
+    "D002.T19.F2",
+    "D002.T19.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T20",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 147.163,
+   "end_sec": 154.909,
+   "frame_times": {
+    "D002.T20.F1": 147.938,
+    "D002.T20.F2": 151.036,
+    "D002.T20.F3": 154.134
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Drone se deslocando sobre veleiros e mostrando a cidade ao fundo.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "veículo",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T20.F1",
+    "D002.T20.F2",
+    "D002.T20.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T21",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 154.909,
+   "end_sec": 162.654,
+   "frame_times": {
+    "D002.T21.F1": 155.683,
+    "D002.T21.F2": 158.781,
+    "D002.T21.F3": 161.88
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Aproximação de drone em direção a um píer movimentado na margem do lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "veículo",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T21.F1",
+    "D002.T21.F2",
+    "D002.T21.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T22",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 162.654,
+   "end_sec": 170.4,
+   "frame_times": {
+    "D002.T22.F1": 163.429,
+    "D002.T22.F2": 166.527,
+    "D002.T22.F3": 169.625
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada aérea detalhada de um píer com construções e barcos atracados.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "veículo",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T22.F1",
+    "D002.T22.F2",
+    "D002.T22.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T23",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 170.4,
+   "end_sec": 178.145,
+   "frame_times": {
+    "D002.T23.F1": 171.174,
+    "D002.T23.F2": 174.273,
+    "D002.T23.F3": 177.371
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista aérea de drone mostrando um píer de madeira sobre um lago claro com barcos ancorados.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "veículo"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T23.F1",
+    "D002.T23.F2",
+    "D002.T23.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T24",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 178.145,
+   "end_sec": 185.659,
+   "frame_times": {
+    "D002.T24.F1": 178.896,
+    "D002.T24.F2": 181.902,
+    "D002.T24.F3": 184.908
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada aérea estática de drone focando no píer e nos barcos no lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "veículo"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T24.F1",
+    "D002.T24.F2",
+    "D002.T24.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T25",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 185.659,
+   "end_sec": 193.174,
+   "frame_times": {
+    "D002.T25.F1": 186.41,
+    "D002.T25.F2": 189.416,
+    "D002.T25.F3": 192.423
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Movimento de drone aproximando-se da área com barcos e píer.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "veículo"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T25.F1",
+    "D002.T25.F2",
+    "D002.T25.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T26",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 193.174,
+   "end_sec": 200.688,
+   "frame_times": {
+    "D002.T26.F1": 193.925,
+    "D002.T26.F2": 196.931,
+    "D002.T26.F3": 199.937
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Drone panormico revelando mais do lago e barcos ancorados próximo ao píer.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "veículo"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T26.F1",
+    "D002.T26.F2",
+    "D002.T26.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T27",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 200.688,
+   "end_sec": 208.202,
+   "frame_times": {
+    "D002.T27.F1": 201.439,
+    "D002.T27.F2": 204.445,
+    "D002.T27.F3": 207.451
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada de drone mostrando vários veleiros e barcos no lago próximo à margem.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "veículo"
+   ],
+   "beauty": 5,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T27.F1",
+    "D002.T27.F2",
+    "D002.T27.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T28",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 208.202,
+   "end_sec": 215.716,
+   "frame_times": {
+    "D002.T28.F1": 208.953,
+    "D002.T28.F2": 211.959,
+    "D002.T28.F3": 214.965
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Drone fazendo panorâmica da margem do lago para a praça da cidade e calçadão.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "pessoa"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T28.F1",
+    "D002.T28.F2",
+    "D002.T28.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T29",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 215.716,
+   "end_sec": 223.231,
+   "frame_times": {
+    "D002.T29.F1": 216.468,
+    "D002.T29.F2": 219.474,
+    "D002.T29.F3": 222.48
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada de drone da orla e da praça com pessoas caminhando e árvores.",
+   "tags": [
+    "paisagem",
+    "cidade",
+    "pessoa",
+    "árvore"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T29.F1",
+    "D002.T29.F2",
+    "D002.T29.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T30",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 223.231,
+   "end_sec": 230.745,
+   "frame_times": {
+    "D002.T30.F1": 223.982,
+    "D002.T30.F2": 226.988,
+    "D002.T30.F3": 229.994
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Drone mostrando a área da praia e calçadão com montanhas ao fundo.",
+   "tags": [
+    "paisagem",
+    "cidade",
+    "praia",
+    "pessoa"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T30.F1",
+    "D002.T30.F2",
+    "D002.T30.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T31",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 230.745,
+   "end_sec": 238.259,
+   "frame_times": {
+    "D002.T31.F1": 231.496,
+    "D002.T31.F2": 234.502,
+    "D002.T31.F3": 237.508
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada aérea de drone mostrando uma praia de lago com pessoas passeando e montanhas ao fundo.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "pessoa"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T31.F1",
+    "D002.T31.F2",
+    "D002.T31.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T32",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 238.259,
+   "end_sec": 245.773,
+   "frame_times": {
+    "D002.T32.F1": 239.01,
+    "D002.T32.F2": 242.016,
+    "D002.T32.F3": 245.022
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista de drone avançando ao longo da orla de um lago com praia de areia.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "pessoa"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T32.F1",
+    "D002.T32.F2",
+    "D002.T32.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T33",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 245.773,
+   "end_sec": 253.288,
+   "frame_times": {
+    "D002.T33.F1": 246.524,
+    "D002.T33.F2": 249.531,
+    "D002.T33.F3": 252.537
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Drone voando baixo sobre a margem de um lago com pedestres na areia.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "pessoa"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T33.F1",
+    "D002.T33.F2",
+    "D002.T33.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T34",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 253.288,
+   "end_sec": 260.802,
+   "frame_times": {
+    "D002.T34.F1": 254.039,
+    "D002.T34.F2": 257.045,
+    "D002.T34.F3": 260.051
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Imagens aéreas de drone capturando a faixa de areia da praia e pessoas caminhando.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "pessoa"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T34.F1",
+    "D002.T34.F2",
+    "D002.T34.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T35",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 260.802,
+   "end_sec": 268.316,
+   "frame_times": {
+    "D002.T35.F1": 261.553,
+    "D002.T35.F2": 264.559,
+    "D002.T35.F3": 267.565
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Voo de drone se afastando da praia em direção à praça e árvores.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T35.F1",
+    "D002.T35.F2",
+    "D002.T35.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T36",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 268.316,
+   "end_sec": 275.83,
+   "frame_times": {
+    "D002.T36.F1": 269.067,
+    "D002.T36.F2": 272.073,
+    "D002.T36.F3": 275.079
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Panorâmica aérea de drone revelando a cidade, calçadão e barcos no lago.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "veículo"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T36.F1",
+    "D002.T36.F2",
+    "D002.T36.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T37",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 275.83,
+   "end_sec": 283.345,
+   "frame_times": {
+    "D002.T37.F1": 276.582,
+    "D002.T37.F2": 279.587,
+    "D002.T37.F3": 282.594
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Drone pairando sobre a marina com barcos ancorados e calçadão movimentado.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "cidade",
+    "veículo"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T37.F1",
+    "D002.T37.F2",
+    "D002.T37.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "D002.T38",
+   "clip_id": "D002",
+   "role": "drone",
+   "source_path": "Drone_FullHD (2).mp4",
+   "start_sec": 283.345,
+   "end_sec": 290.859,
+   "last_in_clip": true,
+   "frame_times": {
+    "D002.T38.F1": 284.096,
+    "D002.T38.F2": 287.102,
+    "D002.T38.F3": 290.108
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Voo de drone descendo em direção ao calçadão e pedestres na cidade.",
+   "tags": [
+    "paisagem",
+    "cidade",
+    "pessoa",
+    "veículo"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "D002.T38.F1",
+    "D002.T38.F3"
+   ],
+   "recorded_at": "2026-05-07T16:40:45Z"
+  },
+  {
+   "id": "V001.T01",
+   "clip_id": "V001",
+   "role": "pov",
+   "source_path": "Go3s_FullHD (3).mp4",
+   "start_sec": 0.0,
+   "end_sec": 7.701,
+   "frame_times": {
+    "V001.T01.F1": 0.77,
+    "V001.T01.F2": 3.85,
+    "V001.T01.F3": 6.931
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Camera submergindo em um lago de águas cristalinas com montanhas ao fundo.",
+   "tags": [
+    "lago",
+    "água",
+    "paisagem",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "V001.T01.F1",
+    "V001.T01.F2",
+    "V001.T01.F3"
+   ],
+   "recorded_at": "2026-05-07T17:34:14Z",
+   "date_reliable": true
+  },
+  {
+   "id": "V001.T02",
+   "clip_id": "V001",
+   "role": "pov",
+   "source_path": "Go3s_FullHD (3).mp4",
+   "start_sec": 7.701,
+   "end_sec": 15.403,
+   "frame_times": {
+    "V001.T02.F1": 8.471,
+    "V001.T02.F2": 11.552,
+    "V001.T02.F3": 14.633
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Visão subaquática do fundo arenoso e pedras em um lago.",
+   "tags": [
+    "lago",
+    "água"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "V001.T02.F1",
+    "V001.T02.F2"
+   ],
+   "recorded_at": "2026-05-07T17:34:14Z",
+   "date_reliable": true
+  },
+  {
+   "id": "V001.T03",
+   "clip_id": "V001",
+   "role": "pov",
+   "source_path": "Go3s_FullHD (3).mp4",
+   "start_sec": 15.403,
+   "end_sec": 23.104,
+   "last_in_clip": true,
+   "frame_times": {
+    "V001.T03.F1": 16.173,
+    "V001.T03.F2": 19.253,
+    "V001.T03.F3": 22.334
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "borrao_movimento"
+   ],
+   "description": "Movimento rápido de câmera raspando na superfície da água do lago.",
+   "tags": [
+    "lago",
+    "água"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "V001.T03.F1"
+   ],
+   "recorded_at": "2026-05-07T17:34:14Z",
+   "date_reliable": true
+  },
+  {
+   "id": "B001.T01",
+   "clip_id": "B001",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (1).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.924,
+   "frame_times": {
+    "B001.T01.F1": 0.592,
+    "B001.T01.F2": 2.962,
+    "B001.T01.F3": 5.332
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem em pé na margem de um lago acompanhado por um cachorro preto.",
+   "tags": [
+    "lago",
+    "pessoa",
+    "animal",
+    "paisagem"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "B001.T01.F1",
+    "B001.T01.F2",
+    "B001.T01.F3"
+   ],
+   "recorded_at": "2026-05-04T18:48:02Z"
+  },
+  {
+   "id": "B001.T02",
+   "clip_id": "B001",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (1).mp4",
+   "start_sec": 5.924,
+   "end_sec": 11.847,
+   "frame_times": {
+    "B001.T02.F1": 6.516,
+    "B001.T02.F2": 8.886,
+    "B001.T02.F3": 11.255
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem brincando com um cachorro na margem do lago.",
+   "tags": [
+    "lago",
+    "pessoa",
+    "animal",
+    "paisagem"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "B001.T02.F1",
+    "B001.T02.F2",
+    "B001.T02.F3"
+   ],
+   "recorded_at": "2026-05-04T18:48:02Z"
+  },
+  {
+   "id": "B001.T03",
+   "clip_id": "B001",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (1).mp4",
+   "start_sec": 11.847,
+   "end_sec": 17.771,
+   "last_in_clip": true,
+   "frame_times": {
+    "B001.T03.F1": 12.439,
+    "B001.T03.F2": 14.809,
+    "B001.T03.F3": 17.179
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Homem interagindo com cachorro na beira da água.",
+   "tags": [
+    "lago",
+    "pessoa",
+    "animal"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B001.T03.F1",
+    "B001.T03.F2"
+   ],
+   "recorded_at": "2026-05-04T18:48:02Z"
+  },
+  {
+   "id": "B002.T01",
+   "clip_id": "B002",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (5).mp4",
+   "start_sec": 0.0,
+   "end_sec": 6.187,
+   "last_in_clip": true,
+   "frame_times": {
+    "B002.T01.F1": 0.619,
+    "B002.T01.F2": 3.094,
+    "B002.T01.F3": 5.568
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Praia de lago com várias pessoas aproveitando o dia ensolarado.",
+   "tags": [
+    "praia",
+    "lago",
+    "pessoa",
+    "paisagem"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B002.T01.F1",
+    "B002.T01.F2",
+    "B002.T01.F3"
+   ],
+   "recorded_at": "2026-05-04T18:48:10Z"
+  },
+  {
+   "id": "B003.T01",
+   "clip_id": "B003",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (16).mp4",
+   "start_sec": 0.0,
+   "end_sec": 4.256,
+   "frame_times": {
+    "B003.T01.F1": 0.426,
+    "B003.T01.F2": 2.128,
+    "B003.T01.F3": 3.83
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mulher sorridente abraçando seu cachorro à beira de um lago.",
+   "tags": [
+    "lago",
+    "pessoa",
+    "rosto",
+    "animal"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "B003.T01.F1",
+    "B003.T01.F2"
+   ],
+   "recorded_at": "2026-05-04T18:48:55Z"
+  },
+  {
+   "id": "B003.T02",
+   "clip_id": "B003",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (16).mp4",
+   "start_sec": 4.256,
+   "end_sec": 8.512,
+   "last_in_clip": true,
+   "frame_times": {
+    "B003.T02.F1": 4.682,
+    "B003.T02.F2": 6.384,
+    "B003.T02.F3": 8.086
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Mulher sorri e faz carinho em um cachorro à beira de um lago.",
+   "tags": [
+    "pessoa",
+    "rosto",
+    "animal",
+    "lago",
+    "água"
+   ],
+   "beauty": 4,
+   "face_to_camera": true,
+   "best_frames": [
+    "B003.T02.F1",
+    "B003.T02.F2",
+    "B003.T02.F3"
+   ],
+   "recorded_at": "2026-05-04T18:48:55Z"
+  },
+  {
+   "id": "B004.T01",
+   "clip_id": "B004",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (17).mp4",
+   "start_sec": 0.0,
+   "end_sec": 4.512,
+   "frame_times": {
+    "B004.T01.F1": 0.451,
+    "B004.T01.F2": 2.256,
+    "B004.T01.F3": 4.061
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "obstruida"
+   ],
+   "description": "Paisagem de lago com montanhas e galhos de árvore em primeiro plano, com um dedo aparecendo brevemente.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B004.T01.F3"
+   ],
+   "recorded_at": "2026-05-04T18:48:57Z"
+  },
+  {
+   "id": "B004.T02",
+   "clip_id": "B004",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (17).mp4",
+   "start_sec": 4.512,
+   "end_sec": 9.024,
+   "last_in_clip": true,
+   "frame_times": {
+    "B004.T02.F1": 4.963,
+    "B004.T02.F2": 6.768,
+    "B004.T02.F3": 8.573
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Paisagem estática de lago calmo com montanhas ao fundo e galhos de árvore.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "B004.T02.F1",
+    "B004.T02.F2",
+    "B004.T02.F3"
+   ],
+   "recorded_at": "2026-05-04T18:48:57Z"
+  },
+  {
+   "id": "B005.T01",
+   "clip_id": "B005",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (18).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.355,
+   "last_in_clip": true,
+   "frame_times": {
+    "B005.T01.F1": 0.536,
+    "B005.T01.F2": 2.678,
+    "B005.T01.F3": 4.82
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pequena ilha arborizada em meio a um lago com montanhas ao fundo.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "água",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 5,
+   "face_to_camera": false,
+   "best_frames": [
+    "B005.T01.F1",
+    "B005.T01.F2",
+    "B005.T01.F3"
+   ],
+   "recorded_at": "2026-05-04T18:48:59Z"
+  },
+  {
+   "id": "B006.T01",
+   "clip_id": "B006",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (19).mp4",
+   "start_sec": 0.0,
+   "end_sec": 6.18,
+   "frame_times": {
+    "B006.T01.F1": 0.618,
+    "B006.T01.F2": 3.09,
+    "B006.T01.F3": 5.562
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Água cristalina de lago mostrando pedras no fundo.",
+   "tags": [
+    "lago",
+    "água",
+    "detalhe"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "B006.T01.F1",
+    "B006.T01.F2",
+    "B006.T01.F3"
+   ],
+   "recorded_at": "2026-05-04T18:49:01Z"
+  },
+  {
+   "id": "B006.T02",
+   "clip_id": "B006",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (19).mp4",
+   "start_sec": 6.18,
+   "end_sec": 12.359,
+   "frame_times": {
+    "B006.T02.F1": 6.798,
+    "B006.T02.F2": 9.27,
+    "B006.T02.F3": 11.741
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Close na água transparente de um lago com pedras submersas.",
+   "tags": [
+    "lago",
+    "água",
+    "detalhe"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "B006.T02.F1",
+    "B006.T02.F2",
+    "B006.T02.F3"
+   ],
+   "recorded_at": "2026-05-04T18:49:01Z"
+  },
+  {
+   "id": "B006.T03",
+   "clip_id": "B006",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (19).mp4",
+   "start_sec": 12.359,
+   "end_sec": 18.539,
+   "last_in_clip": true,
+   "frame_times": {
+    "B006.T03.F1": 12.977,
+    "B006.T03.F2": 15.449,
+    "B006.T03.F3": 17.921
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Tomada estática focada na água limpa e pedras do lago.",
+   "tags": [
+    "lago",
+    "água",
+    "detalhe"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "B006.T03.F1",
+    "B006.T03.F2",
+    "B006.T03.F3"
+   ],
+   "recorded_at": "2026-05-04T18:49:01Z"
+  },
+  {
+   "id": "B007.T01",
+   "clip_id": "B007",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (21).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.34,
+   "frame_times": {
+    "B007.T01.F1": 0.534,
+    "B007.T01.F2": 2.67,
+    "B007.T01.F3": 4.806
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "estourada"
+   ],
+   "description": "Vaca em uma estrada de terra rural cercada por árvores e vegetação, com estouramento de luz no início.",
+   "tags": [
+    "estrada",
+    "animal",
+    "paisagem",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B007.T01.F2",
+    "B007.T01.F3"
+   ],
+   "recorded_at": "2026-05-04T18:49:07Z"
+  },
+  {
+   "id": "B007.T02",
+   "clip_id": "B007",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (21).mp4",
+   "start_sec": 5.34,
+   "end_sec": 10.681,
+   "frame_times": {
+    "B007.T02.F1": 5.874,
+    "B007.T02.F2": 8.011,
+    "B007.T02.F3": 10.147
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Uma vaca marrom em um pasto arborizado próximo a uma estrada de terra.",
+   "tags": [
+    "paisagem",
+    "animal",
+    "estrada",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B007.T02.F1",
+    "B007.T02.F2",
+    "B007.T02.F3"
+   ],
+   "recorded_at": "2026-05-04T18:49:07Z"
+  },
+  {
+   "id": "B007.T03",
+   "clip_id": "B007",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (21).mp4",
+   "start_sec": 10.681,
+   "end_sec": 16.021,
+   "last_in_clip": true,
+   "frame_times": {
+    "B007.T03.F1": 11.215,
+    "B007.T03.F2": 13.351,
+    "B007.T03.F3": 15.487
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Uma vaca marrom em um pasto verde rodeado por árvores.",
+   "tags": [
+    "paisagem",
+    "animal",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B007.T03.F1",
+    "B007.T03.F2",
+    "B007.T03.F3"
+   ],
+   "recorded_at": "2026-05-04T18:49:07Z"
+  },
+  {
+   "id": "B008.T01",
+   "clip_id": "B008",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (22).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.845,
+   "frame_times": {
+    "B008.T01.F1": 0.585,
+    "B008.T01.F2": 2.922,
+    "B008.T01.F3": 5.26
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Uma vaca pastando perto de arbustos em uma área rural.",
+   "tags": [
+    "paisagem",
+    "animal",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B008.T01.F1",
+    "B008.T01.F2",
+    "B008.T01.F3"
+   ],
+   "recorded_at": "2026-05-04T18:49:11Z"
+  },
+  {
+   "id": "B008.T02",
+   "clip_id": "B008",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (22).mp4",
+   "start_sec": 5.845,
+   "end_sec": 11.691,
+   "frame_times": {
+    "B008.T02.F1": 6.43,
+    "B008.T02.F2": 8.768,
+    "B008.T02.F3": 11.106
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vaca marrom em plano médio próximo a vegetação.",
+   "tags": [
+    "paisagem",
+    "animal",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B008.T02.F1",
+    "B008.T02.F2",
+    "B008.T02.F3"
+   ],
+   "recorded_at": "2026-05-04T18:49:11Z"
+  },
+  {
+   "id": "B008.T03",
+   "clip_id": "B008",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (22).mp4",
+   "start_sec": 11.691,
+   "end_sec": 17.536,
+   "last_in_clip": true,
+   "frame_times": {
+    "B008.T03.F1": 12.276,
+    "B008.T03.F2": 14.614,
+    "B008.T03.F3": 16.952
+   },
+   "has_speech": true,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vaca em cenário rural com árvores ao fundo.",
+   "tags": [
+    "paisagem",
+    "animal",
+    "árvore"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B008.T03.F1",
+    "B008.T03.F2",
+    "B008.T03.F3"
+   ],
+   "recorded_at": "2026-05-04T18:49:11Z"
+  },
+  {
+   "id": "B009.T01",
+   "clip_id": "B009",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (25).mp4",
+   "start_sec": 0.0,
+   "end_sec": 4.341,
+   "frame_times": {
+    "B009.T01.F1": 0.434,
+    "B009.T01.F2": 2.171,
+    "B009.T01.F3": 3.907
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Pássaros empoleirados em galhos de árvores secas contra o céu claro.",
+   "tags": [
+    "animal",
+    "árvore",
+    "céu"
+   ],
+   "beauty": 3,
+   "face_to_camera": false,
+   "best_frames": [
+    "B009.T01.F1",
+    "B009.T01.F2",
+    "B009.T01.F3"
+   ],
+   "recorded_at": "2026-05-04T18:48:39Z"
+  },
+  {
+   "id": "B009.T02",
+   "clip_id": "B009",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (25).mp4",
+   "start_sec": 4.341,
+   "end_sec": 8.683,
+   "last_in_clip": true,
+   "frame_times": {
+    "B009.T02.F1": 4.775,
+    "B009.T02.F2": 6.512,
+    "B009.T02.F3": 8.249
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "parcial",
+   "issues": [
+    "tremida"
+   ],
+   "description": "Pássaro em galho de árvore com movimento brusco no final.",
+   "tags": [
+    "animal",
+    "árvore"
+   ],
+   "beauty": 2,
+   "face_to_camera": false,
+   "best_frames": [
+    "B009.T02.F1",
+    "B009.T02.F2"
+   ],
+   "recorded_at": "2026-05-04T18:48:39Z"
+  },
+  {
+   "id": "B010.T01",
+   "clip_id": "B010",
+   "role": "broll",
+   "source_path": "Fx30_FullHD (27).mp4",
+   "start_sec": 0.0,
+   "end_sec": 5.803,
+   "last_in_clip": true,
+   "frame_times": {
+    "B010.T01.F1": 0.58,
+    "B010.T01.F2": 2.901,
+    "B010.T01.F3": 5.223
+   },
+   "has_speech": false,
+   "status": "analisada",
+   "usable": "sim",
+   "issues": [
+    "nenhuma"
+   ],
+   "description": "Vista panorâmica de uma praia de lago com cidade ao fundo e pessoas caminhando.",
+   "tags": [
+    "paisagem",
+    "lago",
+    "praia",
+    "cidade",
+    "pessoa"
+   ],
+   "beauty": 4,
+   "face_to_camera": false,
+   "best_frames": [
+    "B010.T01.F1",
+    "B010.T01.F2",
+    "B010.T01.F3"
+   ],
+   "recorded_at": "2026-05-04T18:48:25Z"
+  }
+ ]
+}

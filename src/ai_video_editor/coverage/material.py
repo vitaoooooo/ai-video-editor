@@ -1,5 +1,5 @@
-"""Material da cobertura, sem IA: tomadas do `visual.json`, frases mantidas na espinha, janelas
-obrigatórias (fala com imagem ruim no principal) e tomadas candidatas a cobertura."""
+"""Material da cobertura, sem IA: tomadas do `visual.json`, frases mantidas na espinha e o que está na
+tela por baixo de cada uma, janelas com imagem ruim (e quais exigem cobertura) e tomadas candidatas."""
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional
@@ -63,6 +63,8 @@ def build_visual_material(
     for clip in visual.clips:
         entry = by_id[clip.clip_id]
         has_audio = bool(entry.media and entry.media.has_audio)
+        recorded = entry.adjusted_at or (entry.recorded_at.value if entry.recorded_at else None)
+        reliable = entry.order_source == "data" and entry.recorded_at is not None and entry.recorded_at.reliable
         for n, shot in enumerate(clip.shots):
             analysis = shot.analysis if shot.status == "analisada" else None
             shots.append(
@@ -73,6 +75,7 @@ def build_visual_material(
                     frame_times={f.id: f.time_sec for f in shot.frames},
                     has_audio=has_audio, has_speech=shot.has_speech, status=shot.status,
                     uniform=bool(shot.measures and shot.measures.uniform),
+                    blurry=bool(shot.measures and shot.measures.blurry),
                     usable=analysis.usable if analysis else None,
                     issues=list(analysis.issues) if analysis else [],
                     description=analysis.description if analysis else "",
@@ -80,6 +83,7 @@ def build_visual_material(
                     beauty=analysis.beauty if analysis else None,
                     face_to_camera=analysis.face_to_camera if analysis else None,
                     best_frames=list(analysis.best_frames) if analysis else [],
+                    recorded_at=recorded, date_reliable=reliable,
                 )
             )
     warnings = []
@@ -124,17 +128,41 @@ def bad_shot_reasons(shot: VisualShot) -> list[str]:
     return reasons
 
 
+def is_severe(shot: VisualShot) -> bool:
+    """Imagem que não dá para manter por baixo da fala: tela uniforme (parede, tampa), inutilizável pela IA
+    ou borrão de movimento confirmado pela medida `borrão alto`."""
+    return shot.uniform or shot.usable == "nao" or ("borrao_movimento" in shot.issues and shot.blurry)
+
+
 def _overlap(kept: list[tuple[float, float]], start: float, end: float) -> float:
     return sum(max(0.0, min(hi, end) - max(lo, start)) for lo, hi in kept)
+
+
+def annotate_screen(sentences: list[CoverageSentence], material: VisualMaterial) -> list[VisualShot]:
+    """Preenche `screen` de cada frase (tomadas do clipe que fala por baixo da parte mantida, mais tempo
+    primeiro) e devolve essas tomadas, na ordem em que aparecem."""
+    by_clip: dict[str, list[VisualShot]] = {}
+    for shot in material.shots:
+        by_clip.setdefault(shot.clip_id, []).append(shot)
+    used: dict[str, VisualShot] = {}
+    for sentence in sentences:
+        hits = [(_overlap(sentence.kept, s.start_sec, s.end_sec), s) for s in by_clip.get(sentence.clip_id, [])]
+        hits = sorted((h for h in hits if h[0] > 0), key=lambda h: (-h[0], h[1].start_sec))
+        sentence.screen = [s.id for _, s in hits]
+        for _, shot in hits:
+            used.setdefault(shot.id, shot)
+    return list(used.values())
 
 
 def find_mandatory_windows(
     sentences: list[CoverageSentence], material: VisualMaterial, spine_clip_ids: Iterable[str]
 ) -> list[MandatoryWindow]:
-    """Janelas obrigatórias: frases mantidas seguidas, do mesmo clipe, com imagem ruim por baixo.
+    """Janelas com imagem ruim: frases mantidas seguidas, do mesmo clipe, com imagem ruim por baixo.
 
     Uma frase entra se pelo menos `MIN_BAD_OVERLAP_SEC` da parte mantida dela cai numa tomada ruim
     do clipe que está falando. Tomadas sem análise da IA ainda contam pela medida `tela uniforme`.
+    A janela exige cobertura (`required`) só quando todas as tomadas ruins dela são graves (`is_severe`);
+    senão, a IA decide entre cobrir e manter (ex.: obstruída "parcial" pelos bancos do ônibus).
     """
     spine = set(spine_clip_ids)
     bad: dict[str, list[tuple[VisualShot, list[str]]]] = {}
@@ -163,6 +191,9 @@ def find_mandatory_windows(
                 current.shot_ids.append(shot.id)
             current.reasons += [r for r in reasons if r not in current.reasons]
         previous = idx
+    shots = material.by_id()
+    for window in windows:
+        window.required = all(is_severe(shots[s]) for s in window.shot_ids)
     return windows
 
 

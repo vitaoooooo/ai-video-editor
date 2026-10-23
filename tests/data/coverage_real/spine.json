@@ -1,0 +1,3049 @@
+{
+ "fps": 30,
+ "duration_sec": 684.5333333333333,
+ "clips": [
+  "P001",
+  "P002",
+  "P004",
+  "P005",
+  "P006",
+  "P007",
+  "P009",
+  "P013",
+  "P014",
+  "P015",
+  "P016",
+  "P017",
+  "P018",
+  "P019",
+  "P020",
+  "P021",
+  "P022",
+  "P023",
+  "P024",
+  "P025",
+  "P027",
+  "P028"
+ ],
+ "sentences": [
+  {
+   "id": "S000",
+   "sentence_id": 0,
+   "clip_id": "P001",
+   "text": "Lista de pasajeros, aquí tenemos que colocar apellido, nombre, celular personal que tengan en este momento",
+   "source_start_sec": 0.72,
+   "source_end_sec": 8.26,
+   "start_frame": 22,
+   "end_frame": 248,
+   "kept": [
+    [
+     0.72,
+     8.26
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S001",
+   "sentence_id": 1,
+   "clip_id": "P001",
+   "text": "y número de documento, un requisito que nos pide Gendarmería Nacional porque ahí vamos a cambiar de provincia Nosotros ahora estamos en la provincia de Río Negro, cuando crucemos el río Limay vamos a ingresar en la provincia de...",
+   "source_start_sec": 8.26,
+   "source_end_sec": 23.62,
+   "start_frame": 248,
+   "end_frame": 709,
+   "kept": [
+    [
+     8.26,
+     23.62
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S002",
+   "sentence_id": 2,
+   "clip_id": "P002",
+   "text": "vía Bariloche que sale de la terminal de ómnibus de Bariloche y nos deja en la terminal donde vamos a parar en este momento así que bueno, importante",
+   "source_start_sec": 0.0,
+   "source_end_sec": 8.7,
+   "start_frame": 710,
+   "end_frame": 971,
+   "kept": [
+    [
+     0.0,
+     8.7
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S003",
+   "sentence_id": 3,
+   "clip_id": "P004",
+   "text": "La hermosa y espejada que se encuentra hoy Se ve todo, eh Laguna Bailey Willis Es espelhosa No es muy parada en el agua, no?",
+   "source_start_sec": 0.0,
+   "source_end_sec": 10.74,
+   "start_frame": 976,
+   "end_frame": 1298,
+   "kept": [
+    [
+     0.0,
+     10.74
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S004",
+   "sentence_id": 4,
+   "clip_id": "P005",
+   "text": "Nossa, olha esses casos, mano Que que é isso, cara? Onde nós estamos?",
+   "source_start_sec": 0.42,
+   "source_end_sec": 4.0,
+   "start_frame": 1428,
+   "end_frame": 1535,
+   "kept": [
+    [
+     0.42,
+     4.0
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S005",
+   "sentence_id": 5,
+   "clip_id": "P006",
+   "text": "Chegamos no nosso próximo hotel, chamado Latitude 40.",
+   "source_start_sec": 0.4,
+   "source_end_sec": 7.86,
+   "start_frame": 1599,
+   "end_frame": 1805,
+   "kept": [
+    [
+     0.4,
+     4.329
+    ],
+    [
+     4.915,
+     7.86
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S006",
+   "sentence_id": 6,
+   "clip_id": "P006",
+   "text": "É uma hosteria?",
+   "source_start_sec": 11.59,
+   "source_end_sec": 13.55,
+   "start_frame": 1819,
+   "end_frame": 1878,
+   "kept": [
+    [
+     11.59,
+     13.55
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S007",
+   "sentence_id": 7,
+   "clip_id": "P006",
+   "text": "Hosteria.",
+   "source_start_sec": 14.53,
+   "source_end_sec": 15.23,
+   "start_frame": 1907,
+   "end_frame": 1928,
+   "kept": [
+    [
+     14.53,
+     15.23
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S008",
+   "sentence_id": 8,
+   "clip_id": "P006",
+   "text": "Hosteria.",
+   "source_start_sec": 15.749,
+   "source_end_sec": 16.29,
+   "start_frame": 1932,
+   "end_frame": 1948,
+   "kept": [
+    [
+     15.749,
+     16.29
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S009",
+   "sentence_id": 9,
+   "clip_id": "P006",
+   "text": "Hosteria duas estrelas.",
+   "source_start_sec": 17.13,
+   "source_end_sec": 18.61,
+   "start_frame": 1973,
+   "end_frame": 2018,
+   "kept": [
+    [
+     17.13,
+     18.61
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S010",
+   "sentence_id": 10,
+   "clip_id": "P006",
+   "text": "Olha.",
+   "source_start_sec": 18.77,
+   "source_end_sec": 19.03,
+   "start_frame": 2023,
+   "end_frame": 2030,
+   "kept": [
+    [
+     18.77,
+     19.03
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S011",
+   "sentence_id": 11,
+   "clip_id": "P006",
+   "text": "É um hostel?",
+   "source_start_sec": 19.55,
+   "source_end_sec": 20.13,
+   "start_frame": 2046,
+   "end_frame": 2063,
+   "kept": [
+    [
+     19.55,
+     20.13
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S012",
+   "sentence_id": 12,
+   "clip_id": "P006",
+   "text": "Não sei.",
+   "source_start_sec": 20.89,
+   "source_end_sec": 21.99,
+   "start_frame": 2086,
+   "end_frame": 2119,
+   "kept": [
+    [
+     20.89,
+     21.99
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S013",
+   "sentence_id": 13,
+   "clip_id": "P006",
+   "text": "Não sei, foi que você colocou?",
+   "source_start_sec": 22.05,
+   "source_end_sec": 23.49,
+   "start_frame": 2121,
+   "end_frame": 2164,
+   "kept": [
+    [
+     22.05,
+     23.49
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S014",
+   "sentence_id": 14,
+   "clip_id": "P006",
+   "text": "É um quarto duplo.",
+   "source_start_sec": 23.51,
+   "source_end_sec": 24.37,
+   "start_frame": 2165,
+   "end_frame": 2191,
+   "kept": [
+    [
+     23.51,
+     24.37
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S015",
+   "sentence_id": 15,
+   "clip_id": "P006",
+   "text": "Então tá bom.",
+   "source_start_sec": 24.71,
+   "source_end_sec": 25.43,
+   "start_frame": 2201,
+   "end_frame": 2222,
+   "kept": [
+    [
+     24.71,
+     25.43
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S016",
+   "sentence_id": 16,
+   "clip_id": "P006",
+   "text": "Duplo com duas pessoas.",
+   "source_start_sec": 25.87,
+   "source_end_sec": 27.05,
+   "start_frame": 2236,
+   "end_frame": 2271,
+   "kept": [
+    [
+     25.87,
+     27.05
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S017",
+   "sentence_id": 17,
+   "clip_id": "P006",
+   "text": "Dois casais.",
+   "source_start_sec": 27.53,
+   "source_end_sec": 28.33,
+   "start_frame": 2285,
+   "end_frame": 2309,
+   "kept": [
+    [
+     27.53,
+     28.33
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S018",
+   "sentence_id": 18,
+   "clip_id": "P006",
+   "text": "A gente faz amizade, pelo menos.",
+   "source_start_sec": 29.57,
+   "source_end_sec": 30.89,
+   "start_frame": 2347,
+   "end_frame": 2386,
+   "kept": [
+    [
+     29.57,
+     30.89
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S019",
+   "sentence_id": 19,
+   "clip_id": "P006",
+   "text": "É.",
+   "source_start_sec": 30.93,
+   "source_end_sec": 31.07,
+   "start_frame": 2387,
+   "end_frame": 2392,
+   "kept": [
+    [
+     30.93,
+     31.07
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S021",
+   "sentence_id": 21,
+   "clip_id": "P007",
+   "text": "Bom, é isso, esse é o nosso quarto, temos uma cama bem grande, vamos dar uma olhada na vista aqui, olha só, a rua, mas aí tem umas árvores bem bonitas, bem coloridas, a montanha ali pro outro lado, o que mais? É isso.",
+   "source_start_sec": 0.0,
+   "source_end_sec": 23.78,
+   "start_frame": 2442,
+   "end_frame": 3071,
+   "kept": [
+    [
+     0.0,
+     7.878
+    ],
+    [
+     8.799,
+     11.045
+    ],
+    [
+     11.806,
+     18.448
+    ],
+    [
+     18.948,
+     21.264
+    ],
+    [
+     21.852,
+     23.78
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S022",
+   "sentence_id": 22,
+   "clip_id": "P007",
+   "text": "E aqui temos o nosso guarda-roupa, que provavelmente não tem nada, tem um cofre, vida, posso mostrar aí? E esse é o nosso banheiro, bom, tem um limpa-cu ali, temos, é uma banheira ou uma chuveira? É um box só.",
+   "source_start_sec": 25.783,
+   "source_end_sec": 47.42,
+   "start_frame": 3078,
+   "end_frame": 3648,
+   "kept": [
+    [
+     25.783,
+     32.564
+    ],
+    [
+     33.422,
+     36.055
+    ],
+    [
+     37.068,
+     38.314
+    ],
+    [
+     39.043,
+     47.42
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S023",
+   "sentence_id": 23,
+   "clip_id": "P007",
+   "text": "Tá bom, né? Tá ótimo. A gente vai ficar aqui uma noite só, então esse aqui realmente é só pra gente se acomodar, daqui a pouco a gente vai sair já pra comer alguma coisa e dar um passeio aí, aproveitar o máximo que a gente conseguir, né?",
+   "source_start_sec": 47.42,
+   "source_end_sec": 71.05,
+   "start_frame": 3648,
+   "end_frame": 4209,
+   "kept": [
+    [
+     47.42,
+     47.658
+    ],
+    [
+     51.05,
+     51.573
+    ],
+    [
+     51.921,
+     53.668
+    ],
+    [
+     54.051,
+     63.143
+    ],
+    [
+     63.463,
+     70.188
+    ],
+    [
+     70.693,
+     71.05
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S024",
+   "sentence_id": 24,
+   "clip_id": "P009",
+   "text": "Cara que gostoso! Simplesmente, simplesmente andar por aqui, simplesmente andar por aqui.",
+   "source_start_sec": 6.79,
+   "source_end_sec": 16.6,
+   "start_frame": 4333,
+   "end_frame": 4584,
+   "kept": [
+    [
+     6.79,
+     10.105
+    ],
+    [
+     11.223,
+     14.352
+    ],
+    [
+     14.67,
+     16.6
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S025",
+   "sentence_id": 25,
+   "clip_id": "P009",
+   "text": "Esse aqui é gostoso?",
+   "source_start_sec": 16.6,
+   "source_end_sec": 17.42,
+   "start_frame": 4584,
+   "end_frame": 4609,
+   "kept": [
+    [
+     16.6,
+     17.42
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S026",
+   "sentence_id": 26,
+   "clip_id": "P009",
+   "text": "Cara que é gostoso, é gostoso pra caralho, porra.",
+   "source_start_sec": 17.48,
+   "source_end_sec": 19.36,
+   "start_frame": 4610,
+   "end_frame": 4667,
+   "kept": [
+    [
+     17.48,
+     19.36
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S027",
+   "sentence_id": 27,
+   "clip_id": "P009",
+   "text": "Não, é...",
+   "source_start_sec": 19.46,
+   "source_end_sec": 19.72,
+   "start_frame": 4670,
+   "end_frame": 4677,
+   "kept": [
+    [
+     19.46,
+     19.72
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S028",
+   "sentence_id": 28,
+   "clip_id": "P009",
+   "text": "Você é do Valentino Rossi.",
+   "source_start_sec": 19.72,
+   "source_end_sec": 21.02,
+   "start_frame": 4677,
+   "end_frame": 4716,
+   "kept": [
+    [
+     19.72,
+     21.02
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S029",
+   "sentence_id": 29,
+   "clip_id": "P009",
+   "text": "Hã?",
+   "source_start_sec": 21.4,
+   "source_end_sec": 21.8,
+   "start_frame": 4728,
+   "end_frame": 4740,
+   "kept": [
+    [
+     21.4,
+     21.8
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S030",
+   "sentence_id": 30,
+   "clip_id": "P009",
+   "text": "É, do Valentino Rossi.",
+   "source_start_sec": 22.0,
+   "source_end_sec": 23.1,
+   "start_frame": 4746,
+   "end_frame": 4779,
+   "kept": [
+    [
+     22.0,
+     23.1
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S031",
+   "sentence_id": 31,
+   "clip_id": "P009",
+   "text": "O que é esse?",
+   "source_start_sec": 23.1,
+   "source_end_sec": 23.5,
+   "start_frame": 4779,
+   "end_frame": 4791,
+   "kept": [
+    [
+     23.1,
+     23.5
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S032",
+   "sentence_id": 32,
+   "clip_id": "P009",
+   "text": "É o piloto de... de motos, sei lá.",
+   "source_start_sec": 23.7,
+   "source_end_sec": 27.1,
+   "start_frame": 4797,
+   "end_frame": 4887,
+   "kept": [
+    [
+     23.7,
+     25.669
+    ],
+    [
+     26.056,
+     27.1
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S033",
+   "sentence_id": 33,
+   "clip_id": "P009",
+   "text": "Ó, gavião.",
+   "source_start_sec": 27.28,
+   "source_end_sec": 27.8,
+   "start_frame": 4893,
+   "end_frame": 4908,
+   "kept": [
+    [
+     27.28,
+     27.8
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S034",
+   "sentence_id": 34,
+   "clip_id": "P009",
+   "text": "Ó, aqui tem rio, tem...",
+   "source_start_sec": 28.9,
+   "source_end_sec": 32.22,
+   "start_frame": 4922,
+   "end_frame": 5013,
+   "kept": [
+    [
+     28.9,
+     30.408
+    ],
+    [
+     30.718,
+     32.22
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S035",
+   "sentence_id": 35,
+   "clip_id": "P009",
+   "text": "Gaviota.",
+   "source_start_sec": 33.12,
+   "source_end_sec": 33.52,
+   "start_frame": 5025,
+   "end_frame": 5037,
+   "kept": [
+    [
+     33.12,
+     33.52
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S036",
+   "sentence_id": 36,
+   "clip_id": "P009",
+   "text": "Tem pássaros, tem trutas, porque eu já vi os peixes aí, só que é bem difícil achar, na verdade.",
+   "source_start_sec": 33.52,
+   "source_end_sec": 42.66,
+   "start_frame": 5037,
+   "end_frame": 5290,
+   "kept": [
+    [
+     33.52,
+     35.208
+    ],
+    [
+     35.94,
+     42.66
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S037",
+   "sentence_id": 37,
+   "clip_id": "P009",
+   "text": "Tem montanhas, aqui não tem neve, né?",
+   "source_start_sec": 45.92,
+   "source_end_sec": 49.18,
+   "start_frame": 5366,
+   "end_frame": 5464,
+   "kept": [
+    [
+     45.92,
+     49.18
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S038",
+   "sentence_id": 38,
+   "clip_id": "P009",
+   "text": "Aqui não dá pra ver neve, mas tem neve pra lá, e agora a gente vai fazer uma trilha",
+   "source_start_sec": 50.66,
+   "source_end_sec": 58.91,
+   "start_frame": 5486,
+   "end_frame": 5733,
+   "kept": [
+    [
+     50.66,
+     58.91
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S039",
+   "sentence_id": 39,
+   "clip_id": "P009",
+   "text": "de...",
+   "source_start_sec": 60.01,
+   "source_end_sec": 60.45,
+   "start_frame": 5766,
+   "end_frame": 5780,
+   "kept": [
+    [
+     60.01,
+     60.45
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S040",
+   "sentence_id": 40,
+   "clip_id": "P009",
+   "text": "Eu já falei, né?",
+   "source_start_sec": 60.45,
+   "source_end_sec": 61.41,
+   "start_frame": 5780,
+   "end_frame": 5808,
+   "kept": [
+    [
+     60.45,
+     61.41
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S041",
+   "sentence_id": 41,
+   "clip_id": "P009",
+   "text": "Uma hora e meia e tal.",
+   "source_start_sec": 61.91,
+   "source_end_sec": 62.73,
+   "start_frame": 5823,
+   "end_frame": 5848,
+   "kept": [
+    [
+     61.91,
+     62.73
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S042",
+   "sentence_id": 42,
+   "clip_id": "P009",
+   "text": "A gente vai ver uma ilha, a Laislita, é uma ilha bem pequenininha, basicamente não dá pra ir nela, né, porque tem que ir nadando.",
+   "source_start_sec": 62.73,
+   "source_end_sec": 70.91,
+   "start_frame": 5848,
+   "end_frame": 6093,
+   "kept": [
+    [
+     62.73,
+     70.91
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S043",
+   "sentence_id": 43,
+   "clip_id": "P009",
+   "text": "Mas depois dessa ilha tem uma praia, praia branca, é o que a gente tá... esse vai ser o nosso objetivo, ir nessa praia, que é uma praia de pedra, né?",
+   "source_start_sec": 70.91,
+   "source_end_sec": 83.63,
+   "start_frame": 6093,
+   "end_frame": 6466,
+   "kept": [
+    [
+     70.91,
+     83.12
+    ],
+    [
+     83.44,
+     83.63
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S044",
+   "sentence_id": 44,
+   "clip_id": "P009",
+   "text": "E aí",
+   "source_start_sec": 83.63,
+   "source_end_sec": 83.71,
+   "start_frame": 6466,
+   "end_frame": 6468,
+   "kept": [
+    [
+     83.63,
+     83.71
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S045",
+   "sentence_id": 45,
+   "clip_id": "P013",
+   "text": "Cara, pode parecer meio loucura E meio sem",
+   "source_start_sec": 0.43,
+   "source_end_sec": 5.15,
+   "start_frame": 6482,
+   "end_frame": 6623,
+   "kept": [
+    [
+     0.43,
+     5.15
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S046",
+   "sentence_id": 46,
+   "clip_id": "P013",
+   "text": "Meio Perder de tempo Mas se tu parar pra prestar atenção Nas coisas tu vê muita coisa Olha aqui, esses aqui são Os rastros das larvas",
+   "source_start_sec": 5.95,
+   "source_end_sec": 16.73,
+   "start_frame": 6647,
+   "end_frame": 6959,
+   "kept": [
+    [
+     5.95,
+     9.18
+    ],
+    [
+     9.576,
+     16.73
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S047",
+   "sentence_id": 47,
+   "clip_id": "P013",
+   "text": "Que elas estavam Quando a casca tava aqui, né",
+   "source_start_sec": 17.596,
+   "source_end_sec": 20.23,
+   "start_frame": 6970,
+   "end_frame": 7049,
+   "kept": [
+    [
+     17.596,
+     20.23
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S048",
+   "sentence_id": 48,
+   "clip_id": "P013",
+   "text": "Mas olha só, a gente consegue ver Tipo a história da vida delas, tá ligado Isso é muito doido",
+   "source_start_sec": 21.25,
+   "source_end_sec": 26.45,
+   "start_frame": 7080,
+   "end_frame": 7216,
+   "kept": [
+    [
+     21.25,
+     25.054
+    ],
+    [
+     25.707,
+     26.45
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S049",
+   "sentence_id": 49,
+   "clip_id": "P014",
+   "text": "É isso, é isso, esse é o meu relato.",
+   "source_start_sec": 2.3,
+   "source_end_sec": 5.3,
+   "start_frame": 7308,
+   "end_frame": 7398,
+   "kept": [
+    [
+     2.3,
+     5.3
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S050",
+   "sentence_id": 50,
+   "clip_id": "P015",
+   "text": "É, uma coisa aqui de São Martim é que tem muito cachorro, mano.",
+   "source_start_sec": 2.77,
+   "source_end_sec": 9.07,
+   "start_frame": 7462,
+   "end_frame": 7651,
+   "kept": [
+    [
+     2.77,
+     9.07
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S051",
+   "sentence_id": 51,
+   "clip_id": "P015",
+   "text": "E todos são cachorros grandes, e todos estão na rua.",
+   "source_start_sec": 9.45,
+   "source_end_sec": 11.49,
+   "start_frame": 7662,
+   "end_frame": 7724,
+   "kept": [
+    [
+     9.45,
+     11.49
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S052",
+   "sentence_id": 52,
+   "clip_id": "P015",
+   "text": "Ó, tem mais um aí, mais outro lá dentro.",
+   "source_start_sec": 12.35,
+   "source_end_sec": 15.87,
+   "start_frame": 7750,
+   "end_frame": 7855,
+   "kept": [
+    [
+     12.35,
+     15.87
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S054",
+   "sentence_id": 54,
+   "clip_id": "P015",
+   "text": "Tem dentro da escola, mano.",
+   "source_start_sec": 18.37,
+   "source_end_sec": 19.53,
+   "start_frame": 7893,
+   "end_frame": 7928,
+   "kept": [
+    [
+     18.37,
+     19.53
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S055",
+   "sentence_id": 55,
+   "clip_id": "P015",
+   "text": "Escola 149, quinto-in com Penny Huan.",
+   "source_start_sec": 24.38,
+   "source_end_sec": 28.78,
+   "start_frame": 8056,
+   "end_frame": 8176,
+   "kept": [
+    [
+     24.38,
+     27.548
+    ],
+    [
+     27.956,
+     28.78
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S056",
+   "sentence_id": 56,
+   "clip_id": "P016",
+   "text": "Aí rapaziada, o negócio é tão bem estruturado, ó, as casinhas lá E até tem até um quiosque aqui, ó Quiosco",
+   "source_start_sec": 0.0,
+   "source_end_sec": 6.8,
+   "start_frame": 8184,
+   "end_frame": 8377,
+   "kept": [
+    [
+     0.0,
+     3.719
+    ],
+    [
+     4.107,
+     6.8
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S057",
+   "sentence_id": 57,
+   "clip_id": "P016",
+   "text": "Quiosco são as conveniências, né Tem muitos quioscos Tem até em trilha, mano, que isso",
+   "source_start_sec": 7.42,
+   "source_end_sec": 14.0,
+   "start_frame": 8395,
+   "end_frame": 8593,
+   "kept": [
+    [
+     7.42,
+     14.0
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S058",
+   "sentence_id": 58,
+   "clip_id": "P016",
+   "text": "Pô, mas pega essa comunidade",
+   "source_start_sec": 16.251,
+   "source_end_sec": 17.52,
+   "start_frame": 8595,
+   "end_frame": 8633,
+   "kept": [
+    [
+     16.251,
+     17.52
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S059",
+   "sentence_id": 59,
+   "clip_id": "P016",
+   "text": "Vamos morar aqui, vida Virar mapuchos",
+   "source_start_sec": 19.38,
+   "source_end_sec": 21.96,
+   "start_frame": 8689,
+   "end_frame": 8766,
+   "kept": [
+    [
+     19.38,
+     21.96
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S060",
+   "sentence_id": 60,
+   "clip_id": "P017",
+   "text": "Tá, primeiro aviso aqui que a gente tem, cuidado com o perro, o verreiro, um cão pastoreiro.",
+   "source_start_sec": 0.0,
+   "source_end_sec": 6.64,
+   "start_frame": 8794,
+   "end_frame": 8993,
+   "kept": [
+    [
+     0.0,
+     6.64
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S061",
+   "sentence_id": 61,
+   "clip_id": "P017",
+   "text": "Deve ser um...",
+   "source_start_sec": 7.0,
+   "source_end_sec": 8.572,
+   "start_frame": 9004,
+   "end_frame": 9051,
+   "kept": [
+    [
+     7.0,
+     8.572
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S063",
+   "sentence_id": 63,
+   "clip_id": "P017",
+   "text": "Não deve ser muito amigável.",
+   "source_start_sec": 10.38,
+   "source_end_sec": 11.64,
+   "start_frame": 9053,
+   "end_frame": 9091,
+   "kept": [
+    [
+     10.38,
+     11.64
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S064",
+   "sentence_id": 64,
+   "clip_id": "P017",
+   "text": "Ele vai querer pastorear nós.",
+   "source_start_sec": 11.9,
+   "source_end_sec": 13.8,
+   "start_frame": 9098,
+   "end_frame": 9155,
+   "kept": [
+    [
+     11.9,
+     13.8
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S065",
+   "sentence_id": 65,
+   "clip_id": "P017",
+   "text": "Mas a gente tem que falar pra você, a gente não é ovelha, cara.",
+   "source_start_sec": 15.36,
+   "source_end_sec": 17.82,
+   "start_frame": 9202,
+   "end_frame": 9276,
+   "kept": [
+    [
+     15.36,
+     17.82
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S066",
+   "sentence_id": 66,
+   "clip_id": "P017",
+   "text": "Deve ser um border collier.",
+   "source_start_sec": 18.84,
+   "source_end_sec": 20.04,
+   "start_frame": 9295,
+   "end_frame": 9331,
+   "kept": [
+    [
+     18.84,
+     20.04
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S067",
+   "sentence_id": 67,
+   "clip_id": "P017",
+   "text": "O que que foi?",
+   "source_start_sec": 20.16,
+   "source_end_sec": 21.24,
+   "start_frame": 9335,
+   "end_frame": 9367,
+   "kept": [
+    [
+     20.16,
+     21.24
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S068",
+   "sentence_id": 68,
+   "clip_id": "P017",
+   "text": "Hã?",
+   "source_start_sec": 22.2,
+   "source_end_sec": 22.5,
+   "start_frame": 9396,
+   "end_frame": 9405,
+   "kept": [
+    [
+     22.2,
+     22.5
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S069",
+   "sentence_id": 69,
+   "clip_id": "P017",
+   "text": "Eu.",
+   "source_start_sec": 24.58,
+   "source_end_sec": 25.02,
+   "start_frame": 9467,
+   "end_frame": 9480,
+   "kept": [
+    [
+     24.58,
+     25.02
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S070",
+   "sentence_id": 70,
+   "clip_id": "P017",
+   "text": "Tu o que?",
+   "source_start_sec": 25.46,
+   "source_end_sec": 25.8,
+   "start_frame": 9494,
+   "end_frame": 9504,
+   "kept": [
+    [
+     25.46,
+     25.8
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S071",
+   "sentence_id": 71,
+   "clip_id": "P017",
+   "text": "Ah, meu Deus, é verdade, você é uma ovelha, cara.",
+   "source_start_sec": 26.14,
+   "source_end_sec": 28.84,
+   "start_frame": 9514,
+   "end_frame": 9595,
+   "kept": [
+    [
+     26.14,
+     28.84
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S072",
+   "sentence_id": 72,
+   "clip_id": "P018",
+   "text": "Cara, e aqui parece que tem um camping Camping lá, Eslita",
+   "source_start_sec": 0.46,
+   "source_end_sec": 4.87,
+   "start_frame": 9679,
+   "end_frame": 9811,
+   "kept": [
+    [
+     0.46,
+     4.87
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S073",
+   "sentence_id": 73,
+   "clip_id": "P018",
+   "text": "E, obviamente, aqui é um parque nacional, né?",
+   "source_start_sec": 6.353,
+   "source_end_sec": 10.13,
+   "start_frame": 9821,
+   "end_frame": 9934,
+   "kept": [
+    [
+     6.353,
+     10.13
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S074",
+   "sentence_id": 74,
+   "clip_id": "P018",
+   "text": "Protegido, uma reserva, então Proibido fazer fogo",
+   "source_start_sec": 10.19,
+   "source_end_sec": 13.59,
+   "start_frame": 9936,
+   "end_frame": 10026,
+   "kept": [
+    [
+     10.19,
+     11.775
+    ],
+    [
+     12.175,
+     13.59
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S075",
+   "sentence_id": 75,
+   "clip_id": "P018",
+   "text": "Isso, na verdade, é pra qualquer lugar, né, cara?",
+   "source_start_sec": 14.87,
+   "source_end_sec": 17.19,
+   "start_frame": 10042,
+   "end_frame": 10111,
+   "kept": [
+    [
+     14.87,
+     17.19
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S076",
+   "sentence_id": 76,
+   "clip_id": "P018",
+   "text": "Porque, tipo assim",
+   "source_start_sec": 17.31,
+   "source_end_sec": 17.91,
+   "start_frame": 10115,
+   "end_frame": 10133,
+   "kept": [
+    [
+     17.31,
+     17.91
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S077",
+   "sentence_id": 77,
+   "clip_id": "P018",
+   "text": "Tem que ter essas regras Porque tem gente que não sabe Vem aqui, tipo, acharam que Ah, vamos acampar Aí vai lá e bota fogo",
+   "source_start_sec": 18.67,
+   "source_end_sec": 28.91,
+   "start_frame": 10156,
+   "end_frame": 10463,
+   "kept": [
+    [
+     18.67,
+     28.91
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S078",
+   "sentence_id": 78,
+   "clip_id": "P018",
+   "text": "E bota fogo em tudo Já aconteceu muitas e muitas vezes Até por isso que é uma regra, né?",
+   "source_start_sec": 28.91,
+   "source_end_sec": 35.23,
+   "start_frame": 10463,
+   "end_frame": 10643,
+   "kept": [
+    [
+     28.91,
+     33.21
+    ],
+    [
+     33.514,
+     35.23
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S079",
+   "sentence_id": 79,
+   "clip_id": "P018",
+   "text": "Inclusive tem",
+   "source_start_sec": 35.79,
+   "source_end_sec": 36.51,
+   "start_frame": 10660,
+   "end_frame": 10682,
+   "kept": [
+    [
+     35.79,
+     36.51
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S080",
+   "sentence_id": 80,
+   "clip_id": "P018",
+   "text": "Parques nacionais que foram fechados",
+   "source_start_sec": 37.85,
+   "source_end_sec": 39.67,
+   "start_frame": 10703,
+   "end_frame": 10758,
+   "kept": [
+    [
+     37.85,
+     39.67
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S081",
+   "sentence_id": 81,
+   "clip_id": "P018",
+   "text": "Pra ninguém entrar Porque simplesmente Uma pessoa foi lá, botou fogo E botou fogo no bagulho inteiro, tá ligado?",
+   "source_start_sec": 40.99,
+   "source_end_sec": 49.21,
+   "start_frame": 10781,
+   "end_frame": 11028,
+   "kept": [
+    [
+     40.99,
+     49.21
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S082",
+   "sentence_id": 82,
+   "clip_id": "P018",
+   "text": "Ele vira incêndio florestal Mas, né É uma pena, porque, pô Seria interessante, tipo, tu tá lá acampando Fazer um cafezinho Fazer um ranguinho, tá ligado?",
+   "source_start_sec": 49.45,
+   "source_end_sec": 59.89,
+   "start_frame": 11035,
+   "end_frame": 11334,
+   "kept": [
+    [
+     49.45,
+     51.259
+    ],
+    [
+     51.759,
+     59.89
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S083",
+   "sentence_id": 83,
+   "clip_id": "P018",
+   "text": "Mas Não dá Tá ligado, tá ligado, tá ligado?",
+   "source_start_sec": 60.93,
+   "source_end_sec": 63.01,
+   "start_frame": 11365,
+   "end_frame": 11428,
+   "kept": [
+    [
+     60.93,
+     63.01
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S084",
+   "sentence_id": 84,
+   "clip_id": "P018",
+   "text": "Obrigado.",
+   "source_start_sec": 63.01,
+   "source_end_sec": 63.07,
+   "start_frame": 11428,
+   "end_frame": 11429,
+   "kept": [
+    [
+     63.01,
+     63.07
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S085",
+   "sentence_id": 85,
+   "clip_id": "P019",
+   "text": "É, e o diferente daqui, por exemplo, do Brasil, né, que, tipo, o Brasil tem uma vegetação muito mais úmida, é muito mais difícil ter um incêndio florestal nesse nível.",
+   "source_start_sec": 0.0,
+   "source_end_sec": 9.66,
+   "start_frame": 11482,
+   "end_frame": 11772,
+   "kept": [
+    [
+     0.0,
+     9.66
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S086",
+   "sentence_id": 86,
+   "clip_id": "P019",
+   "text": "Aqui, como é tudo pinos, cara, tudo... Como que é o nome da outra tipo de árvore lá?",
+   "source_start_sec": 9.94,
+   "source_end_sec": 14.6,
+   "start_frame": 11780,
+   "end_frame": 11920,
+   "kept": [
+    [
+     9.94,
+     14.6
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S087",
+   "sentence_id": 87,
+   "clip_id": "P019",
+   "text": "Ah, não é, é tipo pinos, mas não é.",
+   "source_start_sec": 15.999,
+   "source_end_sec": 17.48,
+   "start_frame": 11926,
+   "end_frame": 11970,
+   "kept": [
+    [
+     15.999,
+     17.48
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S088",
+   "sentence_id": 88,
+   "clip_id": "P019",
+   "text": "Eles são muito secos, então, tipo, basta uma folhinha ali pegar fogo e já era.",
+   "source_start_sec": 18.28,
+   "source_end_sec": 22.7,
+   "start_frame": 11985,
+   "end_frame": 12117,
+   "kept": [
+    [
+     18.28,
+     22.7
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S089",
+   "sentence_id": 89,
+   "clip_id": "P019",
+   "text": "Já era.",
+   "source_start_sec": 23.92,
+   "source_end_sec": 24.68,
+   "start_frame": 12137,
+   "end_frame": 12160,
+   "kept": [
+    [
+     23.92,
+     24.68
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S090",
+   "sentence_id": 90,
+   "clip_id": "P019",
+   "text": "Até porque essas árvores, elas, não essas daqui, mas os, tipo, pinheiro, né, os que são parecidos com pinheiros, elas só, as sementes só desabrotam com incêndios florestais.",
+   "source_start_sec": 25.434,
+   "source_end_sec": 37.98,
+   "start_frame": 12168,
+   "end_frame": 12533,
+   "kept": [
+    [
+     25.434,
+     33.688
+    ],
+    [
+     34.076,
+     37.98
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S091",
+   "sentence_id": 91,
+   "clip_id": "P019",
+   "text": "Elas usam os incêndios pra fazer isso.",
+   "source_start_sec": 38.4,
+   "source_end_sec": 40.26,
+   "start_frame": 12546,
+   "end_frame": 12602,
+   "kept": [
+    [
+     38.4,
+     40.26
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S092",
+   "sentence_id": 92,
+   "clip_id": "P019",
+   "text": "Não, não essas daqui, os pinos, os tipos de pinos.",
+   "source_start_sec": 40.28,
+   "source_end_sec": 44.26,
+   "start_frame": 12602,
+   "end_frame": 12722,
+   "kept": [
+    [
+     40.28,
+     44.26
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S093",
+   "sentence_id": 93,
+   "clip_id": "P019",
+   "text": "Ah, os que são da Austrália?",
+   "source_start_sec": 44.32,
+   "source_end_sec": 44.94,
+   "start_frame": 12723,
+   "end_frame": 12742,
+   "kept": [
+    [
+     44.32,
+     44.94
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S094",
+   "sentence_id": 94,
+   "clip_id": "P019",
+   "text": "Não, não, todos os pinos são assim.",
+   "source_start_sec": 45.917,
+   "source_end_sec": 47.3,
+   "start_frame": 12745,
+   "end_frame": 12786,
+   "kept": [
+    [
+     45.917,
+     47.3
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S095",
+   "sentence_id": 95,
+   "clip_id": "P019",
+   "text": "Não.",
+   "source_start_sec": 47.6,
+   "source_end_sec": 47.8,
+   "start_frame": 12795,
+   "end_frame": 12801,
+   "kept": [
+    [
+     47.6,
+     47.8
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S096",
+   "sentence_id": 96,
+   "clip_id": "P019",
+   "text": "É?",
+   "source_start_sec": 48.14,
+   "source_end_sec": 48.28,
+   "start_frame": 12812,
+   "end_frame": 12816,
+   "kept": [
+    [
+     48.14,
+     48.28
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S097",
+   "sentence_id": 97,
+   "clip_id": "P019",
+   "text": "Todos os tipos de pinos.",
+   "source_start_sec": 49.66,
+   "source_end_sec": 50.84,
+   "start_frame": 12827,
+   "end_frame": 12862,
+   "kept": [
+    [
+     49.66,
+     50.84
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S098",
+   "sentence_id": 98,
+   "clip_id": "P019",
+   "text": "Não, não, eu tô esquecendo de dar um Google aí.",
+   "source_start_sec": 51.02,
+   "source_end_sec": 52.42,
+   "start_frame": 12867,
+   "end_frame": 12872,
+   "kept": [
+    [
+     51.02,
+     51.104
+    ],
+    [
+     52.343,
+     52.42
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S099",
+   "sentence_id": 99,
+   "clip_id": "P019",
+   "text": "Ah, então eu vou dar um Google aí, Zé, porque foi isso que eu entendi.",
+   "source_start_sec": 52.42,
+   "source_end_sec": 54.72,
+   "start_frame": 12872,
+   "end_frame": 12941,
+   "kept": [
+    [
+     52.42,
+     54.72
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S100",
+   "sentence_id": 100,
+   "clip_id": "P019",
+   "text": "Não me faz, pai, ó.",
+   "source_start_sec": 55.22,
+   "source_end_sec": 56.46,
+   "start_frame": 12956,
+   "end_frame": 12994,
+   "kept": [
+    [
+     55.22,
+     56.46
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S101",
+   "sentence_id": 101,
+   "clip_id": "P019",
+   "text": "O que que tem?",
+   "source_start_sec": 57.329,
+   "source_end_sec": 57.84,
+   "start_frame": 12999,
+   "end_frame": 13014,
+   "kept": [
+    [
+     57.329,
+     57.84
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S102",
+   "sentence_id": 102,
+   "clip_id": "P019",
+   "text": "Mas eu conheço de árvores.",
+   "source_start_sec": 58.06,
+   "source_end_sec": 59.54,
+   "start_frame": 13021,
+   "end_frame": 13065,
+   "kept": [
+    [
+     58.06,
+     59.54
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S103",
+   "sentence_id": 103,
+   "clip_id": "P019",
+   "text": "Aham.",
+   "source_start_sec": 59.72,
+   "source_end_sec": 59.96,
+   "start_frame": 13071,
+   "end_frame": 13078,
+   "kept": [
+    [
+     59.72,
+     59.96
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S104",
+   "sentence_id": 104,
+   "clip_id": "P019",
+   "text": "Até porque elas têm, tipo, uma...",
+   "source_start_sec": 61.54,
+   "source_end_sec": 63.84,
+   "start_frame": 13080,
+   "end_frame": 13149,
+   "kept": [
+    [
+     61.54,
+     63.84
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S105",
+   "sentence_id": 105,
+   "clip_id": "P019",
+   "text": "A folha delas tem, tipo, uma toxina.",
+   "source_start_sec": 64.44,
+   "source_end_sec": 67.26,
+   "start_frame": 13167,
+   "end_frame": 13251,
+   "kept": [
+    [
+     64.44,
+     67.26
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S106",
+   "sentence_id": 106,
+   "clip_id": "P019",
+   "text": "E quando elas caem no chão, elas não deixam criar vegetação embaixo, tá ligado?",
+   "source_start_sec": 67.4,
+   "source_end_sec": 72.16,
+   "start_frame": 13256,
+   "end_frame": 13398,
+   "kept": [
+    [
+     67.4,
+     72.16
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S107",
+   "sentence_id": 107,
+   "clip_id": "P019",
+   "text": "Então, quando vocês podem perceber que onde tem pinos, assim, não vai ter vegetação.",
+   "source_start_sec": 72.46,
+   "source_end_sec": 76.74,
+   "start_frame": 13407,
+   "end_frame": 13536,
+   "kept": [
+    [
+     72.46,
+     76.74
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S108",
+   "sentence_id": 108,
+   "clip_id": "P019",
+   "text": "É tudo aberto, só vai ter as árvores, tá ligado?",
+   "source_start_sec": 76.82,
+   "source_end_sec": 78.94,
+   "start_frame": 13538,
+   "end_frame": 13602,
+   "kept": [
+    [
+     76.82,
+     78.94
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S109",
+   "sentence_id": 109,
+   "clip_id": "P019",
+   "text": "E essa toxina, entre aspas, ali, ela é extremamente inflamável.",
+   "source_start_sec": 78.94,
+   "source_end_sec": 84.82,
+   "start_frame": 13602,
+   "end_frame": 13769,
+   "kept": [
+    [
+     78.94,
+     79.147
+    ],
+    [
+     79.463,
+     84.82
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S110",
+   "sentence_id": 110,
+   "clip_id": "P019",
+   "text": "Então, por isso que quando dá muito calor e tal, é muito fácil de dar uma combustão espontânea ali e queimar, tá ligado?",
+   "source_start_sec": 85.6,
+   "source_end_sec": 92.72,
+   "start_frame": 13780,
+   "end_frame": 13994,
+   "kept": [
+    [
+     85.6,
+     92.72
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S111",
+   "sentence_id": 111,
+   "clip_id": "P019",
+   "text": "E a natureza é muito louca por causa disso.",
+   "source_start_sec": 93.816,
+   "source_end_sec": 96.04,
+   "start_frame": 14001,
+   "end_frame": 14068,
+   "kept": [
+    [
+     93.816,
+     96.04
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S112",
+   "sentence_id": 112,
+   "clip_id": "P019",
+   "text": "E as árvores não queimam, tá ligado?",
+   "source_start_sec": 98.1,
+   "source_end_sec": 99.74,
+   "start_frame": 14120,
+   "end_frame": 14169,
+   "kept": [
+    [
+     98.1,
+     99.74
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S113",
+   "sentence_id": 113,
+   "clip_id": "P019",
+   "text": "Porque elas têm uma proteção tipo esponja.",
+   "source_start_sec": 99.78,
+   "source_end_sec": 101.62,
+   "start_frame": 14171,
+   "end_frame": 14226,
+   "kept": [
+    [
+     99.78,
+     101.62
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S114",
+   "sentence_id": 114,
+   "clip_id": "P019",
+   "text": "Então, elas absorvem toda a umidade da terra ali, colocam nos troncos.",
+   "source_start_sec": 101.76,
+   "source_end_sec": 105.36,
+   "start_frame": 14230,
+   "end_frame": 14338,
+   "kept": [
+    [
+     101.76,
+     105.36
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S115",
+   "sentence_id": 115,
+   "clip_id": "P019",
+   "text": "Então, o tronco, apesar de parecer queimado, dentro ali vai estar totalmente intacto, tá ligado?",
+   "source_start_sec": 105.36,
+   "source_end_sec": 111.44,
+   "start_frame": 14338,
+   "end_frame": 14520,
+   "kept": [
+    [
+     105.36,
+     111.44
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S116",
+   "sentence_id": 116,
+   "clip_id": "P019",
+   "text": "Tá ligado?",
+   "source_start_sec": 111.44,
+   "source_end_sec": 111.52,
+   "start_frame": 14520,
+   "end_frame": 14523,
+   "kept": [
+    [
+     111.44,
+     111.52
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S117",
+   "sentence_id": 117,
+   "clip_id": "P020",
+   "text": "E, tô gelando?",
+   "source_start_sec": 1.01,
+   "source_end_sec": 2.33,
+   "start_frame": 14548,
+   "end_frame": 14588,
+   "kept": [
+    [
+     1.01,
+     2.33
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S118",
+   "sentence_id": 118,
+   "clip_id": "P020",
+   "text": "Porra.",
+   "source_start_sec": 4.112,
+   "source_end_sec": 4.19,
+   "start_frame": 14609,
+   "end_frame": 14611,
+   "kept": [
+    [
+     4.112,
+     4.19
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S119",
+   "sentence_id": 119,
+   "clip_id": "P020",
+   "text": "Ah, tá nada.",
+   "source_start_sec": 4.61,
+   "source_end_sec": 6.15,
+   "start_frame": 14624,
+   "end_frame": 14670,
+   "kept": [
+    [
+     4.61,
+     6.15
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S120",
+   "sentence_id": 120,
+   "clip_id": "P020",
+   "text": "Nossa, tá boa, mano.",
+   "source_start_sec": 6.45,
+   "source_end_sec": 7.69,
+   "start_frame": 14679,
+   "end_frame": 14716,
+   "kept": [
+    [
+     6.45,
+     7.69
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S121",
+   "sentence_id": 121,
+   "clip_id": "P020",
+   "text": "Ah, é?",
+   "source_start_sec": 7.83,
+   "source_end_sec": 8.23,
+   "start_frame": 14721,
+   "end_frame": 14733,
+   "kept": [
+    [
+     7.83,
+     8.23
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S122",
+   "sentence_id": 122,
+   "clip_id": "P020",
+   "text": "Tá boa.",
+   "source_start_sec": 10.345,
+   "source_end_sec": 10.9,
+   "start_frame": 14741,
+   "end_frame": 14758,
+   "kept": [
+    [
+     10.345,
+     10.9
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S123",
+   "sentence_id": 123,
+   "clip_id": "P020",
+   "text": "Mano, mas tá gostoso.",
+   "source_start_sec": 11.78,
+   "source_end_sec": 13.02,
+   "start_frame": 14766,
+   "end_frame": 14803,
+   "kept": [
+    [
+     11.78,
+     13.02
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S124",
+   "sentence_id": 124,
+   "clip_id": "P020",
+   "text": "Tipo, se tu fica um tempo assim, dói.",
+   "source_start_sec": 15.557,
+   "source_end_sec": 18.44,
+   "start_frame": 14863,
+   "end_frame": 14949,
+   "kept": [
+    [
+     15.557,
+     18.44
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S125",
+   "sentence_id": 125,
+   "clip_id": "P020",
+   "text": "Mas, tipo, não tá tão gelada, pode doer imediatamente.",
+   "source_start_sec": 18.54,
+   "source_end_sec": 21.6,
+   "start_frame": 14952,
+   "end_frame": 15044,
+   "kept": [
+    [
+     18.54,
+     21.6
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S126",
+   "sentence_id": 126,
+   "clip_id": "P021",
+   "text": "Olha que lindo, não sei, mas ele é bem amigável, oi cara, oi cara, oi tudo bem linda, tudo bem linda, oi que linda, que gostosa, olha, pois ele me ignorou, foi direto em ti, cara o cachorro sente muito né, sente, eu sou filósofo",
+   "source_start_sec": 0.78,
+   "source_end_sec": 30.959,
+   "start_frame": 15141,
+   "end_frame": 15921,
+   "kept": [
+    [
+     0.78,
+     16.021
+    ],
+    [
+     16.509,
+     19.899
+    ],
+    [
+     20.367,
+     22.823
+    ],
+    [
+     24.458,
+     27.547
+    ],
+    [
+     28.627,
+     29.682
+    ],
+    [
+     30.244,
+     30.959
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S127",
+   "sentence_id": 127,
+   "clip_id": "P022",
+   "text": "Agora, última parada, a gente vai numa praia chamada Praia Branca.",
+   "source_start_sec": 0.02,
+   "source_end_sec": 7.28,
+   "start_frame": 15922,
+   "end_frame": 16105,
+   "kept": [
+    [
+     0.02,
+     2.856
+    ],
+    [
+     3.314,
+     5.208
+    ],
+    [
+     5.9,
+     7.28
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S128",
+   "sentence_id": 128,
+   "clip_id": "P022",
+   "text": "Não sei exatamente por que é Praia Branca, imagino que a areia ali, as pedras devem ser brancas.",
+   "source_start_sec": 8.596,
+   "source_end_sec": 14.86,
+   "start_frame": 16115,
+   "end_frame": 16277,
+   "kept": [
+    [
+     8.596,
+     11.396
+    ],
+    [
+     12.263,
+     14.86
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S129",
+   "sentence_id": 129,
+   "clip_id": "P023",
+   "text": "Aqui antes de ir para a próxima praia tem um quiosquezinho Vende hambúrgueres, pizzas até, cara",
+   "source_start_sec": 0.375,
+   "source_end_sec": 8.11,
+   "start_frame": 16323,
+   "end_frame": 16523,
+   "kept": [
+    [
+     0.375,
+     1.892
+    ],
+    [
+     2.549,
+     5.151
+    ],
+    [
+     5.586,
+     8.11
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S130",
+   "sentence_id": 130,
+   "clip_id": "P023",
+   "text": "Bebida, gelo É realmente bem conveniente para quem quer vir acampar aí Mas, né, sono efetivo Só em dinheiro, rapaziada",
+   "source_start_sec": 9.19,
+   "source_end_sec": 19.57,
+   "start_frame": 16543,
+   "end_frame": 16795,
+   "kept": [
+    [
+     9.19,
+     10.555
+    ],
+    [
+     11.386,
+     15.17
+    ],
+    [
+     15.911,
+     17.948
+    ],
+    [
+     18.368,
+     19.57
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S131",
+   "sentence_id": 131,
+   "clip_id": "P024",
+   "text": "Como diz o nome de raiz, né, rapaziada? O roteiro se cria.",
+   "source_start_sec": 0.02,
+   "source_end_sec": 3.5,
+   "start_frame": 16801,
+   "end_frame": 16905,
+   "kept": [
+    [
+     0.02,
+     3.5
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S132",
+   "sentence_id": 132,
+   "clip_id": "P024",
+   "text": "A gente tava quase indo embora e a gente encontrou aqui o rapaz que vai ajudar a gente a chegar lá na Praia Branca.",
+   "source_start_sec": 4.42,
+   "source_end_sec": 14.8,
+   "start_frame": 16933,
+   "end_frame": 17228,
+   "kept": [
+    [
+     4.42,
+     10.643
+    ],
+    [
+     11.173,
+     14.8
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S133",
+   "sentence_id": 133,
+   "clip_id": "P025",
+   "text": "Olha só, a gente vai atravessar um tronco, cara.",
+   "source_start_sec": 0.531,
+   "source_end_sec": 2.89,
+   "start_frame": 17498,
+   "end_frame": 17569,
+   "kept": [
+    [
+     0.531,
+     2.89
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S134",
+   "sentence_id": 134,
+   "clip_id": "P025",
+   "text": "Ela é muito bonita.",
+   "source_start_sec": 6.07,
+   "source_end_sec": 7.09,
+   "start_frame": 17628,
+   "end_frame": 17658,
+   "kept": [
+    [
+     6.07,
+     7.09
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S135",
+   "sentence_id": 135,
+   "clip_id": "P025",
+   "text": "Bem escorregadinha aqui.",
+   "source_start_sec": 14.698,
+   "source_end_sec": 16.12,
+   "start_frame": 17803,
+   "end_frame": 17846,
+   "kept": [
+    [
+     14.698,
+     16.12
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S136",
+   "sentence_id": 136,
+   "clip_id": "P025",
+   "text": "Aqui tem que ter o equilíbrio, hein?",
+   "source_start_sec": 21.211,
+   "source_end_sec": 22.57,
+   "start_frame": 17853,
+   "end_frame": 17894,
+   "kept": [
+    [
+     21.211,
+     22.57
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S137",
+   "sentence_id": 137,
+   "clip_id": "P025",
+   "text": "Olha!",
+   "source_start_sec": 43.12,
+   "source_end_sec": 43.54,
+   "start_frame": 18222,
+   "end_frame": 18235,
+   "kept": [
+    [
+     43.12,
+     43.54
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S138",
+   "sentence_id": 138,
+   "clip_id": "P025",
+   "text": "Olha!",
+   "source_start_sec": 47.26,
+   "source_end_sec": 47.94,
+   "start_frame": 18346,
+   "end_frame": 18367,
+   "kept": [
+    [
+     47.26,
+     47.94
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S139",
+   "sentence_id": 139,
+   "clip_id": "P025",
+   "text": "Olha aqui, velho.",
+   "source_start_sec": 51.42,
+   "source_end_sec": 52.76,
+   "start_frame": 18471,
+   "end_frame": 18511,
+   "kept": [
+    [
+     51.42,
+     52.76
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S140",
+   "sentence_id": 140,
+   "clip_id": "P025",
+   "text": "Muito lindo.",
+   "source_start_sec": 54.18,
+   "source_end_sec": 55.24,
+   "start_frame": 18554,
+   "end_frame": 18586,
+   "kept": [
+    [
+     54.18,
+     55.24
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S141",
+   "sentence_id": 141,
+   "clip_id": "P025",
+   "text": "Você vem direto pra cá?",
+   "source_start_sec": 64.97,
+   "source_end_sec": 66.67,
+   "start_frame": 18832,
+   "end_frame": 18883,
+   "kept": [
+    [
+     64.97,
+     66.67
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S142",
+   "sentence_id": 142,
+   "clip_id": "P025",
+   "text": "Sim, estado por aqui.",
+   "source_start_sec": 68.035,
+   "source_end_sec": 68.83,
+   "start_frame": 18892,
+   "end_frame": 18916,
+   "kept": [
+    [
+     68.035,
+     68.83
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S143",
+   "sentence_id": 143,
+   "clip_id": "P025",
+   "text": "São Martim?",
+   "source_start_sec": 68.89,
+   "source_end_sec": 69.37,
+   "start_frame": 18918,
+   "end_frame": 18932,
+   "kept": [
+    [
+     68.89,
+     69.37
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S144",
+   "sentence_id": 144,
+   "clip_id": "P025",
+   "text": "Sim, terceira vez que vengo.",
+   "source_start_sec": 69.89,
+   "source_end_sec": 71.29,
+   "start_frame": 18948,
+   "end_frame": 18990,
+   "kept": [
+    [
+     69.89,
+     71.29
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S145",
+   "sentence_id": 145,
+   "clip_id": "P025",
+   "text": "Terceira vez?",
+   "source_start_sec": 71.37,
+   "source_end_sec": 71.93,
+   "start_frame": 18992,
+   "end_frame": 19009,
+   "kept": [
+    [
+     71.37,
+     71.93
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S146",
+   "sentence_id": 146,
+   "clip_id": "P025",
+   "text": "Sozinho, sempre?",
+   "source_start_sec": 76.4,
+   "source_end_sec": 77.14,
+   "start_frame": 19051,
+   "end_frame": 19074,
+   "kept": [
+    [
+     76.4,
+     77.14
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S147",
+   "sentence_id": 147,
+   "clip_id": "P025",
+   "text": "Não.",
+   "source_start_sec": 78.14,
+   "source_end_sec": 78.54,
+   "start_frame": 19104,
+   "end_frame": 19116,
+   "kept": [
+    [
+     78.14,
+     78.54
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S148",
+   "sentence_id": 148,
+   "clip_id": "P025",
+   "text": "Ah, sim, não.",
+   "source_start_sec": 78.84,
+   "source_end_sec": 79.76,
+   "start_frame": 19125,
+   "end_frame": 19152,
+   "kept": [
+    [
+     78.84,
+     79.76
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S149",
+   "sentence_id": 149,
+   "clip_id": "P025",
+   "text": "Primeira vez, solo.",
+   "source_start_sec": 79.92,
+   "source_end_sec": 80.58,
+   "start_frame": 19157,
+   "end_frame": 19177,
+   "kept": [
+    [
+     79.92,
+     80.58
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S150",
+   "sentence_id": 150,
+   "clip_id": "P025",
+   "text": "Primeira vez?",
+   "source_start_sec": 80.92,
+   "source_end_sec": 81.5,
+   "start_frame": 19187,
+   "end_frame": 19204,
+   "kept": [
+    [
+     80.92,
+     81.5
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S151",
+   "sentence_id": 151,
+   "clip_id": "P025",
+   "text": "Segunda com amigos.",
+   "source_start_sec": 81.86,
+   "source_end_sec": 82.6,
+   "start_frame": 19215,
+   "end_frame": 19237,
+   "kept": [
+    [
+     81.86,
+     82.6
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S152",
+   "sentence_id": 152,
+   "clip_id": "P025",
+   "text": "E esta vez, de novo, solo.",
+   "source_start_sec": 82.96,
+   "source_end_sec": 84.4,
+   "start_frame": 19248,
+   "end_frame": 19291,
+   "kept": [
+    [
+     82.96,
+     84.4
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S153",
+   "sentence_id": 153,
+   "clip_id": "P025",
+   "text": "Eu penso solzinho ou...",
+   "source_start_sec": 85.3,
+   "source_end_sec": 86.64,
+   "start_frame": 19318,
+   "end_frame": 19350,
+   "kept": [
+    [
+     85.3,
+     85.312
+    ],
+    [
+     85.614,
+     86.64
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S154",
+   "sentence_id": 154,
+   "clip_id": "P025",
+   "text": "Eu não penso no sol.",
+   "source_start_sec": 87.2,
+   "source_end_sec": 88.14,
+   "start_frame": 19367,
+   "end_frame": 19395,
+   "kept": [
+    [
+     87.2,
+     88.14
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S155",
+   "sentence_id": 155,
+   "clip_id": "P025",
+   "text": "Sim.",
+   "source_start_sec": 88.38,
+   "source_end_sec": 88.62,
+   "start_frame": 19402,
+   "end_frame": 19409,
+   "kept": [
+    [
+     88.38,
+     88.62
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S156",
+   "sentence_id": 156,
+   "clip_id": "P025",
+   "text": "Sempre esta época me gusta.",
+   "source_start_sec": 95.675,
+   "source_end_sec": 96.86,
+   "start_frame": 19540,
+   "end_frame": 19576,
+   "kept": [
+    [
+     95.675,
+     96.86
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S157",
+   "sentence_id": 157,
+   "clip_id": "P025",
+   "text": "Esta é a primavera, né?",
+   "source_start_sec": 97.56,
+   "source_end_sec": 98.84,
+   "start_frame": 19597,
+   "end_frame": 19635,
+   "kept": [
+    [
+     97.56,
+     98.84
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S158",
+   "sentence_id": 158,
+   "clip_id": "P025",
+   "text": "Não há turismo.",
+   "source_start_sec": 98.94,
+   "source_end_sec": 99.74,
+   "start_frame": 19638,
+   "end_frame": 19662,
+   "kept": [
+    [
+     98.94,
+     99.74
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S159",
+   "sentence_id": 159,
+   "clip_id": "P025",
+   "text": "Sim.",
+   "source_start_sec": 99.9,
+   "source_end_sec": 100.12,
+   "start_frame": 19667,
+   "end_frame": 19673,
+   "kept": [
+    [
+     99.9,
+     100.12
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S160",
+   "sentence_id": 160,
+   "clip_id": "P025",
+   "text": "Mas, muito vento.",
+   "source_start_sec": 102.16,
+   "source_end_sec": 103.42,
+   "start_frame": 19735,
+   "end_frame": 19772,
+   "kept": [
+    [
+     102.16,
+     103.42
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S161",
+   "sentence_id": 161,
+   "clip_id": "P025",
+   "text": "Sim, às vezes.",
+   "source_start_sec": 103.78,
+   "source_end_sec": 104.2,
+   "start_frame": 19783,
+   "end_frame": 19796,
+   "kept": [
+    [
+     103.78,
+     104.2
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S162",
+   "sentence_id": 162,
+   "clip_id": "P025",
+   "text": "Ayer e hoje, lindo dia.",
+   "source_start_sec": 105.0,
+   "source_end_sec": 106.1,
+   "start_frame": 19820,
+   "end_frame": 19853,
+   "kept": [
+    [
+     105.0,
+     106.1
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S163",
+   "sentence_id": 163,
+   "clip_id": "P025",
+   "text": "Sim.",
+   "source_start_sec": 106.28,
+   "source_end_sec": 106.52,
+   "start_frame": 19858,
+   "end_frame": 19865,
+   "kept": [
+    [
+     106.28,
+     106.52
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S164",
+   "sentence_id": 164,
+   "clip_id": "P025",
+   "text": "Muito bom.",
+   "source_start_sec": 107.3,
+   "source_end_sec": 107.94,
+   "start_frame": 19889,
+   "end_frame": 19908,
+   "kept": [
+    [
+     107.3,
+     107.94
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S165",
+   "sentence_id": 165,
+   "clip_id": "P025",
+   "text": "Sim.",
+   "source_start_sec": 108.2,
+   "source_end_sec": 108.4,
+   "start_frame": 19916,
+   "end_frame": 19922,
+   "kept": [
+    [
+     108.2,
+     108.4
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S166",
+   "sentence_id": 166,
+   "clip_id": "P027",
+   "text": "Nossa, mas olha essa paisagem aqui, cara.",
+   "source_start_sec": 0.0,
+   "source_end_sec": 2.34,
+   "start_frame": 19945,
+   "end_frame": 20015,
+   "kept": [
+    [
+     0.0,
+     2.34
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S167",
+   "sentence_id": 167,
+   "clip_id": "P027",
+   "text": "É muito bonito, cara.",
+   "source_start_sec": 3.78,
+   "source_end_sec": 5.54,
+   "start_frame": 20058,
+   "end_frame": 20111,
+   "kept": [
+    [
+     3.78,
+     5.54
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S168",
+   "sentence_id": 168,
+   "clip_id": "P027",
+   "text": "É surreal, isso aqui parece uma pintura.",
+   "source_start_sec": 6.5,
+   "source_end_sec": 8.7,
+   "start_frame": 20140,
+   "end_frame": 20206,
+   "kept": [
+    [
+     6.5,
+     8.7
+    ]
+   ],
+   "screen": []
+  },
+  {
+   "id": "S169",
+   "sentence_id": 169,
+   "clip_id": "P028",
+   "text": "Flávio tá se preparando pra entrar na água. Eu vou entrar, cara. Tá calor, a água tá boa, pelo menos molhar o selvo. Tá calor, 5 graus.",
+   "source_start_sec": 0.0,
+   "source_end_sec": 8.6,
+   "start_frame": 20247,
+   "end_frame": 20493,
+   "kept": [
+    [
+     0.0,
+     4.225
+    ],
+    [
+     4.638,
+     8.6
+    ]
+   ],
+   "screen": []
+  }
+ ]
+}

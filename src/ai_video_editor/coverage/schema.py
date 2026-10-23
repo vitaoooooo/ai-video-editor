@@ -1,14 +1,16 @@
-"""Schemas Pydantic do Diretor de cobertura: material visual, janelas obrigatórias, decisão e registro.
+"""Schemas Pydantic do Diretor de cobertura: material visual, janelas com imagem ruim, decisão e registro.
 
 A IA vê só IDs criados pelo código (frases `S012`, tomadas `D001.T05`, janelas `O1`) e devolve
-coberturas (B-roll por cima de um trecho da fala) e respiros (um plano curto sem fala inserido
-entre duas frases). O código valida, converte IDs em tempos e monta a Timeline.
+coberturas (B-roll por cima de um trecho da fala, com uma ou mais tomadas em ordem), respiros (um
+plano curto sem fala inserido entre duas frases) e, por janela com imagem ruim, cobrir ou manter. O
+código valida item a item, decide os segundos, converte IDs em tempos e monta a Timeline.
 """
 
+from datetime import datetime
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ai_video_editor.intelligence.schema import AIRunMetrics
 from ai_video_editor.llm.schema import ModelSpec, ModelSwitch, ThinkingLevel
@@ -23,10 +25,13 @@ ShotUsable = Literal["sim", "nao", "parcial"]
 BreathSize = Literal["short", "medium", "long"]
 BREATH_SIZE_LABELS: dict[str, str] = {"short": "curto", "medium": "médio", "long": "longo"}
 
-# ia: tudo da resposta validada; ia+fallback: resposta da IA completada pelo código (janelas obrigatórias
-# que ficaram descobertas); fallback: só as janelas obrigatórias, pelo código.
+# ia: itens da IA (talvez ajustados ou com alguns descartados); ia+fallback: a IA mais itens do código
+# (janelas que ficaram sem decisão); fallback: só o código (IA desligada ou nada aproveitável).
 CoverageOrigin = Literal["ia", "ia+fallback", "fallback"]
-ItemOrigin = Literal["ia", "fallback"]
+# ia-ajustada: item da IA que o código mudou (duração, tomada inválida retirada...), com os ajustes no item.
+ItemOrigin = Literal["ia", "ia-ajustada", "fallback"]
+WindowAction = Literal["cover", "keep"]
+WindowStatus = Literal["coberta", "mantida", "descoberta"]
 
 
 def sentence_label(sentence_id: int) -> str:
@@ -49,6 +54,7 @@ class VisualShot(BaseModel):
     has_speech: Optional[bool] = None
     status: ShotStatus = "nao_pedida"
     uniform: bool = Field(default=False, description="Medida `tela uniforme`")
+    blurry: bool = Field(default=False, description="Medida `borrão alto`")
     usable: Optional[ShotUsable] = None
     issues: list[str] = Field(default_factory=list, description="Problemas da IA (`obstruida`, `borrao_movimento`...)")
     description: str = ""
@@ -56,6 +62,10 @@ class VisualShot(BaseModel):
     beauty: Optional[int] = None
     face_to_camera: Optional[bool] = None
     best_frames: list[str] = Field(default_factory=list)
+    recorded_at: Optional[datetime] = Field(default=None, description="Gravação do clipe (catálogo, com o ajuste de relógio)")
+    date_reliable: bool = Field(
+        default=False, description="A data veio da gravação (a ordem do papel é a da data), não do nome do arquivo"
+    )
 
     @property
     def duration_sec(self) -> float:
@@ -86,19 +96,27 @@ class CoverageSentence(BaseModel):
     start_frame: int = Field(description="Primeiro frame na espinha")
     end_frame: int = Field(description="Frame final exclusivo na espinha")
     kept: list[tuple[float, float]] = Field(default_factory=list, description="Pedaços da frase que ficaram (tempo do clipe)")
+    screen: list[str] = Field(
+        default_factory=list, description="Tomadas do clipe que fala por baixo da frase (o que está na tela), mais tempo primeiro"
+    )
 
     def duration_sec(self, fps: int) -> float:
         return (self.end_frame - self.start_frame) / fps
 
 
 class MandatoryWindow(BaseModel):
-    """Trecho da fala mantida com imagem ruim no principal: precisa de cobertura."""
+    """Trecho da fala mantida com imagem ruim no principal: a IA decide cobrir (com tomada relacionada) ou
+    manter; com `required`, só cobrir."""
 
     id: str = Field(description="O1")
     clip_id: str
     sentence_ids: list[str] = Field(min_length=1, description="Frases cobertas, em ordem")
     shot_ids: list[str] = Field(default_factory=list, description="Tomadas ruins do principal")
     reasons: list[str] = Field(default_factory=list, description="Ex.: tela uniforme, obstruída/parede")
+    required: bool = Field(
+        default=False,
+        description="Exige cobertura: toda tomada ruim da janela é grave (tela uniforme, inutilizável ou borrão alto medido)",
+    )
 
     @property
     def span_label(self) -> str:
@@ -115,22 +133,45 @@ class CoverageContext(BaseModel):
     sentences: list[CoverageSentence] = Field(default_factory=list)
     windows: list[MandatoryWindow] = Field(default_factory=list)
     candidates: list[VisualShot] = Field(default_factory=list, description="Tomadas que podem ser cobertura")
+    screen_shots: list[VisualShot] = Field(
+        default_factory=list, description="Tomadas do principal por baixo da fala (`CoverageSentence.screen`)"
+    )
     instructions: list[str] = Field(default_factory=list, description="Instruções do briefing e pedido do usuário")
     roles: list[str] = Field(default_factory=list, description="Papéis permitidos como cobertura")
-    previous_error: Optional[str] = None
+    previous_error: Optional[str] = Field(default=None, description="Nova tentativa: só os problemas da resposta anterior")
+    accepted_items: list[str] = Field(
+        default_factory=list, description="Nova tentativa: itens já aceitos (a IA não os repete; tomadas e frases ocupadas)"
+    )
 
 
 # --- resposta da IA ---
 
 
 class CoverageChoice(BaseModel):
-    """Uma cobertura: a imagem da tomada substitui a do principal enquanto as frases são ditas."""
+    """Uma cobertura: as imagens das tomadas, em ordem, substituem a do principal enquanto as frases são ditas."""
 
     from_sentence: str = Field(description="ID da primeira frase coberta, ex: S012")
     to_sentence: str = Field(description="ID da última frase coberta (igual à primeira para uma frase só)")
-    shot_id: str = Field(description="ID da tomada usada como imagem, ex: D001.T05")
-    reason: str = Field(description="Por que esta imagem combina com a fala, em português")
-    windows: list[str] = Field(default_factory=list, description="IDs das janelas obrigatórias que ela atende (ex: O1)")
+    shot_ids: list[str] = Field(
+        min_length=1,
+        description="IDs das tomadas, em ordem (ex: [D001.T05, B002.T01]); cada uma mostra no máximo ~8 s, "
+        "então um trecho longo precisa de várias",
+    )
+    reason: str = Field(description="Por que estas imagens combinam com a fala e com o que está na tela, em português")
+    windows: list[str] = Field(default_factory=list, description="IDs das janelas com imagem ruim que ela cobre (ex: O1)")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _single_shot(cls, data: Any) -> Any:
+        """Aceita a forma antiga, com uma tomada só (`shot_id`)."""
+        if isinstance(data, dict) and "shot_id" in data and not data.get("shot_ids"):
+            data = {k: v for k, v in data.items() if k != "shot_id"} | {"shot_ids": [data["shot_id"]]}
+        return data
+
+    @property
+    def shot_id(self) -> str:
+        """Primeira tomada (a que a IA escolheu primeiro)."""
+        return self.shot_ids[0]
 
 
 class BreathChoice(BaseModel):
@@ -142,20 +183,62 @@ class BreathChoice(BaseModel):
     reason: str = Field(description="Por que um respiro aqui, em português")
 
 
+class WindowDecision(BaseModel):
+    """O que fazer com uma janela de imagem ruim: cobrir (com a cobertura listada em `coverages`) ou manter."""
+
+    window: str = Field(description="ID da janela, ex: O1")
+    action: WindowAction = Field(
+        description="cover: coberta por uma cobertura de 'coverages' com tomada relacionada; keep: a imagem original fica"
+    )
+    reason: str = Field(description="Motivo, em português (ex.: o tour pelo quarto é o conteúdo)")
+
+
 class CoverageDecision(BaseModel):
     """Resposta estruturada do Diretor de cobertura."""
 
     coverages: list[CoverageChoice] = Field(default_factory=list)
     breaths: list[BreathChoice] = Field(default_factory=list)
+    window_decisions: list[WindowDecision] = Field(
+        default_factory=list, description="Uma decisão por janela com imagem ruim (O1, O2...)"
+    )
     summary: str = Field(description="Resumo das escolhas, em português")
 
 
+class ItemNote(BaseModel):
+    """Um ajuste ou descarte feito pelo código, com uma categoria curta para o resumo."""
+
+    kind: str = Field(description="Categoria: duração, clipe que fala, tomada repetida, sobreposição...")
+    message: str
+
+
 class AcceptedCoverage(CoverageChoice):
+    """Cobertura aceita: `shot_ids` é a lista final (inclui as tomadas acrescentadas pelo código)."""
+
     origin: ItemOrigin = "ia"
+    added_shots: list[str] = Field(default_factory=list, description="Tomadas acrescentadas pelo código (trecho longo)")
+    adjustments: list[ItemNote] = Field(default_factory=list)
 
 
 class AcceptedBreath(BreathChoice):
     origin: ItemOrigin = "ia"
+    adjustments: list[ItemNote] = Field(default_factory=list)
+
+
+class DiscardedItem(ItemNote):
+    """Item da resposta da IA descartado na validação."""
+
+    attempt: int
+    item: str = Field(description="Ex.: cobertura 19 (S133–S134)")
+
+
+class WindowOutcome(BaseModel):
+    """Como uma janela de imagem ruim ficou no vídeo."""
+
+    window: str
+    status: WindowStatus
+    by: list[str] = Field(default_factory=list, description="Coberturas (C1...) que a atendem")
+    reason: str = ""
+    origin: Optional[ItemOrigin] = None
 
 
 # --- configuração ---
@@ -212,7 +295,7 @@ class CoverageParams(BaseModel):
 
 
 class OverlayPiece(BaseModel):
-    """Um item de `video_overlay`: um trecho da tomada numa janela da timeline final."""
+    """Um item de `video_overlay`: um trecho da tomada num pedaço da cobertura na timeline final."""
 
     shot_id: str
     clip_id: str
@@ -220,17 +303,19 @@ class OverlayPiece(BaseModel):
     source_out: float
     timeline_start: float
     timeline_end: float
-    chained: bool = Field(default=False, description="Tomada extra encadeada porque a escolhida era curta")
+    chained: bool = Field(default=False, description="Tomada acrescentada pelo código (as escolhidas não bastavam)")
 
 
 class PlacedCoverage(BaseModel):
     id: str = Field(description="C1")
     from_sentence: str
     to_sentence: str
-    shot_id: str
+    shot_id: str = Field(description="Primeira tomada")
+    shot_ids: list[str] = Field(default_factory=list, description="Tomadas, em ordem (as da IA e as acrescentadas)")
     reason: str
     origin: ItemOrigin
-    windows: list[str] = Field(default_factory=list, description="Janelas obrigatórias que esta cobertura toca")
+    windows: list[str] = Field(default_factory=list, description="Janelas com imagem ruim que esta cobertura toca")
+    adjustments: list[ItemNote] = Field(default_factory=list)
     timeline_start: float
     timeline_end: float
     pieces: list[OverlayPiece] = Field(default_factory=list)
@@ -262,13 +347,20 @@ class CoverageRun(BaseModel):
     effective_model_id: Optional[str] = None
     model_switches: list[ModelSwitch] = Field(default_factory=list)
     attempts: list[AIRunMetrics] = Field(default_factory=list)
+    responses: list[Optional[CoverageDecision]] = Field(
+        default_factory=list, description="Resposta crua da IA em cada tentativa (None: não interpretável)"
+    )
     origin: CoverageOrigin = "fallback"
     origin_reason: str = Field(default="", description="Por que o código completou ou substituiu a IA")
+    ai_items: int = Field(default=0, description="Itens recebidos da IA (todas as tentativas)")
+    discarded: list[DiscardedItem] = Field(default_factory=list)
+    kept_windows: dict[str, WindowOutcome] = Field(default_factory=dict, description="Janelas mantidas (IA ou código)")
+    window_outcomes: list[WindowOutcome] = Field(default_factory=list)
     instructions: list[str] = Field(default_factory=list)
     roles: list[str] = Field(default_factory=list)
     candidates: int = 0
     windows: list[MandatoryWindow] = Field(default_factory=list)
-    window_cover: dict[str, list[str]] = Field(default_factory=dict, description="Janela → coberturas que a atendem")
+    window_cover: dict[str, list[str]] = Field(default_factory=dict, description="Janela → coberturas que a tocam")
     summary: str = ""
     coverages: list[AcceptedCoverage] = Field(default_factory=list, description="Decisão aceita (IDs)")
     breaths: list[AcceptedBreath] = Field(default_factory=list)
@@ -276,8 +368,38 @@ class CoverageRun(BaseModel):
     placed_breaths: list[PlacedBreath] = Field(default_factory=list)
     spine_duration_sec: float = 0.0
     final_duration_sec: float = 0.0
-    warnings: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list, description="Resumo para o terminal")
+    notes: list[str] = Field(default_factory=list, description="Detalhes (relatório): ajustes, descartes, encurtamentos")
 
     @property
     def uncovered_windows(self) -> list[str]:
-        return [w.id for w in self.windows if not self.window_cover.get(w.id)]
+        """Janelas sem cobertura completa nem decisão de manter."""
+        return [o.window for o in self.window_outcomes if o.status == "descoberta"]
+
+    @property
+    def kept_window_ids(self) -> list[str]:
+        return [o.window for o in self.window_outcomes if o.status == "mantida"]
+
+    @property
+    def windows_label(self) -> str:
+        """Ex.: `7 cobertas, 3 mantidas de 10` (e as sem cobertura, se houver)."""
+        status = [o.status for o in self.window_outcomes]
+        text = f"{status.count('coberta')} cobertas, {status.count('mantida')} mantidas"
+        if status.count("descoberta"):
+            text += f", {status.count('descoberta')} sem cobertura"
+        return f"{text} de {len(self.windows)}"
+
+    @property
+    def origin_label(self) -> str:
+        """Ex.: `ia (3 ajustadas, 2 descartadas)`."""
+        items = [*self.coverages, *self.breaths]
+        parts = []
+        adjusted = sum(1 for x in items if x.origin == "ia-ajustada")
+        if adjusted:
+            parts.append(f"{adjusted} ajustada{'s' if adjusted > 1 else ''}")
+        if self.discarded:
+            parts.append(f"{len(self.discarded)} descartada{'s' if len(self.discarded) > 1 else ''}")
+        fallback = sum(1 for x in items if x.origin == "fallback")
+        if fallback and self.origin != "fallback":
+            parts.append(f"{fallback} do código")
+        return self.origin + (f" ({', '.join(parts)})" if parts else "")

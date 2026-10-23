@@ -508,11 +508,10 @@ def handle_edit(args: argparse.Namespace) -> int:
         print(f"Timeline: {result.timeline_path}")
         if result.coverage is not None:
             run = result.coverage
-            covered = len(run.windows) - len(run.uncovered_windows)
             breath_sec = sum(b.duration_sec for b in run.placed_breaths)
             print(
                 f"Cobertura: {len(run.placed_coverages)} coberturas, {len(run.placed_breaths)} respiros "
-                f"(+{breath_sec:.1f}s), janelas obrigatórias {covered}/{len(run.windows)} — origem {run.origin}"
+                f"(+{breath_sec:.1f}s), janelas com imagem ruim: {run.windows_label} — origem {run.origin_label}"
             )
         if result.version is not None:
             print(f"Versão: v{result.version}")
