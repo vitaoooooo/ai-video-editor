@@ -119,8 +119,10 @@ from ai_video_editor.recipes import DEFAULT_FOLDER_RECIPE, Recipe, RecipeError
 from ai_video_editor.renderer.loudness import LoudnessResult
 from ai_video_editor.renderer.timeline_executor import TimelineRenderExecutor, TimelineRenderResult
 from ai_video_editor.subtitles import ClipSubtitleSource, build_clip_subtitle_blocks, write_srt
+from ai_video_editor.transcription.exceptions import TranscriptionError
+from ai_video_editor.transcription.normalize import SegmentAdjustments, adjustments_note
 from ai_video_editor.transcription.provider import TranscriptionProvider
-from ai_video_editor.transcription.schema import Transcript
+from ai_video_editor.transcription.schema import Transcript, TranscriptionConfig
 
 # Etapas que o `edit <pasta>` sabe executar.
 SPINE_STEPS = (
@@ -185,6 +187,7 @@ class _SpineState:
     final_duration: float = 0.0
     loudness: Optional[LoudnessResult] = None
     render_warnings: list[str] = field(default_factory=list)
+    transcription_notes: list[str] = field(default_factory=list)
     encoder_label: str = "cpu"
     subtitle_blocks: Optional[int] = None
     settings: Optional[EditSettings] = None
@@ -380,6 +383,7 @@ class SpinePipeline(EditPipeline):
             clips_unused=len(state.selection.unused) if state.selection is not None else 0,
             warnings=[
                 *(state.selection.warnings if state.selection is not None else []),
+                *state.transcription_notes,
                 *(f"{c.clip_id} ficou fora da espinha: {c.dropped}" for c in (plan.clips if plan else []) if c.dropped),
                 *(director_run.warnings if director_run is not None else []),
                 *(state.visual.warnings if state.visual is not None else []),
@@ -514,14 +518,18 @@ class SpinePipeline(EditPipeline):
                     cached += 1
                 else:
                     offset = done_sec
-                    transcript = provider.transcribe(
-                        clip.path,
+                    transcript = self._transcribe_clip(
+                        provider,
+                        clip,
+                        path,
                         params.transcription,
                         on_progress=lambda done, _total, offset=offset, note=note: self._stage_progress(
                             "transcription", StageProgress(done=offset + done, total=total_sec, note=note)
                         ),
                     )
-                    transcript.save(path)
+                    adjusted = _load_adjustments(path)
+                    if adjusted is not None:
+                        self._emit("transcription", "notice", adjustments_note(adjusted.summary(), clip.id))
                 done_sec += clip.duration_sec
                 summary[clip.id] = {"language": transcript.language, "segments": len(transcript.segments)}
             (s.project_dir / TRANSCRIPTION_FILE).write_text(_json(summary), encoding="utf-8")
@@ -533,9 +541,32 @@ class SpinePipeline(EditPipeline):
         for clip in s.clips:
             path = cache_of(clip)
             if not path.is_file():  # cache por clipe apagado depois da execução anterior
-                provider.transcribe(clip.path, params.transcription).save(path)
+                self._transcribe_clip(provider, clip, path, params.transcription)
             s.transcripts[clip.id] = Transcript.load(path)
+            adjusted = _load_adjustments(path)
+            if adjusted is not None:
+                s.transcription_notes.append(adjustments_note(adjusted.summary(), clip.id))
         return outcome
+
+    def _transcribe_clip(
+        self, provider: TranscriptionProvider, clip: SpineClip, path: Path, config: TranscriptionConfig, on_progress=None
+    ) -> Transcript:
+        """Transcreve um clipe e grava no cache por clipe, com os ajustes da normalização ao lado.
+
+        O erro diz o clipe: com 22 clipes, "segmentos fora de ordem" sozinho não diz onde olhar.
+        """
+        try:
+            transcript = provider.transcribe(clip.path, config, on_progress=on_progress)
+        except Exception as exc:
+            raise TranscriptionError(f"{clip.id} ({clip.path.name}): {exc}") from exc
+        transcript.save(path)
+        sidecar = _adjustments_path(path)
+        adjustments = provider.last_adjustments
+        if adjustments is not None and adjustments.changed:
+            sidecar.write_text(adjustments.model_dump_json(indent=2), encoding="utf-8")
+        elif sidecar.is_file():
+            sidecar.unlink()
+        return transcript
 
     def _clip_director(self, s: _SpineState) -> StageOutcome:
         """Opcional; escolhe frases (com IDs globais) a remover, com os clipes como seções do prompt."""
@@ -917,6 +948,7 @@ class SpinePipeline(EditPipeline):
                 transcription_model=(
                     next(iter(s.transcripts.values())).model_used if s.transcripts else None
                 ),
+                transcription_notes=s.transcription_notes,
                 timings=s.run.recorder.snapshot(in_progress=("report", started)),
                 loudness=s.loudness,
                 encoder=s.encoder_label,
@@ -943,3 +975,15 @@ class SpinePipeline(EditPipeline):
 
 def _json(data: dict) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+def _adjustments_path(transcript_path: Path) -> Path:
+    """Ajustes da normalização ao lado da transcrição do cache por clipe (só existe se houve ajuste)."""
+    return transcript_path.with_name(f"{transcript_path.stem}.adjustments.json")
+
+
+def _load_adjustments(transcript_path: Path) -> Optional[SegmentAdjustments]:
+    sidecar = _adjustments_path(transcript_path)
+    if not sidecar.is_file():
+        return None
+    return SegmentAdjustments.model_validate_json(sidecar.read_text(encoding="utf-8"))

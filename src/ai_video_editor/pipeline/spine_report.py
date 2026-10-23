@@ -8,7 +8,7 @@ começa no vídeo final, então batem com o .srt e o player.
 
 import math
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 from xml.sax.saxutils import escape
 
 from ai_video_editor.core.timeline import Timeline
@@ -509,6 +509,7 @@ def build_spine_report(
     subtitles_path: Optional[Path] = None,
     subtitle_blocks: Optional[int] = None,
     transcription_model: Optional[str] = None,
+    transcription_notes: Sequence[str] = (),
     timings: Optional[RunTimings] = None,
     loudness: Optional[LoudnessResult] = None,
     encoder: Optional[str] = None,
@@ -588,6 +589,8 @@ def build_spine_report(
             else f"| Linha do tempo | `{EDIT_TIMELINE_FILE}` (cor por clipe, faixa de cobertura e respiros) |"
         ),
         "",
+        *(f"> ⚠️ **Atenção:** {note}" for note in transcription_notes),
+        *([""] if transcription_notes else []),
         "## Resumo por clipe",
         "",
         "| Clipe | Arquivo | Original | Final | Removido | Trechos | Frases removidas | Limite de silêncio | Situação |",

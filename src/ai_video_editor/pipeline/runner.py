@@ -73,6 +73,7 @@ from ai_video_editor.renderer.executor import RenderExecutor, RenderResult
 from ai_video_editor.renderer.loudness import LoudnessResult
 from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
 from ai_video_editor.subtitles import build_subtitle_blocks, write_srt
+from ai_video_editor.transcription.normalize import adjustments_note
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
 
@@ -156,6 +157,7 @@ class _EditState:
     subtitle_blocks: Optional[int] = None
     encoder_label: str = "cpu"
     render_warnings: list[str] = field(default_factory=list)
+    transcription_notes: list[str] = field(default_factory=list)
     settings: Optional[EditSettings] = None
 
 
@@ -314,6 +316,7 @@ class EditPipeline:
             outcomes=state.outcomes,
             timings=timings,
             warnings=[
+                *state.transcription_notes,
                 *(director_run.warnings if director_run is not None else []),
                 *(loudness.warnings if loudness is not None else []),
                 *state.render_warnings,
@@ -408,9 +411,18 @@ class EditPipeline:
                 "language": transcript.language,
                 "segments": len(transcript.segments),
             }
-            return metrics, f"{len(transcript.segments)} segmentos ({transcript.language})"
+            detail = f"{len(transcript.segments)} segmentos ({transcript.language})"
+            adjustments = provider.last_adjustments
+            if adjustments is not None and adjustments.changed:
+                metrics["adjustments"] = adjustments.summary()
+                detail += f"; saída do Whisper corrigida: {adjustments.summary()}"
+            return metrics, detail
 
-        return s.run.stage("transcription", s.fp_transcript, TRANSCRIPT_FILE, do_transcription)
+        outcome = s.run.stage("transcription", s.fp_transcript, TRANSCRIPT_FILE, do_transcription)
+        # Das métricas (e não do provedor): vale também quando a etapa vem do cache.
+        adjusted = s.run.manifest.stages["transcription"].metrics.get("adjustments")
+        s.transcription_notes = [adjustments_note(str(adjusted))] if adjusted else []
+        return outcome
 
     def _director(self, s: _EditState) -> StageOutcome:
         """Opcional; escolhe frases a remover pelos IDs."""
@@ -606,6 +618,7 @@ class EditPipeline:
                 transcription_model=(
                     Transcript.load(project_dir / TRANSCRIPT_FILE).model_used if s.fp_transcript else None
                 ),
+                transcription_notes=s.transcription_notes,
                 timings=s.run.recorder.snapshot(in_progress=("report", report_started)),
                 comparison=comparison,
                 removal_label="Diretor" if has_decision else None,
