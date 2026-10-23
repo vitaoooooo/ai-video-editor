@@ -10,6 +10,7 @@ from ai_video_editor.analyzer.schema import FrameExtractionConfig
 from ai_video_editor.analyzer.service import VideoIngestService
 from ai_video_editor.core.schema import ClipSegment, EditPlan, LoudnessPreset
 from ai_video_editor.core.timeline import Timeline
+from ai_video_editor.coverage.schema import CoverageParams
 from ai_video_editor.director.schema import UserBrief
 from ai_video_editor.intelligence.retry import DEFAULT_API_RETRIES, RetryPolicy
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
@@ -38,6 +39,7 @@ from ai_video_editor.pipeline.versions import ensure_versions, parse_version_ref
 from ai_video_editor.planning import SilenceCutParams
 from ai_video_editor.visual.builder import DEFAULT_AI_PARALLEL
 from ai_video_editor.recipes import (
+    COVERAGE_FOLDER_RECIPE,
     DEFAULT_FOLDER_RECIPE,
     DEFAULT_RECIPE,
     Recipe,
@@ -296,15 +298,30 @@ def _threshold_arg(value: str):
         raise argparse.ArgumentTypeError(f"esperado `auto` ou um número em dB, recebido {value!r}")
 
 
+def default_edit_recipe(video_path: Path, is_folder: bool, transcribe: bool, projects_dir: Path) -> str:
+    """Receita sem `--receita`: `fala` para um vídeo; para uma pasta, `vlog_cobertura` se a pasta já tem a
+    análise visual (`visual <pasta>`) e há transcrição (a cobertura escolhe frases por ID), senão `vlog`."""
+    if not is_folder:
+        return DEFAULT_RECIPE
+    from ai_video_editor.pipeline.clips import catalog_location
+
+    project_dir, _ = catalog_location(video_path.resolve(), projects_dir)
+    if transcribe and (project_dir / "visual" / "visual.json").is_file():
+        return COVERAGE_FOLDER_RECIPE
+    return DEFAULT_FOLDER_RECIPE
+
+
 def handle_edit(args: argparse.Namespace) -> int:
-    """Edita um vídeo falado (receita `fala`) ou uma pasta de clipes (receita `vlog`), com cache por etapa."""
+    """Edita um vídeo falado (receita `fala`) ou uma pasta de clipes (receitas `vlog`/`vlog_cobertura`), com cache por etapa."""
     video_path = Path(args.video)
     is_folder = video_path.is_dir()
     if not is_folder and not video_path.is_file():
         print(f"Erro: vídeo ou pasta não encontrado: {video_path}", file=sys.stderr)
         return 1
     try:
-        recipe = get_recipe(args.receita or (DEFAULT_FOLDER_RECIPE if is_folder else DEFAULT_RECIPE))
+        recipe = get_recipe(
+            args.receita or default_edit_recipe(video_path, is_folder, args.transcribe, Path(args.projects_dir))
+        )
     except RecipeError as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 1
@@ -347,10 +364,21 @@ def handle_edit(args: argparse.Namespace) -> int:
             transcript_min_pause_sec=args.transcript_min_pause,
             loudness=args.loudness,
         )
+        coverage = CoverageParams.inherit(
+            params.director, params.director_model, params.director_fallback, params.director_thinking,
+            params.director_timeout_sec, params.api_retries,
+            provider=args.coverage, model=args.coverage_model, fallback=args.coverage_fallback,
+            thinking=args.coverage_thinking, timeout_sec=args.coverage_timeout,
+        )
+        if coverage.provider not in ("none", "mock"):
+            coverage.chain()  # valida provedor e reservas
     except ValueError as e:
         print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
         return 1
 
+    if is_folder and args.receita is None:
+        why = " (a pasta tem análise visual)" if recipe.name == COVERAGE_FOLDER_RECIPE else ""
+        print(f"Receita: {recipe.name}{why}")
     status = LiveStatus(live=False if args.no_live else None)
     printer = EditProgressPrinter(status, recipe)
     pipeline_class = SpinePipeline if is_folder else EditPipeline
@@ -364,7 +392,10 @@ def handle_edit(args: argparse.Namespace) -> int:
     try:
         executor.resolve_encoder()  # `--encoder nvenc` sem GPU falha aqui, antes das etapas
         with status:
-            result = pipeline.run(video_path, params, force=args.force)
+            if is_folder:
+                result = pipeline.run(video_path, params, force=args.force, coverage=coverage)
+            else:
+                result = pipeline.run(video_path, params, force=args.force)
     except Exception as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 1
@@ -384,6 +415,14 @@ def handle_edit(args: argparse.Namespace) -> int:
     if isinstance(result, SpineResult):
         print(f"Clipes na espinha: {len(result.clips_used)} ({', '.join(result.clips_used)}); não usados: {result.clips_unused}")
         print(f"Timeline: {result.timeline_path}")
+        if result.coverage is not None:
+            run = result.coverage
+            covered = len(run.windows) - len(run.uncovered_windows)
+            breath_sec = sum(b.duration_sec for b in run.placed_breaths)
+            print(
+                f"Cobertura: {len(run.placed_coverages)} coberturas, {len(run.placed_breaths)} respiros "
+                f"(+{breath_sec:.1f}s), janelas obrigatórias {covered}/{len(run.windows)} — origem {run.origin}"
+            )
         if result.version is not None:
             print(f"Versão: v{result.version}")
     elif result.version is not None:
@@ -1199,6 +1238,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=120.0,
         help="Tempo limite em segundos da chamada ao Diretor (padrão: 120)",
+    )
+    edit_parser.add_argument(
+        "--coverage-provider", "--coverage", dest="coverage", choices=["none", "mock", *_llm_providers()], default=None,
+        help="Diretor de cobertura (receita vlog_cobertura): none = só as janelas obrigatórias, pelo código; "
+        "mock = simulado (padrão: o do Diretor)",
+    )
+    edit_parser.add_argument(
+        "--coverage-model", default=None, help="Modelo do Diretor de cobertura (padrão: o do Diretor, se o provedor for o mesmo)"
+    )
+    edit_parser.add_argument(
+        "--coverage-fallback", default=None, metavar="LISTA",
+        help="Reservas do Diretor de cobertura, \"provedor:modelo,...\" ou \"none\" (padrão: as do Diretor)",
+    )
+    edit_parser.add_argument(
+        "--coverage-thinking", choices=["off", "low", "high"], default=None,
+        help="Raciocínio do Diretor de cobertura (padrão: o do Diretor)",
+    )
+    edit_parser.add_argument(
+        "--coverage-timeout", type=float, default=None,
+        help="Tempo limite em segundos da chamada ao Diretor de cobertura (padrão: o do Diretor)",
     )
     edit_parser.add_argument(
         "--intensity",

@@ -1,9 +1,12 @@
-"""Orquestrador do `edit <pasta>`: a espinha falada de um projeto com vários clipes (receita `vlog`).
+"""Orquestrador do `edit <pasta>`: a espinha falada de um projeto com vários clipes (receitas `vlog` e
+`vlog_cobertura`).
 
-catálogo → silêncios por clipe → transcrição por clipe → Diretor → Timeline → render → legendas →
-relatório. Os clipes de papel `principal` com fala entram em ordem; cada um perde as pausas e as
+catálogo → silêncios por clipe → transcrição por clipe → Diretor → Timeline → [análise visual →
+cobertura] → render → legendas → relatório. Os clipes de papel `principal` com fala entram em ordem; cada um perde as pausas e as
 frases ruins (mesmo corte do caminho de um vídeo, `plan_keep_ranges`) e os trechos mantidos viram
-itens de `video_main` numa Timeline, renderizada por `renderer/timeline_*`.
+itens de `video_main` numa Timeline, renderizada por `renderer/timeline_*`. Na `vlog_cobertura`, o
+Diretor de cobertura acrescenta B-roll por cima da fala (`video_overlay`) e respiros na base, e o
+resto (render, legendas, relatórios) usa essa Timeline final.
 
 O projeto é a pasta do catálogo (`<projects>/<pasta>-<hash da listagem>/`). Cada etapa grava um
 artefato e um fingerprint no `project.json` (`kind="multiclip"`), como no `edit` de um vídeo.
@@ -22,7 +25,29 @@ from typing import Callable, Optional
 from ai_video_editor.audio import AudioAnalysisResult, detect_silences
 from ai_video_editor.audio.levels import AUTO_RULE_VERSION
 from ai_video_editor.core.schema import LoudnessTarget
+from ai_video_editor.catalog.schema import ProjectCatalog
 from ai_video_editor.core.timeline import Timeline
+from ai_video_editor.coverage import (
+    COVERAGE_PROMPT_VERSION,
+    CoverageContext,
+    CoverageDirector,
+    CoverageError,
+    CoverageParams,
+    CoverageRun,
+    VisualMaterial,
+    assemble_coverage,
+    build_visual_material,
+    coverage_candidates,
+    coverage_roles,
+    coverage_sentences,
+    find_mandatory_windows,
+    run_coverage,
+)
+from ai_video_editor.coverage import assemble as coverage_assemble
+from ai_video_editor.coverage import material as coverage_material
+from ai_video_editor.coverage import service as coverage_service
+from ai_video_editor.intelligence.retry import RetryEvent, RetryPolicy
+from ai_video_editor.llm.chain import ModelChain
 from ai_video_editor.director import DirectorClip, DirectorContext, DirectorRun, EditDirector, build_clip_sentences, run_director
 from ai_video_editor.pipeline.clips import (
     MIN_SPEECH_RATIO,
@@ -36,6 +61,9 @@ from ai_video_editor.pipeline.clips import (
 )
 from ai_video_editor.pipeline.cutting import plan_keep_ranges
 from ai_video_editor.pipeline.project import (
+    COVERAGE_DECISION_FILE,
+    COVERAGE_SHOTS_FILE,
+    COVERAGE_TIMELINE_FILE,
     DIRECTOR_DECISION_FILE,
     EDIT_REPORT_FILE,
     EDIT_TIMELINE_FILE,
@@ -75,10 +103,12 @@ from ai_video_editor.planning.timeline_plan import (
     SPINE_RESOLUTION,
     ClipCut,
     build_spine_timeline,
+    clip_placements,
     clip_spans,
     spine_fps,
     usable_ranges,
 )
+from ai_video_editor.planning.schema import TimeRange
 from ai_video_editor.recipes import DEFAULT_FOLDER_RECIPE, Recipe, RecipeError
 from ai_video_editor.renderer.loudness import LoudnessResult
 from ai_video_editor.renderer.timeline_executor import TimelineRenderExecutor, TimelineRenderResult
@@ -87,12 +117,27 @@ from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
 
 # Etapas que o `edit <pasta>` sabe executar.
-SPINE_STEPS = ("catalog", "silences", "transcription", "director", "timeline", "render", "subtitles", "report")
+SPINE_STEPS = (
+    "catalog", "silences", "transcription", "director", "timeline", "visual", "coverage", "render", "subtitles", "report",
+)
 
 # Versões de formato que entram nos fingerprints (sobem quando a saída da etapa muda).
 DIRECTOR_PROMPT_FORMAT = "spine-prompt-v1"
 TIMELINE_FORMAT = "spine-timeline-v1"
 REPORT_FORMAT = "spine-report-v1"
+VISUAL_MATERIAL_FORMAT = "coverage-shots-v1"
+COVERAGE_FORMAT = "coverage-v1"
+# Regras do código que mudam o resultado da cobertura (entram no fingerprint da etapa).
+COVERAGE_RULES = (
+    coverage_service.MIN_COVERAGE_SEC, coverage_service.MAX_COVERAGE_SEC, coverage_service.BREATH_SECONDS,
+    coverage_service.MIN_BREATH_SHOT_SEC, coverage_service.BREATH_EVERY_SEC, coverage_service.SOURCE_END_MARGIN_SEC,
+    coverage_material.MIN_BAD_OVERLAP_SEC, coverage_material.COVERAGE_ROLES, coverage_material.BAD_ISSUES,
+    coverage_assemble.BREATH_VOLUME, coverage_assemble.COVERAGE_AMBIENT_VOLUME, coverage_assemble.AMBIENT_FADE_SEC,
+    coverage_assemble.MIN_CHAIN_SEC,
+)
+VISUAL_DIR = "visual"
+VISUAL_JSON = "visual.json"
+BRIEFING_FILE = "briefing.json"
 
 # Clipes com a detecção de silêncio rodando ao mesmo tempo (um FFmpeg cada).
 SILENCE_WORKERS = min(4, os.cpu_count() or 2)
@@ -119,9 +164,18 @@ class _SpineState:
     fp_timeline: Optional[str] = None
     fp_render: Optional[str] = None
     fp_subtitles: Optional[str] = None
+    fp_visual: Optional[str] = None
+    fp_coverage: Optional[str] = None
+    # Do que a cobertura produziu (Timeline final e decisão): uma nova execução da etapa com as mesmas
+    # entradas pode decidir diferente (IA), e o que vem depois precisa acompanhar.
+    fp_coverage_result: Optional[str] = None
     director_run: Optional[DirectorRun] = None
     plan: Optional[SpinePlan] = None
-    timeline: Optional[Timeline] = None
+    timeline: Optional[Timeline] = None  # a espinha (etapa `timeline`)
+    final_timeline: Optional[Timeline] = None  # o que é renderizado: a espinha ou a Timeline com cobertura
+    coverage_params: CoverageParams = field(default_factory=CoverageParams)
+    visual: Optional[VisualMaterial] = None
+    coverage_run: Optional[CoverageRun] = None
     final_duration: float = 0.0
     loudness: Optional[LoudnessResult] = None
     render_warnings: list[str] = field(default_factory=list)
@@ -156,6 +210,7 @@ class SpinePipeline(EditPipeline):
         on_stage_progress: Optional[StageProgressCallback] = None,
         recipe: Recipe | str = DEFAULT_FOLDER_RECIPE,
         speech_detector=None,
+        coverage_director: Optional[CoverageDirector] = None,
     ):
         super().__init__(
             projects_root=projects_root,
@@ -171,6 +226,7 @@ class SpinePipeline(EditPipeline):
             raise RecipeError(f"Receita '{self.recipe.name}' não edita pastas de clipes ({detail}).")
         self._timeline_executor = render_executor
         self._speech_detector = speech_detector
+        self._coverage_director = coverage_director
 
     @property
     def timeline_executor(self) -> TimelineRenderExecutor:
@@ -196,10 +252,49 @@ class SpinePipeline(EditPipeline):
             ),
         )
 
+    def coverage_director_for(self, cparams: CoverageParams) -> Optional[CoverageDirector]:
+        """Diretor de cobertura injetado ou o pedido em `cparams` (None = `none`: só as janelas obrigatórias)."""
+        if self._coverage_director is not None:
+            return self._coverage_director
+        if cparams.provider == "none":
+            return None
+        if cparams.provider == "mock":
+            from ai_video_editor.coverage.providers.mock import MockCoverageDirector
+
+            return MockCoverageDirector()
+        from ai_video_editor.coverage.providers.llm import LLMCoverageDirector
+
+        chain = ModelChain(
+            cparams.chain(),
+            thinking=cparams.thinking,
+            timeout_sec=cparams.timeout_sec,
+            retry=RetryPolicy(max_retries=cparams.api_retries, on_retry=lambda event: self._coverage_retry(chain, event)),
+            on_event=lambda message: self._coverage_notice(chain, message),
+        )
+        return LLMCoverageDirector(chain)
+
+    def _coverage_retry(self, chain: ModelChain, event: RetryEvent) -> None:
+        self._emit("coverage", "retry", event.message)
+        self._stage_progress(
+            "coverage", StageProgress(note=f"{chain.current.label}, tentativa {event.next_attempt}/{event.total_attempts}")
+        )
+
+    def _coverage_notice(self, chain: ModelChain, message: str) -> None:
+        self._emit("coverage", "notice", message)
+        if chain.switches:
+            self._stage_progress("coverage", StageProgress(note=f"{chain.switches[-1].to_model}, tentativa 1"))
+
     def run(  # type: ignore[override]
-        self, source_dir: Path, params: Optional[EditPipelineParams] = None, force: bool = False
+        self,
+        source_dir: Path,
+        params: Optional[EditPipelineParams] = None,
+        force: bool = False,
+        coverage: Optional[CoverageParams] = None,
     ) -> SpineResult:
-        """Executa (ou retoma do cache) as etapas da receita sobre a pasta e devolve o resumo."""
+        """Executa (ou retoma do cache) as etapas da receita sobre a pasta e devolve o resumo.
+
+        `coverage`: IA da cobertura (receita `vlog_cobertura`); sem ela, a do Diretor (`CoverageParams.inherit`).
+        """
         source_dir = Path(source_dir).resolve()
         if not source_dir.is_dir():
             raise NotADirectoryError(f"pasta não encontrada: {source_dir}")
@@ -224,6 +319,10 @@ class SpinePipeline(EditPipeline):
             project_dir=project_dir,
             output_path=project_dir / video_name,
             srt_path=project_dir / srt_name,
+            coverage_params=coverage or CoverageParams.inherit(
+                params.director, params.director_model, params.director_fallback, params.director_thinking,
+                params.director_timeout_sec, params.api_retries,
+            ),
         )
         steps: dict[str, Callable[[_SpineState], StageOutcome]] = {
             "catalog": self._catalog,
@@ -231,6 +330,8 @@ class SpinePipeline(EditPipeline):
             "transcription": self._clip_transcription,
             "director": self._clip_director,
             "timeline": self._timeline,
+            "visual": self._visual,
+            "coverage": self._coverage,
             "render": self._timeline_render,
             "subtitles": self._clip_subtitles,
             "report": self._spine_report,
@@ -254,7 +355,8 @@ class SpinePipeline(EditPipeline):
             report_path=project_dir / EDIT_REPORT_FILE,
             subtitles_path=state.srt_path if state.subtitle_blocks is not None else None,
             transcript_path=transcript_path if transcript_path.is_file() else None,
-            timeline_path=project_dir / TIMELINE_FILE,
+            timeline_path=project_dir / (COVERAGE_TIMELINE_FILE if state.coverage_run is not None else TIMELINE_FILE),
+            coverage=state.coverage_run,
             original_duration_sec=sum(c.duration_sec for c in state.clips),
             final_duration_sec=state.final_duration,
             outcomes=state.outcomes,
@@ -265,6 +367,8 @@ class SpinePipeline(EditPipeline):
                 *(state.selection.warnings if state.selection is not None else []),
                 *(f"{c.clip_id} ficou fora da espinha: {c.dropped}" for c in (plan.clips if plan else []) if c.dropped),
                 *(director_run.warnings if director_run is not None else []),
+                *(state.visual.warnings if state.visual is not None else []),
+                *(state.coverage_run.warnings if state.coverage_run is not None else []),
                 *state.render_warnings,
                 *(state.loudness.warnings if state.loudness is not None else []),
             ],
@@ -534,15 +638,161 @@ class SpinePipeline(EditPipeline):
         s.timeline = Timeline.model_validate_json((s.project_dir / TIMELINE_FILE).read_text(encoding="utf-8"))
         return outcome
 
+    def _visual(self, s: _SpineState) -> StageOutcome:
+        """Lê o `visual.json` do projeto (comando `visual`), sem chamar a IA; só as tomadas que a cobertura usa."""
+        visual_file = s.project_dir / VISUAL_DIR / VISUAL_JSON
+        catalog_file = catalog_path(s.project_dir)
+        fp = fingerprint(
+            "visual", VISUAL_MATERIAL_FORMAT,
+            file_hash(visual_file) if visual_file.is_file() else "missing",
+            file_hash(catalog_file) if catalog_file.is_file() else "missing",
+            [c.id for c in s.clips],
+        )
+
+        def do_visual() -> tuple[dict, str]:
+            if not visual_file.is_file():
+                raise CoverageError(coverage_material.missing_visual_message(s.source_dir, visual_file))
+            from ai_video_editor.visual.schema import ProjectVisual
+
+            material = build_visual_material(
+                ProjectVisual.load(visual_file), ProjectCatalog.load(catalog_file), visual_file, [c.id for c in s.clips]
+            )
+            (s.project_dir / COVERAGE_SHOTS_FILE).write_text(material.model_dump_json(indent=2), encoding="utf-8")
+            analyzed = sum(1 for x in material.shots if x.status == "analisada")
+            for warning in material.warnings:
+                self._emit("visual", "notice", warning)
+            metrics = {"shots": len(material.shots), "analyzed": analyzed}
+            return metrics, f"{len(material.shots)} tomadas ({analyzed} analisadas pela IA)"
+
+        outcome = s.run.stage("visual", fp, COVERAGE_SHOTS_FILE, do_visual)
+        shots_file = s.project_dir / COVERAGE_SHOTS_FILE
+        s.visual = VisualMaterial.model_validate_json(shots_file.read_text(encoding="utf-8"))
+        s.fp_visual = fingerprint("visual-material", file_hash(shots_file))
+        return outcome
+
+    def _briefing(self, s: _SpineState) -> tuple[list[str], list[str]]:
+        """(instruções de cobertura, papéis a usar) do `briefing.json` do projeto, se existir."""
+        path = s.project_dir / BRIEFING_FILE
+        if not path.is_file():
+            return [], []
+        from ai_video_editor.producer.schema import Briefing
+
+        try:
+            briefing = Briefing.load(path)
+        except ValueError as exc:
+            self._emit("coverage", "notice", f"briefing.json ignorado (formato inválido: {exc.__class__.__name__})")
+            return [], []
+        instructions = [briefing.coverage_instructions.strip()] if briefing.coverage_instructions.strip() else []
+        return instructions, list(briefing.roles_to_use)
+
+    def _coverage(self, s: _SpineState) -> StageOutcome:
+        """Diretor de cobertura: janelas obrigatórias (código), escolha por IDs (IA), validação e Timeline final."""
+        s.final_timeline = s.timeline
+        params = s.params
+        if s.fp_transcript is None:
+            # Uma Timeline com cobertura de uma execução anterior não vale mais (o render usa a espinha).
+            return s.run.skip(
+                "coverage", "requer --transcribe (a cobertura escolhe frases por ID)", artifact=COVERAGE_TIMELINE_FILE
+            )
+        director = self.coverage_director_for(s.coverage_params)
+        briefing_instructions, briefing_roles = self._briefing(s)
+        instructions = list(briefing_instructions)
+        if params.brief.instructions:
+            instructions.append(f"Pedido do usuário: {params.brief.instructions.strip()}")
+        roles = coverage_roles(briefing_roles)
+        identity = (
+            [director.provider_name, director.model_id, director.thinking_label, list(director.model_chain)]
+            if director is not None else ["none"]
+        )
+        s.fp_coverage = fingerprint(
+            "coverage", COVERAGE_FORMAT, COVERAGE_PROMPT_VERSION, s.fp_timeline, s.fp_visual, instructions, roles,
+            identity, COVERAGE_RULES,
+        )
+
+        def do_coverage() -> tuple[dict, str]:
+            if director is not None:
+                self._stage_progress("coverage", StageProgress(note=director.model_chain[0] if director.model_chain else director.model_id))
+            sentences, removed = self._kept_sentences(s)
+            spine_ids = [c.id for c in s.clips]
+            kept = coverage_sentences(sentences, removed, s.timeline)
+            context = CoverageContext(
+                project_name=s.source_dir.name, fps=s.timeline.fps, spine_duration_sec=s.timeline.duration_sec,
+                sentences=kept, windows=find_mandatory_windows(kept, s.visual, spine_ids),
+                candidates=coverage_candidates(s.visual, roles), instructions=instructions, roles=roles,
+            )
+            run = run_coverage(director, context, s.visual.shots)
+            assembled = assemble_coverage(
+                s.timeline, context, run, s.visual.by_id(), title=f"Vlog com cobertura — {s.source_dir.name}"
+            )
+            run.placed_coverages, run.placed_breaths = assembled.coverages, assembled.breaths
+            run.warnings += assembled.warnings
+            run.final_duration_sec = round(assembled.timeline.duration_sec, 3)
+            for warning in run.warnings:
+                self._emit("coverage", "notice", warning)
+            (s.project_dir / COVERAGE_DECISION_FILE).write_text(run.model_dump_json(indent=2), encoding="utf-8")
+            (s.project_dir / COVERAGE_TIMELINE_FILE).write_text(assembled.timeline.model_dump_json(indent=2), encoding="utf-8")
+            breath_sec = sum(b.duration_sec for b in run.placed_breaths)
+            metrics = {
+                "provider": run.provider,
+                "effective_model": run.effective_model_id or run.model_id,
+                "model_switches": len(run.model_switches),
+                "origin": run.origin,
+                "windows": len(run.windows),
+                "uncovered_windows": len(run.uncovered_windows),
+                "coverages": len(run.placed_coverages),
+                "breaths": len(run.placed_breaths),
+                "breath_sec": round(breath_sec, 3),
+                "candidates": run.candidates,
+                "attempts": len(run.attempts),
+                "duration_sec": run.final_duration_sec,
+            }
+            covered = len(run.windows) - len(run.uncovered_windows)
+            detail = (
+                f"{len(run.placed_coverages)} coberturas, {len(run.placed_breaths)} respiros (+{breath_sec:.1f}s), "
+                f"{covered}/{len(run.windows)} janelas obrigatórias ({run.origin})"
+            )
+            return metrics, detail
+
+        outcome = s.run.stage("coverage", s.fp_coverage, COVERAGE_TIMELINE_FILE, do_coverage)
+        s.fp_coverage_result = fingerprint(
+            "coverage-result", file_hash(s.project_dir / COVERAGE_TIMELINE_FILE), file_hash(s.project_dir / COVERAGE_DECISION_FILE)
+        )
+        s.coverage_run = CoverageRun.model_validate_json((s.project_dir / COVERAGE_DECISION_FILE).read_text(encoding="utf-8"))
+        s.final_timeline = Timeline.model_validate_json((s.project_dir / COVERAGE_TIMELINE_FILE).read_text(encoding="utf-8"))
+        return outcome
+
+    def _kept_sentences(self, s: _SpineState):
+        """(frases com IDs globais, IDs removidos pelo Diretor): as mesmas frases do diff e da Timeline."""
+        run = s.director_run
+        if run is not None:
+            removed = {r.sentence_id for r in run.decision.removals} if run.decision is not None else set()
+            return run.sentences, removed
+        return build_clip_sentences([(c.id, s.transcripts[c.id]) for c in s.clips], s.params.sentences), set()
+
     def _timeline_render(self, s: _SpineState) -> StageOutcome:
+        if s.final_timeline is None:
+            s.final_timeline = s.timeline
         # O codificador entra só aqui (CPU = o fingerprint de antes); as etapas anteriores não mudam.
         encoder = self.timeline_executor.resolve_encoder()
-        s.fp_render = fingerprint("render", s.fp_timeline, *encoder.fingerprint_parts)
+
+        def render_fp(enc) -> str:
+            return (
+                fingerprint("render", s.fp_timeline, *enc.fingerprint_parts)
+                if s.fp_coverage is None
+                else fingerprint(
+                    "render",
+                    s.fp_timeline,
+                    file_hash(s.project_dir / COVERAGE_TIMELINE_FILE),
+                    *enc.fingerprint_parts,
+                )
+            )
+
+        s.fp_render = render_fp(encoder)
         used: list[TimelineRenderResult] = []
 
         def do_render() -> tuple[dict, str]:
             result = self.timeline_executor.execute(
-                s.timeline,
+                s.final_timeline,
                 on_progress=lambda done, total: self._stage_progress(
                     "render", StageProgress(done=done, total=total, unit="items")
                 ),
@@ -564,7 +814,7 @@ class SpinePipeline(EditPipeline):
         outcome = s.run.stage("render", s.fp_render, s.output_path.name, do_render)
         if used and used[0].encoder.name != encoder.name:
             # Voltou para a CPU no meio: o vídeo é de CPU e fica registrado como tal.
-            s.fp_render = s.run.rekey("render", fingerprint("render", s.fp_timeline, *used[0].encoder.fingerprint_parts))
+            s.fp_render = s.run.rekey("render", render_fp(used[0].encoder))
         metrics = s.run.manifest.stages["render"].metrics
         s.final_duration = float(metrics["duration_sec"])
         s.loudness = LoudnessResult.from_metrics(metrics)
@@ -580,18 +830,35 @@ class SpinePipeline(EditPipeline):
             return s.run.skip("subtitles", "desligada por --no-subtitles", artifact=srt_name)
         if s.fp_transcript is None:
             return s.run.skip("subtitles", "requer --transcribe", artifact=srt_name)
-        s.fp_subtitles = fingerprint("subtitles", s.fp_timeline, s.fp_transcript, params.subtitle)
+        s.fp_subtitles = fingerprint(
+            "subtitles", s.fp_timeline, s.fp_transcript, params.subtitle,
+            *([s.fp_coverage_result] if s.fp_coverage else []),
+        )
 
         def do_subtitles() -> tuple[dict, str]:
-            spans = clip_spans(s.timeline)
             fps = s.timeline.fps
-            sources = [
-                ClipSubtitleSource(
-                    transcript=s.transcripts[p.clip_id], kept_ranges=p.keep, offset_sec=spans[p.clip_id][0] / fps
-                )
-                for p in s.plan.clips
-                if p.dropped is None
-            ]
+            if s.fp_coverage is None:
+                spans = clip_spans(s.timeline)
+                sources = [
+                    ClipSubtitleSource(
+                        transcript=s.transcripts[p.clip_id], kept_ranges=p.keep, offset_sec=spans[p.clip_id][0] / fps
+                    )
+                    for p in s.plan.clips
+                    if p.dropped is None
+                ]
+            else:
+                # Timeline final: os trechos de um clipe podem estar separados por respiros.
+                placements = clip_placements(s.final_timeline)
+                sources = [
+                    ClipSubtitleSource(
+                        transcript=s.transcripts[p.clip_id],
+                        kept_ranges=[TimeRange(start_sec=x.source_in, end_sec=x.source_out) for x in placements[p.clip_id]],
+                        offset_sec=placements[p.clip_id][0].start_frame / fps,
+                        range_starts_sec=[x.start_frame / fps for x in placements[p.clip_id]],
+                    )
+                    for p in s.plan.clips
+                    if p.dropped is None and p.clip_id in placements
+                ]
             blocks = build_clip_subtitle_blocks(sources, fps, params.subtitle)
             write_srt(blocks, s.srt_path)
             return {"blocks": len(blocks)}, f"{srt_name}, {len(blocks)} blocos"
@@ -605,16 +872,20 @@ class SpinePipeline(EditPipeline):
         params = s.params
         fp_report = fingerprint(
             "report", REPORT_FORMAT, s.fp_render, s.fp_director, s.fp_subtitles, s.fp_transcript, params,
-            s.selection, s.encoder_label,
+            s.selection, s.encoder_label, *([s.fp_coverage_result] if s.fp_coverage else []),
         )
+        coverage = s.coverage_run if s.fp_coverage is not None else None
+        final = s.final_timeline if coverage is not None else None
 
         def do_report() -> tuple[dict, str]:
             started = time.perf_counter()
             diff = build_spine_diff(
                 s.source_dir.name, s.selection, s.plan, s.timeline, s.director_run,
-                s.transcripts if s.fp_transcript is not None else None, params,
+                s.transcripts if s.fp_transcript is not None else None, params, final=final,
             )
-            write_spine_diff(diff, s.timeline, s.project_dir, with_transcript=s.fp_transcript is not None)
+            write_spine_diff(
+                diff, s.timeline, s.project_dir, with_transcript=s.fp_transcript is not None, final=final, coverage=coverage
+            )
             markdown = build_spine_report(
                 s.source_dir,
                 s.selection,
@@ -633,6 +904,8 @@ class SpinePipeline(EditPipeline):
                 timings=s.run.recorder.snapshot(in_progress=("report", started)),
                 loudness=s.loudness,
                 encoder=s.encoder_label,
+                recipe_name=self.recipe.name,
+                coverage=coverage,
             )
             (s.project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
             merged = diff.merged()

@@ -26,6 +26,10 @@ SILENCES_FILE = "silences.json"
 TRANSCRIPTION_FILE = "transcription.json"
 SPINE_PLAN_FILE = "spine_plan.json"
 TIMELINE_FILE = "timeline.json"
+# Cobertura (receita `vlog_cobertura`): tomadas que a etapa usa, decisão e a Timeline final renderizada.
+COVERAGE_SHOTS_FILE = "coverage_shots.json"
+COVERAGE_DECISION_FILE = "coverage_decision.json"
+COVERAGE_TIMELINE_FILE = "coverage_timeline.json"
 # Cache por clipe (silêncios e transcrição), fora do projeto: trocar um clipe muda o projeto, mas não
 # refaz os outros clipes. `<projects>/_cache/edit_clips/<hash do arquivo>/<etapa>-<fingerprint>.json`.
 CLIP_STAGE_CACHE_DIR = Path("_cache") / "edit_clips"

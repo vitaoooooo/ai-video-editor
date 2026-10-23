@@ -191,7 +191,7 @@ python -m ai_video_editor.cli catalog D:\vlog   # catálogo de uma pasta de clip
 python -m ai_video_editor.cli briefing D:\vlog --pedido "vlog de 8 minutos, abre com drone"   # Produtor: receita, metas e estimativa
 python -m ai_video_editor.cli visual D:\vlog --so-estimar   # tomadas e medidas; estimativa de imagens e tokens da IA
 python -m ai_video_editor.cli visual D:\vlog                # descrição das tomadas por IA (visual/visual.md)
-python -m ai_video_editor.cli edit D:\vlog --transcribe --language pt --director gemini   # espinha falada: clipes principais com fala, em ordem, sem pausas nem tomadas repetidas
+python -m ai_video_editor.cli edit D:\vlog --transcribe --language pt --director gemini   # espinha falada (clipes principais com fala, em ordem, sem pausas nem tomadas repetidas) + cobertura de drone/b-roll/POV e respiros, se a pasta já passou pelo `visual`
 
 # Benchmark de transcrição
 python -m ai_video_editor.cli benchmark transcription --audio aula.webm --reference ref.txt --language en --configs small:cpu:int8 large-v3-turbo:cuda:float16
@@ -225,6 +225,7 @@ src/ai_video_editor/
 ├── audio/        silêncios (silencedetect) e limite adaptativo (níveis em janelas de 50 ms)
 ├── transcription/  interface de transcrição; faster-whisper (GPU/CPU) e mock
 ├── director/     frases a partir da transcrição, prompt, validação e Diretor (LLM e mock)
+├── coverage/     Diretor de cobertura: janelas obrigatórias, b-roll por cima da fala e respiros, por IDs (LLM e mock)
 ├── revision/     revisor de pedidos em linguagem natural (LLM e mock)
 ├── llm/          StructuredLLMClient, provedores gemini/openai/mock, cadeia de modelos, chaves e erros
 ├── planning/     corte de silêncio, aplicação dos cortes de frase e regra do pedaço de palavra
@@ -242,7 +243,7 @@ src/ai_video_editor/
 
 ## Limitações conhecidas
 
-- **Foco em vídeo falado** (aula, tutorial, pessoa falando). De um vlog, o `edit <pasta>` já monta a espinha falada (clipes principais com fala, em ordem), mas ainda sem cobertura de b-roll/drone por cima e sem música. Gameplay não é tratado.
+- **Foco em vídeo falado** (aula, tutorial, pessoa falando). De um vlog, o `edit <pasta>` monta a espinha falada (clipes principais com fala, em ordem) e, com a análise visual feita, a cobertura de drone/b-roll/POV por cima da fala e respiros entre as falas; ainda sem música, transições e revisão multitrilha. Gameplay não é tratado.
 - **O Diretor e o revisor dependem de uma API** (Gemini ou OpenAI). Sem chave, o editor faz só corte de silêncio; com ela, há custo e latência de rede, e a decisão pode variar entre execuções.
 - **Palavras curtas**: o tempo que o Whisper atribui a "Um" ou "By" inclui a pausa ao redor, então o corte às vezes tira só o silêncio e a palavra fica (aparece como remoção parcial no relatório).
 - **Nomes e termos em outro idioma** saem errados na transcrição e, portanto, na legenda. Na palestra, transcrita com `--language en`, "gnu.org" virou "canoe org", "software livre" virou "software leave me" e "Pato Branco" virou "Patu".

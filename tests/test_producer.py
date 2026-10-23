@@ -125,7 +125,7 @@ def test_recipes_are_read_from_the_registry_at_call_time(vlog_recipe):
     assert infos["vlog"].multi_clip is True and infos["vlog"].needs_speech is True
     register_recipe(Recipe(name="paisagem", description="Só imagens", steps=["probe", "silences", "plan", "render"]))
     try:
-        assert registered_recipes()[-1].name == "vlog"
+        assert registered_recipes()[-1].name == "vlog_cobertura"
         assert next(r for r in registered_recipes() if r.name == "paisagem").needs_speech is False
     finally:
         recipe_registry._RECIPES.pop("paisagem")
@@ -154,7 +154,7 @@ def test_validation_recipe_roles_duration_and_compatibility(vlog_recipe):
     material = _vlog_material()
     assert validate_content(_content(), material, recipes) == []
     assert validate_content(_content(recipe="cinema"), material, recipes) == [
-        "a receita 'cinema' não existe (disponíveis: fala, vlog)"
+        "a receita 'cinema' não existe (disponíveis: fala, vlog, vlog_cobertura)"
     ]
     problems = validate_content(_content(recipe="fala"), material, recipes)
     assert problems == [

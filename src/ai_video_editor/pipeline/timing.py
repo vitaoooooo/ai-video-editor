@@ -14,6 +14,8 @@ STAGE_LABELS = {
     "reviser": "Revisor",
     "plan": "Plano de corte",
     "timeline": "Timeline",
+    "visual": "Análise visual",
+    "coverage": "Cobertura",
     "render": "Renderização",
     "subtitles": "Legendas",
     "report": "Relatório",
