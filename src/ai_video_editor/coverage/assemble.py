@@ -2,10 +2,11 @@
 
 - Respiros viram itens de `video_main` inseridos na espinha (com o som da própria tomada), o que
   desloca tudo o que vem depois.
-- Coberturas viram itens de `video_overlay` do início da primeira frase ao fim da última, na timeline
-  final (o áudio da fala continua): o tempo é dividido entre as tomadas da cobertura, em ordem, o mais
-  igual possível e até `MAX_COVERAGE_SEC` cada (`distribute`); o trecho de cada tomada é centrado no
-  melhor trecho (`best_frames`). Se as tomadas não bastam, o fim fica com a imagem do principal.
+- Coberturas viram itens de `video_overlay` nos frames da espinha que o código decidiu (`start_frame`/
+  `end_frame`: as frases, os segundos ruins ou em volta da evidência), levados para a timeline final (o
+  áudio da fala continua): o tempo é dividido entre as tomadas da cobertura, em ordem, o mais igual
+  possível e até `MAX_COVERAGE_SEC` cada (`distribute`); o trecho de cada tomada é centrado no melhor
+  trecho (`best_frames`). Se as tomadas não bastam, o fim fica com a imagem do principal.
 - O som ambiente de cada cobertura entra baixinho em `audio_ambient` (tomadas com áudio e sem fala).
 """
 
@@ -116,7 +117,8 @@ def assemble_coverage(
         )
         placed = PlacedBreath(
             id=f"R{n}", after_sentence=breath.after_sentence, shot_id=shot.id, clip_id=shot.clip_id, size=breath.size,
-            reason=breath.reason, origin=breath.origin, source_in=item.source_in, source_out=round(item.source_out, 6),
+            reason=breath.reason, origin=breath.origin, relation=breath.relation, source_in=item.source_in,
+            source_out=round(item.source_out, 6),
             timeline_start=0.0, duration_sec=round(frames / fps, 3), audio=audio,
         )
         insertions.append((_insertion_frame(spine, sentences, k), k, item, placed))
@@ -155,9 +157,7 @@ def assemble_coverage(
     placed_coverages: list[PlacedCoverage] = []
     for n, coverage in enumerate(run.coverages, start=1):
         cid = f"C{n}"
-        i, j = order[coverage.from_sentence], order[coverage.to_sentence]
-        a, b = to_final(sentences[i].start_frame, False), to_final(sentences[j].end_frame, True)
-        windows = [w for w, cids in run.window_cover.items() if cid in cids]
+        a, b = to_final(coverage.start_frame, False), to_final(coverage.end_frame, True)
         pieces: list[OverlayPiece] = []
         listed = [shots[x] for x in coverage.shot_ids]
         cursor = a
@@ -173,7 +173,7 @@ def assemble_coverage(
                 )
             )
             cursor += frames
-        if cursor < b and not any(n.kind == "duração" for n in coverage.adjustments):
+        if cursor < b:
             warnings.append(f"{cid}: os últimos {_fmt((b - cursor) / fps)} ficam sem cobertura (as tomadas não bastam)")
         for piece in pieces:
             source = shots[piece.shot_id]
@@ -196,8 +196,8 @@ def assemble_coverage(
         placed_coverages.append(
             PlacedCoverage(
                 id=cid, from_sentence=coverage.from_sentence, to_sentence=coverage.to_sentence, shot_id=coverage.shot_id,
-                shot_ids=list(coverage.shot_ids), reason=coverage.reason, origin=coverage.origin, windows=windows,
-                adjustments=list(coverage.adjustments),
+                shot_ids=list(coverage.shot_ids), reason=coverage.reason, kind=coverage.kind, origin=coverage.origin,
+                evidence=coverage.evidence, bad_spans=list(coverage.bad_spans), adjustments=list(coverage.adjustments),
                 timeline_start=round(a / fps, 3), timeline_end=round(b / fps, 3), pieces=pieces,
             )
         )

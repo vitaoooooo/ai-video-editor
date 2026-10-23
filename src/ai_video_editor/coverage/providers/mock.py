@@ -1,35 +1,59 @@
 """Diretor de cobertura simulado, determinístico e sem rede."""
 
+import re
 from typing import Optional, Union
 
+from ai_video_editor.coverage import evidence as ev
 from ai_video_editor.coverage.provider import CoverageDirector
+from ai_video_editor.coverage.related import related_shots
 from ai_video_editor.coverage.schema import (
     BreathChoice,
     CoverageChoice,
     CoverageContext,
     CoverageDecision,
-    WindowDecision,
+    TopicBlock,
+    TopicMap,
+    VisualShot,
 )
-from ai_video_editor.coverage.service import CoverageState, best_free_shot, fill_windows, max_breaths, shot_length
+from ai_video_editor.coverage.service import MIN_COVERAGE_SEC, max_breaths, shot_length
+from ai_video_editor.coverage.topics import topics_by_clip
 
 MockResponse = Union[CoverageDecision, Exception]
+MockTopics = Union[TopicMap, Exception]
 # Tamanho dos respiros do mock e o mínimo de tomada para ele usar.
 MOCK_BREATH_SIZE = "medium"
 MOCK_BREATH_MIN_SEC = 2.0
 MOCK_MAX_BREATHS = 5
 
+_WORD = re.compile(r"\w+")
+
+
+def _matching_tag(word: str, shot: VisualShot) -> Optional[str]:
+    """Tag da tomada que fala da mesma coisa que a palavra (com plural e sinônimos), se houver."""
+    for tag in shot.tags:
+        if any(ev.same_word(w, c) for w in ev.concepts(word) for c in ev.concepts(tag)):
+            return tag
+    return None
+
 
 class MockCoverageDirector(CoverageDirector):
-    """Devolve uma sequência de respostas ou, sem ela, decide as janelas como o fallback (tomada
-    relacionada ou manter; numa janela que exige cobertura sem relacionada, a tomada livre de maior
-    beleza) e põe um respiro nas primeiras trocas de clipe (até `MOCK_MAX_BREATHS` e o máximo permitido).
+    """Devolve sequências de respostas ou, sem elas, decide como um editor literal:
 
-    - `responses`: uma por chamada, na ordem (uma exceção na lista é lançada); útil para a nova tentativa.
+    - **mapa:** um bloco por trecho seguido do mesmo clipe;
+    - **coberturas:** em cada frase, a primeira palavra de conteúdo que é tag de uma tomada livre (fora do
+      clipe que fala) vira uma cobertura daquela frase com essa tomada (a de maior beleza), com a palavra
+      como evidência de fala e a tag como evidência de imagem;
+    - **respiros:** nas trocas de bloco (até `MOCK_MAX_BREATHS` e o máximo permitido), com uma tomada
+      relacionada à tela do bloco seguinte.
+
+    `responses`/`topics`: uma resposta por chamada, na ordem (uma exceção na lista é lançada).
     """
 
-    def __init__(self, responses: Optional[list[MockResponse]] = None):
+    def __init__(self, responses: Optional[list[MockResponse]] = None, topics: Optional[list[MockTopics]] = None):
         self.responses = list(responses) if responses is not None else None
+        self.topics = list(topics) if topics is not None else None
         self.calls: list[CoverageContext] = []
+        self.topic_calls: list[CoverageContext] = []
 
     @property
     def provider_name(self) -> str:
@@ -39,6 +63,19 @@ class MockCoverageDirector(CoverageDirector):
     def model_id(self) -> str:
         return "mock"
 
+    def map_topics(self, context: CoverageContext) -> TopicMap:
+        self.topic_calls.append(context)
+        if self.topics is not None:
+            answer = self.topics[min(len(self.topic_calls), len(self.topics)) - 1]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        blocks = [
+            TopicBlock(from_sentence=t.from_sentence, to_sentence=t.to_sentence, topic=t.topic, place="")
+            for t in topics_by_clip(context.sentences)
+        ]
+        return TopicMap(summary=f"vlog '{context.project_name}'", blocks=blocks)
+
     def decide(self, context: CoverageContext) -> CoverageDecision:
         self.calls.append(context)
         if self.responses is not None:
@@ -47,52 +84,54 @@ class MockCoverageDirector(CoverageDirector):
                 raise response
             return response
 
-        state = CoverageState(context)
-        fill_windows(state, context.windows, origin="ia")
-        coverages = [CoverageChoice(**c.model_dump(include={"from_sentence", "to_sentence", "shot_ids", "reason", "windows"})) for c in state.coverages]
-        used = set(state.used)
-        decisions = []
-        for window in context.windows:
-            kept = state.kept.get(window.id)
-            if kept is None:
-                decisions.append(WindowDecision(window=window.id, action="cover", reason="tomada relacionada"))
-            elif not window.required:
-                decisions.append(WindowDecision(window=window.id, action="keep", reason=kept.reason))
-            else:
-                speaking = {window.clip_id}
-                need = sum(s.duration_sec(context.fps) for s in context.sentences if s.id in window.sentence_ids)
-                shot = best_free_shot(context.candidates, need, speaking, used)
-                if shot is not None:
-                    used.add(shot.id)
-                    coverages.append(
-                        CoverageChoice(
-                            from_sentence=window.sentence_ids[0], to_sentence=window.sentence_ids[-1], shot_ids=[shot.id],
-                            reason="tomada livre de maior beleza", windows=[window.id],
-                        )
-                    )
-        order = {s.id: i for i, s in enumerate(context.sentences)}
-        coverages.sort(key=lambda c: order[c.from_sentence])
-        inside = {k for c in coverages for k in range(order[c.from_sentence], order[c.to_sentence])}
+        used: set[str] = set()
+        coverages: list[CoverageChoice] = []
+        for sentence in context.sentences:
+            free = [
+                c for c in context.candidates
+                if c.id not in used and c.clip_id != sentence.clip_id and shot_length(c) >= MIN_COVERAGE_SEC
+            ]
+            found = None
+            for match in _WORD.finditer(sentence.text):
+                word = match.group(0)
+                if not ev.concepts(word):
+                    continue
+                hits = [(shot, tag) for shot in free if (tag := _matching_tag(word, shot))]
+                if hits:
+                    found = (word, *max(hits, key=lambda h: (h[0].beauty or 0, shot_length(h[0]))))
+                    break
+            if found is None:
+                continue
+            word, shot, tag = found
+            used.add(shot.id)
+            coverages.append(
+                CoverageChoice(
+                    from_sentence=sentence.id, to_sentence=sentence.id, shot_ids=[shot.id], speech_evidence=word,
+                    image_evidence=tag, reason=f"A fala cita '{word}' e a tomada mostra '{tag}'.",
+                )
+            )
+
         breaths: list[BreathChoice] = []
-        sentences = context.sentences
-        for k in range(len(sentences) - 1):
+        by_id = {s.id: s for s in context.screen_shots}
+        order = {s.id: i for i, s in enumerate(context.sentences)}
+        for prev, nxt in zip(context.topics, context.topics[1:]):
             if len(breaths) >= min(MOCK_MAX_BREATHS, max_breaths(context)):
                 break
-            if sentences[k].clip_id == sentences[k + 1].clip_id or k in inside:
+            i, j = order[nxt.from_sentence], order[nxt.to_sentence]
+            screens = [by_id[x] for k in range(i, j + 1) for x in context.sentences[k].screen if x in by_id]
+            pool = [c for c in context.candidates if c.id not in used and shot_length(c) >= MOCK_BREATH_MIN_SEC]
+            related = related_shots(pool, screens)
+            if not related:
                 continue
-            shot = best_free_shot(
-                [c for c in context.candidates if shot_length(c) >= MOCK_BREATH_MIN_SEC], MOCK_BREATH_MIN_SEC, set(), used
-            )
-            if shot is None:
-                break
+            shot, why = related[0]
             used.add(shot.id)
             breaths.append(
                 BreathChoice(
-                    after_sentence=sentences[k].id, shot_id=shot.id, size=MOCK_BREATH_SIZE,
-                    reason=f"Troca do clipe {sentences[k].clip_id} para {sentences[k + 1].clip_id}.",
+                    after_sentence=prev.to_sentence, shot_id=shot.id, size=MOCK_BREATH_SIZE,
+                    reason=f"Troca de {prev.id} para {nxt.id}; a tomada tem a ver com {nxt.id} ({why.label}).",
                 )
             )
         return CoverageDecision(
-            coverages=coverages, breaths=breaths, window_decisions=decisions,
-            summary=f"{len(coverages)} cobertura(s) nas janelas com imagem ruim e {len(breaths)} respiro(s) nas trocas de clipe.",
+            coverages=coverages, breaths=breaths,
+            summary=f"{len(coverages)} cobertura(s) onde a fala cita uma tag da tomada e {len(breaths)} respiro(s) nas trocas de assunto.",
         )

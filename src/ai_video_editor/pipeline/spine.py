@@ -5,8 +5,9 @@ catálogo → silêncios por clipe → transcrição por clipe → Diretor → T
 cobertura] → render → legendas → relatório. Os clipes de papel `principal` com fala entram em ordem; cada um perde as pausas e as
 frases ruins (mesmo corte do caminho de um vídeo, `plan_keep_ranges`) e os trechos mantidos viram
 itens de `video_main` numa Timeline, renderizada por `renderer/timeline_*`. Na `vlog_cobertura`, o
-Diretor de cobertura acrescenta B-roll por cima da fala (`video_overlay`) e respiros na base, e o
-resto (render, legendas, relatórios) usa essa Timeline final.
+Diretor de cobertura acrescenta B-roll por cima da fala onde a imagem mostra o que é falado
+(`video_overlay`) e respiros entre os assuntos, e o resto (render, legendas, relatórios) usa essa
+Timeline final. `--so-plano` para depois da cobertura (plano em `coverage_plan.md`, sem render).
 
 O projeto é a pasta do catálogo (`<projects>/<pasta>-<hash da listagem>/`). Cada etapa grava um
 artefato e um fingerprint no `project.json` (`kind="multiclip"`), como no `edit` de um vídeo.
@@ -41,10 +42,14 @@ from ai_video_editor.coverage import (
     coverage_candidates,
     coverage_roles,
     coverage_sentences,
-    find_mandatory_windows,
+    find_bad_spans,
+    plan_markdown,
     run_coverage,
 )
 from ai_video_editor.coverage import assemble as coverage_assemble
+from ai_video_editor.coverage import evidence as coverage_evidence
+from ai_video_editor.coverage import plan as coverage_plan
+from ai_video_editor.coverage import topics as coverage_topics
 from ai_video_editor.coverage import material as coverage_material
 from ai_video_editor.coverage import related as coverage_related
 from ai_video_editor.coverage import service as coverage_service
@@ -136,15 +141,19 @@ DIRECTOR_PROMPT_FORMAT = "spine-prompt-v1"
 TIMELINE_FORMAT = "spine-timeline-v1"
 REPORT_FORMAT = "spine-report-v1"
 VISUAL_MATERIAL_FORMAT = "coverage-shots-v2"
-COVERAGE_FORMAT = "coverage-v2"
+COVERAGE_FORMAT = "coverage-v3"
 # Regras do código que mudam o resultado da cobertura (entram no fingerprint da etapa).
 COVERAGE_RULES = (
     coverage_service.MIN_COVERAGE_SEC, coverage_service.MAX_COVERAGE_SEC, coverage_service.BREATH_SECONDS,
     coverage_service.MIN_BREATH_SHOT_SEC, coverage_service.BREATH_EVERY_SEC, coverage_service.SOURCE_END_MARGIN_SEC,
     coverage_service.MAX_ATTEMPTS, coverage_service.RETRY_DISCARD_RATIO, coverage_service.MAX_UNCOVERED_SEC,
-    coverage_material.MIN_BAD_OVERLAP_SEC, coverage_material.COVERAGE_ROLES, coverage_material.BAD_ISSUES,
+    coverage_service.MAX_COVERAGE_RATIO, coverage_topics.MAX_TOPIC_ATTEMPTS,
+    coverage_material.MIN_BAD_OVERLAP_SEC, coverage_material.BAD_MARGIN_SEC, coverage_material.COVERAGE_ROLES,
+    coverage_material.BAD_ISSUES,
     coverage_related.NEIGHBOR_CLIPS, coverage_related.NEIGHBOR_MINUTES, coverage_related.GENERIC_TAGS,
     coverage_related.MIN_COMMON_TAGS,
+    coverage_evidence.SYNONYMS, sorted(coverage_evidence.STOPWORDS), sorted(coverage_evidence.GENERIC_CONCEPTS),
+    coverage_evidence.MIN_CONCEPT_CHARS, coverage_plan.SHOWN_PER_BLOCK,
     coverage_assemble.BREATH_VOLUME, coverage_assemble.COVERAGE_AMBIENT_VOLUME, coverage_assemble.AMBIENT_FADE_SEC,
 )
 VISUAL_DIR = "visual"
@@ -307,10 +316,12 @@ class SpinePipeline(EditPipeline):
         coverage: Optional[CoverageParams] = None,
         settings: Optional[EditSettings] = None,
         use_briefing: bool = True,
+        plan_only: bool = False,
     ) -> SpineResult:
         """Executa (ou retoma do cache) as etapas da receita sobre a pasta e devolve o resumo.
 
         `coverage`: IA da cobertura (receita `vlog_cobertura`); sem ela, a do Diretor (`CoverageParams.inherit`).
+        `plan_only` (`--so-plano`): para depois da cobertura, sem render, legendas, relatório nem versão.
         `settings`: valores efetivos e origens (só `project.json` e relatório). `use_briefing=False`
         (`--sem-briefing` ou briefing de outro material): a cobertura não lê o `briefing.json`.
         """
@@ -318,6 +329,10 @@ class SpinePipeline(EditPipeline):
         if not source_dir.is_dir():
             raise NotADirectoryError(f"pasta não encontrada: {source_dir}")
         params = params or EditPipelineParams()
+        if plan_only and "coverage" not in self.recipe.steps:
+            raise RecipeError(f"--so-plano precisa da cobertura (receita vlog_cobertura); a receita é '{self.recipe.name}'")
+        if plan_only and not params.transcribe:
+            raise RecipeError("--so-plano precisa de --transcribe (a cobertura escolhe frases por ID)")
         recorder = TimingRecorder()
 
         project_dir, _ = catalog_location(source_dir, self.projects_root)
@@ -360,11 +375,13 @@ class SpinePipeline(EditPipeline):
         }
         for step in self.recipe.steps:
             state.outcomes[step] = steps[step](state)
+            if plan_only and step == "coverage":
+                break
 
         timings = recorder.snapshot()
         manifest.last_run = timings
         manifest.save(manifest_path)
-        version = register_spine_version(project_dir, manifest, manifest_path, timings)
+        version = None if plan_only else register_spine_version(project_dir, manifest, manifest_path, timings)
 
         transcript_path = project_dir / EDIT_TRANSCRIPT_FILE
         director_run = state.director_run
@@ -379,8 +396,12 @@ class SpinePipeline(EditPipeline):
             transcript_path=transcript_path if transcript_path.is_file() else None,
             timeline_path=project_dir / (COVERAGE_TIMELINE_FILE if state.coverage_run is not None else TIMELINE_FILE),
             coverage=state.coverage_run,
+            plan_only=plan_only,
+            plan_path=project_dir / coverage_plan.PLAN_FILE if state.coverage_run is not None else None,
             original_duration_sec=sum(c.duration_sec for c in state.clips),
-            final_duration_sec=state.final_duration,
+            final_duration_sec=(
+                state.coverage_run.final_duration_sec if plan_only and state.coverage_run is not None else state.final_duration
+            ),
             outcomes=state.outcomes,
             timings=timings,
             clips_used=[c.clip_id for c in plan.clips if c.dropped is None] if plan is not None else [],
@@ -736,7 +757,8 @@ class SpinePipeline(EditPipeline):
         return instructions, list(briefing.roles_to_use)
 
     def _coverage(self, s: _SpineState) -> StageOutcome:
-        """Diretor de cobertura: janelas obrigatórias (código), escolha por IDs (IA), validação e Timeline final."""
+        """Diretor de cobertura: trechos com imagem ruim (código), mapa de assuntos e escolha por IDs com
+        evidências (IA, duas chamadas), validação e Timeline final; grava o plano por bloco."""
         s.final_timeline = s.timeline
         params = s.params
         if s.fp_transcript is None:
@@ -768,7 +790,7 @@ class SpinePipeline(EditPipeline):
             screen = annotate_screen(kept, s.visual)
             context = CoverageContext(
                 project_name=s.source_dir.name, fps=s.timeline.fps, spine_duration_sec=s.timeline.duration_sec,
-                sentences=kept, windows=find_mandatory_windows(kept, s.visual, spine_ids),
+                sentences=kept, bad_spans=find_bad_spans(kept, s.visual, spine_ids, s.timeline.fps),
                 candidates=coverage_candidates(s.visual, roles), screen_shots=screen, instructions=instructions, roles=roles,
             )
             run = run_coverage(director, context, s.visual.shots)
@@ -791,19 +813,21 @@ class SpinePipeline(EditPipeline):
                 "ai_items": run.ai_items,
                 "adjusted": sum(1 for x in [*run.coverages, *run.breaths] if x.origin == "ia-ajustada"),
                 "discarded": len(run.discarded),
-                "windows": len(run.windows),
-                "kept_windows": len(run.kept_window_ids),
-                "uncovered_windows": len(run.uncovered_windows),
+                "topics": len(run.topics),
+                "topics_origin": run.topics_origin,
+                "bad_spans": len(run.bad_spans),
+                "bad_spans_kept": sum(1 for o in run.span_outcomes if o.status != "coberto"),
+                "covered_sec": run.covered_sec,
                 "coverages": len(run.placed_coverages),
                 "breaths": len(run.placed_breaths),
                 "breath_sec": round(breath_sec, 3),
                 "candidates": run.candidates,
-                "attempts": len(run.attempts),
+                "attempts": len(run.topic_attempts) + len(run.attempts),
                 "duration_sec": run.final_duration_sec,
             }
             detail = (
-                f"{len(run.placed_coverages)} coberturas, {len(run.placed_breaths)} respiros (+{breath_sec:.1f}s), "
-                f"janelas com imagem ruim: {run.windows_label} ({run.origin_label})"
+                f"{len(run.topics)} blocos de assunto, {len(run.placed_coverages)} coberturas ({run.covered_sec:.1f}s), "
+                f"{len(run.placed_breaths)} respiros (+{breath_sec:.1f}s), imagem ruim: {run.bad_label} ({run.origin_label})"
             )
             return metrics, detail
 
@@ -812,6 +836,8 @@ class SpinePipeline(EditPipeline):
             "coverage-result", file_hash(s.project_dir / COVERAGE_TIMELINE_FILE), file_hash(s.project_dir / COVERAGE_DECISION_FILE)
         )
         s.coverage_run = CoverageRun.model_validate_json((s.project_dir / COVERAGE_DECISION_FILE).read_text(encoding="utf-8"))
+        # O plano sai da decisão (também quando ela vem do cache).
+        (s.project_dir / coverage_plan.PLAN_FILE).write_text(plan_markdown(s.coverage_run, s.source_dir.name), encoding="utf-8")
         s.final_timeline = Timeline.model_validate_json((s.project_dir / COVERAGE_TIMELINE_FILE).read_text(encoding="utf-8"))
         return outcome
 

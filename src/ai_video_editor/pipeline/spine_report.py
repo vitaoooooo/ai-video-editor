@@ -12,6 +12,7 @@ from typing import Callable, Optional, Sequence
 from xml.sax.saxutils import escape
 
 from ai_video_editor.core.timeline import Timeline
+from ai_video_editor.coverage.plan import PLAN_FILE
 from ai_video_editor.coverage.schema import BREATH_SIZE_LABELS, CoverageRun
 from ai_video_editor.director import DirectorRun, build_clip_sentences
 from ai_video_editor.pipeline.edit_diff import _entry_line, build_edit_diff
@@ -369,10 +370,10 @@ _ORIGIN_LABELS = {
     "fallback": "código (fallback)",
 }
 _ITEM_ORIGIN_LABELS = {"ia": "IA", "ia-ajustada": "IA (ajustada)", "fallback": "código"}
-_WINDOW_STATUS_LABELS = {
-    "coberta": "coberta",
-    "mantida": "mantida (imagem original)",
-    "descoberta": "**sem cobertura**",
+_SPAN_STATUS_LABELS = {
+    "coberto": "coberto",
+    "parcial": "**em parte** (resto com a imagem original)",
+    "mantido": "**mantido** (imagem original)",
 }
 
 
@@ -380,12 +381,37 @@ def _cover_cell(seconds: float) -> str:
     return f"{format_timestamp(seconds)}"
 
 
+def _attempt_rows(name: str, attempts) -> list[str]:
+    rows = []
+    for i, attempt in enumerate(attempts, start=1):
+        tokens = (
+            f"{attempt.input_tokens} entrada / {attempt.output_tokens} saída"
+            if attempt.input_tokens is not None or attempt.output_tokens is not None
+            else "não informado"
+        )
+        status = "ok" if attempt.success else f"inválida ({attempt.error_type})"
+        rows.append(
+            f"| {name}, tentativa {i} | {status}, {attempt.latency_sec:.2f}s, chamadas à API: {attempt.api_attempts}, tokens: {tokens} |"
+        )
+    return rows
+
+
+def _evidence_cell(c) -> str:
+    e = c.evidence
+    if c.kind == "tela_uniforme":
+        return f"tela uniforme; relacionada: {_cell(e.relation)}" if e.relation else "tela uniforme"
+    strong = " (forte)" if e.strong else ""
+    return f"'{_cell(e.speech)}' ↔ '{_cell(e.image)}'{strong}"
+
+
 def coverage_lines(coverage: CoverageRun) -> list[str]:
-    """Seção "Cobertura": modelo e origem, decisão por janela com imagem ruim, coberturas, respiros e o que o
-    código ajustou ou descartou."""
+    """Seção "Cobertura": modelo e origem, plano por bloco de assunto, trechos com imagem ruim, coberturas
+    com as evidências, respiros e o que o código ajustou ou descartou."""
     adjusted = sum(1 for x in [*coverage.coverages, *coverage.breaths] if x.origin == "ia-ajustada")
     breath_sec = sum(b.duration_sec for b in coverage.placed_breaths)
     model = coverage.effective_model_id or coverage.model_id
+    ratio = coverage.covered_sec / coverage.spine_duration_sec * 100 if coverage.spine_duration_sec else 0.0
+    topics_origin = "IA" if coverage.topics_origin == "ia" else "código (um bloco por clipe)"
     lines = [
         "## Cobertura",
         "",
@@ -400,6 +426,9 @@ def coverage_lines(coverage: CoverageRun) -> list[str]:
             [f"| Troca de modelo | {_cell(s.from_model + ' → ' + s.to_model + ': ' + s.reason)} |" for s in coverage.model_switches]
         ),
         f"| Raciocínio | {coverage.thinking or '—'} |",
+        f"| Mapa de assuntos | {len(coverage.topics)} blocos, {topics_origin}"
+        + (f": {_cell(coverage.topics_reason)}" if coverage.topics_reason else "") + " |",
+        *([f"| Do que o vídeo trata | {_cell(coverage.video_summary)} |"] if coverage.video_summary else []),
         f"| Origem | {_ORIGIN_LABELS[coverage.origin]}"
         + (f": {_cell(coverage.origin_reason)}" if coverage.origin_reason else "") + " |",
         *(
@@ -407,75 +436,72 @@ def coverage_lines(coverage: CoverageRun) -> list[str]:
             if coverage.ai_items else []
         ),
         f"| Tomadas candidatas | {coverage.candidates} (papéis: {', '.join(coverage.roles) or '—'}) |",
-        f"| Janelas com imagem ruim | {coverage.windows_label} |",
-        f"| Coberturas | {len(coverage.placed_coverages)} |",
+        f"| Imagem ruim | {coverage.bad_label} |",
+        f"| Coberturas | {len(coverage.placed_coverages)}; conteúdo {coverage.covered_sec:.1f}s ({ratio:.0f}% da espinha) |",
         f"| Respiros | {len(coverage.placed_breaths)} (+{breath_sec:.1f}s) |",
         f"| Duração | espinha {coverage.spine_duration_sec:.2f}s → final {coverage.final_duration_sec:.2f}s |",
         f"| Instruções | {_cell(' | '.join(coverage.instructions)) if coverage.instructions else '—'} |",
-        f"| Decisão | `{COVERAGE_DECISION_FILE}`; Timeline renderizada: `{COVERAGE_TIMELINE_FILE}` |",
+        f"| Decisão | `{COVERAGE_DECISION_FILE}`; plano `{PLAN_FILE}`; Timeline renderizada: `{COVERAGE_TIMELINE_FILE}` |",
+        *_attempt_rows("Mapa de assuntos", coverage.topic_attempts),
+        *_attempt_rows("Cobertura", coverage.attempts),
     ]
-    for i, attempt in enumerate(coverage.attempts, start=1):
-        tokens = (
-            f"{attempt.input_tokens} entrada / {attempt.output_tokens} saída"
-            if attempt.input_tokens is not None or attempt.output_tokens is not None
-            else "não informado"
-        )
-        status = "ok" if attempt.success else f"inválida ({attempt.error_type})"
-        lines.append(
-            f"| Tentativa {i} | {status}, {attempt.latency_sec:.2f}s, chamadas à API: {attempt.api_attempts}, tokens: {tokens} |"
-        )
     lines.append("")
     for warning in coverage.warnings:
         lines += [f"> **Aviso:** {_cell(warning)}", ""]
     if coverage.summary:
         lines += [f"**Resumo:** {coverage.summary}", ""]
 
-    lines += ["### Janelas com imagem ruim", ""]
-    if coverage.windows:
+    lines += ["### Plano por bloco de assunto", ""]
+    lines += [f"- {_cell(line)}" for line in coverage.plan] or ["Nenhum bloco."]
+    lines += ["", "### Trechos com imagem ruim", ""]
+    if coverage.bad_spans:
         lines += [
-            "| Janela | Clipe | Frases | Imagem | Exige cobertura | Tomadas ruins | Decisão | Motivo | Quem decidiu |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| Trecho | Clipe | Frases | Imagem | Duração | Tomadas ruins | Resultado | Coberturas |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
-        outcomes = {o.window: o for o in coverage.window_outcomes}
-        for w in coverage.windows:
-            o = outcomes.get(w.id)
-            decision = _WINDOW_STATUS_LABELS[o.status] if o else "—"
-            if o and o.by:
-                decision += f" com {', '.join(o.by)}"
-            who = _ITEM_ORIGIN_LABELS.get(o.origin, "—") if o and o.origin else "—"
+        outcomes = {o.span: o for o in coverage.span_outcomes}
+        fps = coverage.fps
+        for span in coverage.bad_spans:
+            o = outcomes.get(span.id)
+            result = _SPAN_STATUS_LABELS[o.status] if o else "—"
+            if o and o.reason and o.status != "coberto":
+                result += f": {_cell(o.reason)}"
+            seconds = (span.end_frame - span.start_frame) / fps
             lines.append(
-                f"| {w.id} | {w.clip_id} | {w.span_label} | {_cell(', '.join(w.reasons))} | {'sim' if w.required else 'não'} | "
-                f"{', '.join(w.shot_ids)} | {decision} | {_cell(o.reason) if o else '—'} | {who} |"
+                f"| {span.id} | {span.clip_id} | {span.span_label} | {_cell(', '.join(span.reasons))} | ~{seconds:.1f}s | "
+                f"{', '.join(span.shot_ids)} | {result} | {', '.join(o.by) if o and o.by else '—'} |"
             )
     else:
-        lines.append("Nenhuma: a imagem do principal está boa em toda a fala mantida.")
+        lines.append("Nenhum: a imagem do principal está boa em toda a fala mantida.")
     lines += ["", "### Coberturas (por cima da fala)", ""]
     if coverage.placed_coverages:
         lines += [
-            "| # | Frases | Tomadas | No vídeo | Motivo | Janela | Origem |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| # | Frases | Tomadas | No vídeo | Evidência (fala ↔ imagem) | Motivo | Imagem ruim | Origem |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for c in coverage.placed_coverages:
             span = c.from_sentence if c.from_sentence == c.to_sentence else f"{c.from_sentence}–{c.to_sentence}"
             shots = ", ".join(f"{p.shot_id}{'*' if p.chained else ''}" for p in c.pieces) or ", ".join(c.shot_ids or [c.shot_id])
             lines.append(
                 f"| {c.id} | {span} | {shots} | {_cover_cell(c.timeline_start)}–{_cover_cell(c.timeline_end)} | "
-                f"{_cell(c.reason)} | {', '.join(c.windows) or 'não'} | {_ITEM_ORIGIN_LABELS.get(c.origin, c.origin)} |"
+                f"{_evidence_cell(c)} | {_cell(c.reason)} | {', '.join(c.bad_spans) or 'não'} | "
+                f"{_ITEM_ORIGIN_LABELS.get(c.origin, c.origin)} |"
             )
         if any(p.chained for c in coverage.placed_coverages for p in c.pieces):
-            lines += ["", "\\* tomada acrescentada pelo código (as escolhidas não bastavam para o trecho)."]
+            lines += ["", "\\* tomada acrescentada pelo código (tela uniforme: as escolhidas não bastavam)."]
     else:
-        lines.append("Nenhuma cobertura.")
-    lines += ["", "### Respiros (inseridos entre as falas)", ""]
+        lines.append("Nenhuma cobertura: a pessoa fica na tela em toda a fala.")
+    lines += ["", "### Respiros (entre os blocos de assunto)", ""]
     if coverage.placed_breaths:
         lines += [
-            "| # | Depois de | Tomada | Tamanho | No vídeo | Som | Motivo | Origem |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| # | Depois de | Tomada | Tamanho | No vídeo | Som | Relação | Motivo | Origem |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for b in coverage.placed_breaths:
             lines.append(
                 f"| {b.id} | {b.after_sentence} | {b.shot_id} | {BREATH_SIZE_LABELS[b.size]} ({b.duration_sec:.1f}s) | "
-                f"{_cover_cell(b.timeline_start)} | {'da tomada' if b.audio else 'mudo'} | {_cell(b.reason)} | {_ITEM_ORIGIN_LABELS.get(b.origin, b.origin)} |"
+                f"{_cover_cell(b.timeline_start)} | {'da tomada' if b.audio else 'mudo'} | {_cell(b.relation) or '—'} | "
+                f"{_cell(b.reason)} | {_ITEM_ORIGIN_LABELS.get(b.origin, b.origin)} |"
             )
     else:
         lines.append("Nenhum respiro.")
@@ -583,8 +609,8 @@ def build_spine_report(
         *(
             [
                 f"| Cobertura | {len(coverage.placed_coverages)} coberturas, {len(coverage.placed_breaths)} respiros "
-                f"(+{sum(b.duration_sec for b in coverage.placed_breaths):.1f}s), janelas com imagem ruim: "
-                f"{coverage.windows_label} ({coverage.origin_label}) |"
+                f"(+{sum(b.duration_sec for b in coverage.placed_breaths):.1f}s), {len(coverage.topics)} blocos de assunto, "
+                f"imagem ruim: {coverage.bad_label} ({coverage.origin_label}) |"
             ]
             if coverage is not None
             else []

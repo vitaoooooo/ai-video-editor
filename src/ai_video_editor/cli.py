@@ -414,6 +414,13 @@ def handle_edit(args: argparse.Namespace) -> int:
         kind = "uma pasta de clipes" if recipe.multi_clip else "um vídeo só"
         print(f"Erro: a receita '{recipe.name}' edita {kind}; recebido {video_path}.", file=sys.stderr)
         return 1
+    if args.so_plano and "coverage" not in recipe.steps:
+        print(
+            f"Erro: --so-plano mostra o plano da cobertura, e a receita '{recipe.name}' não tem cobertura "
+            "(use uma pasta com `visual` feito, --transcribe e a receita vlog_cobertura).",
+            file=sys.stderr,
+        )
+        return 1
 
     try:
         params = EditPipelineParams(
@@ -483,7 +490,7 @@ def handle_edit(args: argparse.Namespace) -> int:
             if is_folder:
                 result = pipeline.run(
                     video_path, params, force=args.force, coverage=coverage, settings=settings,
-                    use_briefing=settings.uses_briefing,
+                    use_briefing=settings.uses_briefing, plan_only=args.so_plano,
                 )
             else:
                 result = pipeline.run(video_path, params, force=args.force, settings=settings)
@@ -495,6 +502,14 @@ def handle_edit(args: argparse.Namespace) -> int:
     pct = removed / result.original_duration_sec * 100 if result.original_duration_sec > 0 else 0.0
     for warning in result.warnings:
         print(f"Aviso: {warning}", file=sys.stderr)
+    if isinstance(result, SpineResult) and result.plan_only:
+        _print_coverage_plan(result)
+        print(f"\nPlano da cobertura (sem render): {result.plan_path}")
+        print(f"Projeto: {result.project_dir}")
+        print(f"Decisão: {result.project_dir / 'coverage_decision.json'}")
+        print(f"Duração prevista: {result.final_duration_sec:.2f}s")
+        _print_run_summary(result.timings)
+        return 0
     print("\nEdição concluída!")
     print(f"Projeto: {result.project_dir}")
     print(f"Vídeo final: {result.output_path}")
@@ -507,12 +522,7 @@ def handle_edit(args: argparse.Namespace) -> int:
         print(f"Clipes na espinha: {len(result.clips_used)} ({', '.join(result.clips_used)}); não usados: {result.clips_unused}")
         print(f"Timeline: {result.timeline_path}")
         if result.coverage is not None:
-            run = result.coverage
-            breath_sec = sum(b.duration_sec for b in run.placed_breaths)
-            print(
-                f"Cobertura: {len(run.placed_coverages)} coberturas, {len(run.placed_breaths)} respiros "
-                f"(+{breath_sec:.1f}s), janelas com imagem ruim: {run.windows_label} — origem {run.origin_label}"
-            )
+            _print_coverage_plan(result)
         if result.version is not None:
             print(f"Versão: v{result.version}")
     elif result.version is not None:
@@ -523,6 +533,22 @@ def handle_edit(args: argparse.Namespace) -> int:
     )
     _print_run_summary(result.timings)
     return 0
+
+
+def _print_coverage_plan(result: SpineResult) -> None:
+    """Resumo da cobertura e uma linha por bloco de assunto."""
+    run = result.coverage
+    if run is None:
+        return
+    breath_sec = sum(b.duration_sec for b in run.placed_breaths)
+    print(
+        f"Cobertura: {len(run.placed_coverages)} coberturas ({run.covered_sec:.1f}s de {run.spine_duration_sec:.1f}s), "
+        f"{len(run.placed_breaths)} respiros (+{breath_sec:.1f}s), imagem ruim: {run.bad_label} — origem {run.origin_label}"
+    )
+    if run.video_summary:
+        print(f"  Do que o vídeo trata: {run.video_summary}")
+    for line in run.plan:
+        print(f"  {line}")
 
 
 def _print_run_summary(timings: Optional[RunTimings]) -> None:
@@ -1331,8 +1357,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     edit_parser.add_argument(
         "--coverage-provider", "--coverage", dest="coverage", choices=["none", "mock", *_llm_providers()], default=None,
-        help="Diretor de cobertura (receita vlog_cobertura): none = só as janelas obrigatórias, pelo código; "
-        "mock = simulado (padrão: o do Diretor)",
+        help="Diretor de cobertura (receita vlog_cobertura): none = sem IA (um bloco por clipe e só o tapa das "
+        "telas uniformes, pelo código); mock = simulado (padrão: o do Diretor)",
+    )
+    edit_parser.add_argument(
+        "--so-plano", action="store_true",
+        help="Pasta com cobertura: roda até a cobertura e mostra/salva o plano por bloco de assunto "
+        "(coverage_plan.md), sem renderizar",
     )
     edit_parser.add_argument(
         "--coverage-model", default=None, help="Modelo do Diretor de cobertura (padrão: o do Diretor, se o provedor for o mesmo)"
