@@ -111,7 +111,10 @@ Renderiza um plano de edição completo a partir de um arquivo JSON estruturado.
 ```bash
 .\.venv\Scripts\python.exe -m ai_video_editor.cli render output/sample_plan.json
 .\.venv\Scripts\python.exe -m ai_video_editor.cli render output/vlog_timeline.json
+.\.venv\Scripts\python.exe -m ai_video_editor.cli render output/vlog_timeline.json --encoder cpu
 ```
+
+`--encoder auto|cpu|nvenc` (padrão `auto`) e `--gpu-paralelo N` (padrão 3) escolhem o codificador de vídeo, como no `edit` (ver "Render na GPU (NVENC)" em "Usando a GPU"); a saída do comando mostra `Codificador: nvenc` ou `cpu (motivo)`.
 
 #### Formato JSON da Timeline (`core/timeline.py`)
 
@@ -149,7 +152,7 @@ Renderiza um plano de edição completo a partir de um arquivo JSON estruturado.
 
 #### Como a Timeline é renderizada
 1. **Achatamento** (`flatten`, função pura): a base é recortada onde há overlay, gerando uma lista de pedaços de vídeo em sequência (fonte, in, out, frames), mais o plano de áudio (um pedaço por item da base + itens de ambiente com posição absoluta em amostras).
-2. **Pedaços de vídeo em paralelo** (um FFmpeg cada): vídeo sem áudio, padronizado (rotação de metadados aplicada pelo autorotate do FFmpeg, escala preservando a proporção + letterbox/pillarbox, fps de saída, `setsar=1`, `yuv420p` 8 bits).
+2. **Pedaços de vídeo em paralelo** (um FFmpeg cada): vídeo sem áudio, padronizado (rotação de metadados aplicada pelo autorotate do FFmpeg, escala preservando a proporção + letterbox/pillarbox, fps de saída, `setsar=1`, `yuv420p` 8 bits), todos com o mesmo codificador e os mesmos parâmetros (x264 na CPU ou NVENC; ver "Render na GPU (NVENC)").
 3. **Áudio inteiro num só FFmpeg** (roda junto com os pedaços de vídeo; o número de processos não cresce com o número de itens): os itens da base de cada origem são agrupados em sequências com tempos crescentes e sem sobreposição (numa espinha, todos os trechos de um clipe); cada sequência entra uma vez (`-ss/-t` só no intervalo usado) e `asegment` a divide com precisão de amostra (cada amostra vai para um único ramo; os vãos vão para `anullsink`). Cada item vira PCM 48 kHz estéreo com a contagem exata de amostras (derivada dos frames) e os micro fades nos cortes (silêncio gerado se a origem não tem áudio ou o item está com `use_audio: false`); `concat` junta tudo na ordem e o ambiente é posicionado (`adelay` em amostras) e mixado com `amix` sem normalizar volumes, no mesmo grafo. Uma origem cujos itens estão muito fora de ordem (mais de 4 sequências) entra uma vez só e cada item recorta sua cópia (`asplit` + `atrim`). O grafo vai num arquivo (`-/filter_complex`), porque com centenas de itens passaria do limite da linha de comando do Windows. Medido: 300 itens = 1 processo e 3,3 s (antes, 301 processos e 15,4 s).
 4. **Mux** do vídeo concatenado (`-c:v copy`) com o áudio (AAC 192k, 48 kHz), com loudnorm em duas passadas se `loudness` estiver definido. A saída é validada com ffprobe: duração da trilha de vídeo igual à da timeline (tolerância de 1 frame) e fps pedido.
 - Fontes HDR (PQ/HLG) são convertidas para 8 bits **sem tonemapping** e geram um aviso (cores podem ficar lavadas). Fontes de 10 bits SDR são convertidas sem aviso.
@@ -199,6 +202,8 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 | `--subtitle-max-chars` | 42 | Máximo de caracteres por linha da legenda |
 | `--transcript-min-pause` | 1.0 | Pausas removidas a partir desta duração (s) ganham marcador na transcrição comparativa |
 | `--loudness` | `voz` | Normalização de volume do vídeo final (EBU R128, loudnorm em duas passadas): `voz` (-16 LUFS), `youtube` (-14 LUFS), `broadcast` (-23 LUFS), todos com true peak -1,5 dBTP e LRA 11; `off` mantém o volume original. Veja "Normalização de volume" abaixo |
+| `--encoder` | `auto` | Codificador de vídeo do render: `auto` = NVENC (GPU NVIDIA) se disponível, senão CPU; `cpu` = x264; `nvenc` = exige a GPU (falha antes das etapas se ela não puder ser usada). Ver "Render na GPU (NVENC)" |
+| `--gpu-paralelo` | 3 | Pedaços codificados ao mesmo tempo no NVENC (a GeForce limita as sessões simultâneas) |
 | `--force` | desligado | Refaz todas as etapas, ignorando o cache |
 | `--no-live` | desligado | Sem linha de andamento ao vivo: só as linhas finais de cada etapa (automático quando a saída não é um terminal, ex: redirecionada para arquivo). Vale também para `revise` |
 | `--projects-dir` | `output/projects` | Diretório base dos projetos |
@@ -226,7 +231,7 @@ Cada vídeo ganha uma pasta `output/projects/<nome-do-video>-<hash>/` com:
 
 **Receitas:** uma receita (`recipes/`) é um dado: nome, descrição, etapas em ordem, dependências entre elas e `multi_clip` (receita que trabalha com vários clipes de uma pasta; o Produtor e a CLI usam esse campo para casar a receita com o material). As etapas possíveis são as peças do catálogo `PIECES` (`catalog`, `probe`, `silences`, `transcription`, `director`, `plan`, `timeline`, `render`, `subtitles`, `report`), e cada peça declara o que sempre exige antes dela (ex.: `director` precisa de `transcription`, `timeline` precisa de `catalog` e `silences`); o que depende da receita (ex.: `render` depois de `plan` na `fala` e depois de `timeline` na `vlog`) fica em `requires`. Receitas registradas: `fala` (um vídeo falado) e `vlog` (pasta de clipes, `multi_clip=True`). Ao criar uma receita, a validação recusa etapa desconhecida, etapa repetida, dependência faltando e ordem impossível (inclusive circular), com mensagem em português (`Receita 'x': ordem impossível: 'silences' precisa vir depois de 'probe'.`). O `EditPipeline` executa as etapas na ordem da receita, e a numeração `[n/N]` do terminal vem dela. A receita `fala` é exatamente o fluxo acima: mesmos fingerprints, cache e saída (garantido por `tests/test_reference_fala.py`, que compara o `edit` completo com um snapshot em `tests/data/reference_fala/`; para regenerá-lo depois de uma mudança intencional: `UPDATE_REFERENCE=1 python -m pytest -q tests/test_reference_fala.py`, e revisar o diff). A visão de receitas e do Produtor está em [ARQUITETURA.md](ARQUITETURA.md).
 
-**Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` (ou alternar entre `auto` e um número) refaz silêncios, plano, render e relatório; mudar só um padding ou o `--loudness` refaz a partir do plano; sem Diretor, a transcrição nunca força novo render. As legendas dependem do plano, da transcrição e de `--subtitle-max-chars`: mudar só esse limite refaz apenas legendas e relatório, sem novo render. O Diretor é refeito quando mudam a transcrição, o briefing ou o modelo. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
+**Cache:** cada etapa é pulada se o artefato existe e os parâmetros que a afetam não mudaram. Mudar `--threshold-db` (ou alternar entre `auto` e um número) refaz silêncios, plano, render e relatório; mudar só um padding ou o `--loudness` refaz a partir do plano; sem Diretor, a transcrição nunca força novo render. As legendas dependem do plano, da transcrição e de `--subtitle-max-chars`: mudar só esse limite refaz apenas legendas e relatório, sem novo render. O Diretor é refeito quando mudam a transcrição, o briefing ou o modelo. O codificador (`--encoder`) só entra no fingerprint do render: trocar de CPU para NVENC refaz render e relatório, nada antes. O hash do vídeo usa o tamanho e blocos do início, meio e fim do arquivo, então é rápido mesmo para arquivos grandes.
 
 
 ### Opção F: Revisar uma edição com pedidos em linguagem natural (`revise` e `versions`)
@@ -497,6 +502,17 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 - O modelo, o dispositivo e o compute_type efetivos aparecem no `transcript.json` (`model_used`, ex.: `faster-whisper:large-v3-turbo (cuda, float16)`), no relatório e entram no cache da transcrição.
 - **Atenção ao atualizar:** o padrão mudou de `small` para `auto`. Em máquina com GPU, projetos já transcritos serão transcritos de novo na próxima execução do `edit` (o modelo efetivo mudou e faz parte do cache), com o download único do `large-v3-turbo`. Na CPU o `auto` resolve para `small`, igual ao padrão antigo, e o cache continua válido. Para manter o cache de antes numa máquina com GPU, passe `--whisper-model small`.
 
+#### Render na GPU (NVENC)
+Os pedaços do render podem ser codificados no NVENC da placa NVIDIA (`--encoder`, no `edit` e no `render`). Decodificação e filtros continuam na CPU; só a codificação H.264 vai para a GPU.
+
+- **`auto` (padrão):** usa o NVENC se o FFmpeg listar o `h264_nvenc` (`ffmpeg -encoders`) **e** uma codificação de teste de 1 s (`testsrc` → muxer `null`, com os mesmos parâmetros do render) funcionar (driver e placa presentes); senão, CPU. A detecção roda uma vez por execução. `cpu` não detecta nada; `nvenc` exige a GPU e falha com o motivo antes das etapas.
+- **Parâmetros** (`renderer/encoders.py`): `h264_nvenc -preset p5 -tune hq -rc vbr -cq 25 -b:v 0 -profile:v high -g 250 -bf 3 -pix_fmt yuv420p`, iguais em todos os pedaços. Na CPU continua `libx264 -preset fast -crf 22 -pix_fmt yuv420p`. Como os pedaços são unidos com concat `-c copy`, um vídeo nunca mistura codificadores nem parâmetros.
+- **Paralelismo:** no NVENC, no máximo `--gpu-paralelo` (padrão 3) pedaços codificam ao mesmo tempo; o processo de áudio da Timeline não conta. Na CPU, o limite de sempre (`min(8, núcleos)`).
+- **Volta para a CPU:** se um pedaço falhar por causa do NVENC (sessões, memória, driver; mensagem com `nvenc`/`cuda`), o render **inteiro** é refeito na CPU, com aviso no terminal e no relatório. Outros erros (origem corrompida etc.) falham como antes.
+- **Onde aparece:** a linha da etapa render (`45,10s, 102,3 MB, nvenc`), a linha "Codificador de vídeo" do `edit_report.md` e a métrica `encoder` da etapa render no `project.json`: `nvenc`, `cpu (--encoder cpu)`, `cpu (sem GPU: <motivo>)` ou `cpu (NVENC falhou: <erro>)`.
+- **Cache:** na CPU o fingerprint do render é o de antes (renders antigos continuam válidos); no NVENC entram o nome e os parâmetros. Um render que caiu para a CPU fica registrado com o fingerprint da CPU, então um novo pedido de NVENC tenta a GPU de novo.
+- **Testes:** a suíte não usa a GPU (o `conftest.py` faz o `auto` ver "sem GPU"); a detecção e a volta para a CPU são testadas com FFmpeg falso.
+
 ---
 
 ## 5. Estrutura dos Módulos
@@ -507,6 +523,7 @@ Requer driver NVIDIA com suporte a CUDA 12. As pastas `bin` desses pacotes são 
 * [`src/ai_video_editor/renderer/timeline_compiler.py`](../src/ai_video_editor/renderer/timeline_compiler.py) e [`timeline_executor.py`](../src/ai_video_editor/renderer/timeline_executor.py): render da Timeline (inspeção das origens, pedaços padronizados em paralelo, áudio 48 kHz com ambiente, mux, loudnorm e validação de duração/fps).
 * [`src/ai_video_editor/renderer/compiler.py`](../src/ai_video_editor/renderer/compiler.py): Compilação segura de filtros FFmpeg sem shell injection.
 * [`src/ai_video_editor/renderer/executor.py`](../src/ai_video_editor/renderer/executor.py): Execução isolada via `subprocess` e validação com FFprobe.
+* [`src/ai_video_editor/renderer/encoders.py`](../src/ai_video_editor/renderer/encoders.py): Codificador do render (x264 ou NVENC): detecção do NVENC com cache, parâmetros, escolha `auto/cpu/nvenc` e o rótulo com o motivo.
 * [`src/ai_video_editor/renderer/loudness.py`](../src/ai_video_editor/renderer/loudness.py): Normalização de loudness em duas passadas (medição com loudnorm, parse do JSON, filtro da segunda passada).
 * [`src/ai_video_editor/renderer/ffmpeg_locator.py`](../src/ai_video_editor/renderer/ffmpeg_locator.py): Descoberta resiliente de executáveis FFmpeg/FFprobe.
 

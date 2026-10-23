@@ -67,7 +67,7 @@ from ai_video_editor.intelligence.retry import RetryEvent, RetryPolicy
 from ai_video_editor.llm.chain import ModelChain
 from ai_video_editor.planning.schema import TimeRange
 from ai_video_editor.recipes import DEFAULT_RECIPE, Recipe, get_recipe
-from ai_video_editor.renderer.executor import RenderExecutor
+from ai_video_editor.renderer.executor import RenderExecutor, RenderResult
 from ai_video_editor.renderer.loudness import LoudnessResult
 from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
 from ai_video_editor.subtitles import build_subtitle_blocks, write_srt
@@ -152,6 +152,8 @@ class _EditState:
     final_duration: float = 0.0
     loudness: Optional[LoudnessResult] = None
     subtitle_blocks: Optional[int] = None
+    encoder_label: str = "cpu"
+    render_warnings: list[str] = field(default_factory=list)
 
 
 class EditPipeline:
@@ -304,6 +306,7 @@ class EditPipeline:
             warnings=[
                 *(director_run.warnings if director_run is not None else []),
                 *(loudness.warnings if loudness is not None else []),
+                *state.render_warnings,
             ],
         )
 
@@ -493,7 +496,10 @@ class EditPipeline:
         return outcome
 
     def _render(self, s: _EditState) -> StageOutcome:
-        s.fp_render = fingerprint("render", s.fp_plan, s.params.loudness)
+        # O codificador entra só aqui (CPU = o fingerprint de antes); as etapas anteriores não mudam.
+        encoder = self.render_executor.resolve_encoder()
+        s.fp_render = fingerprint("render", s.fp_plan, s.params.loudness, *encoder.fingerprint_parts)
+        used: list[RenderResult] = []
 
         def do_render() -> tuple[dict, str]:
             result = self.render_executor.execute(
@@ -502,17 +508,29 @@ class EditPipeline:
                     "render", StageProgress(done=done, total=total, unit="items")
                 ),
             )
+            used.append(result)
             metrics = {
                 "duration_sec": round(result.duration_sec, 3),
                 "size_bytes": result.size_bytes,
+                "encoder": result.encoder.label,
             }
             if result.loudness is not None:
                 metrics.update(result.loudness.to_metrics())
-            return metrics, f"{result.duration_sec:.2f}s, {result.size_bytes / 1_048_576:.1f} MB"
+            if result.warnings:
+                metrics["warnings"] = " | ".join(result.warnings)
+            return metrics, f"{result.duration_sec:.2f}s, {result.size_bytes / 1_048_576:.1f} MB, {result.encoder.label}"
 
         outcome = s.run.stage("render", s.fp_render, s.output_path.name, do_render)
-        s.final_duration = float(s.run.manifest.stages["render"].metrics["duration_sec"])
-        s.loudness = LoudnessResult.from_metrics(s.run.manifest.stages["render"].metrics)
+        if used and used[0].encoder.name != encoder.name:
+            # Voltou para a CPU no meio: o vídeo é de CPU e fica registrado como tal.
+            s.fp_render = s.run.rekey(
+                "render", fingerprint("render", s.fp_plan, s.params.loudness, *used[0].encoder.fingerprint_parts)
+            )
+        metrics = s.run.manifest.stages["render"].metrics
+        s.final_duration = float(metrics["duration_sec"])
+        s.loudness = LoudnessResult.from_metrics(metrics)
+        s.encoder_label = str(metrics.get("encoder", "cpu"))
+        s.render_warnings = [w for w in str(metrics.get("warnings", "")).split(" | ") if w]
         return outcome
 
     def _subtitles(self, s: _EditState) -> StageOutcome:
@@ -542,7 +560,8 @@ class EditPipeline:
         """Relatório (+ transcrição comparativa, que só existe com transcrição)."""
         params, plan, director_run, project_dir = s.params, s.plan, s.director_run, s.project_dir
         fp_report = fingerprint(
-            "report", REPORT_FORMAT, s.fp_render, s.fp_director, s.fp_subtitles, s.fp_transcript, params
+            "report", REPORT_FORMAT, s.fp_render, s.fp_director, s.fp_subtitles, s.fp_transcript, params,
+            s.encoder_label,
         )
         removed = removed_ranges(
             [TimeRange(start_sec=x.start_sec, end_sec=x.end_sec) for x in plan.segments],
@@ -581,6 +600,7 @@ class EditPipeline:
                 comparison=comparison,
                 removal_label="Diretor" if has_decision else None,
                 loudness=s.loudness,
+                encoder=s.encoder_label,
             )
             (project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
             metrics: dict = {"cuts": len(removed)}
@@ -690,6 +710,12 @@ class _Run:
         self.recorder.record(name, "ran", elapsed)
         self.pipeline._emit(name, "done", f"{detail} ({format_duration(elapsed)})")
         return "ran"
+
+    def rekey(self, name: StageName, fp: str) -> str:
+        """Troca o fingerprint de uma etapa recém-concluída (o resultado saiu diferente do pedido)."""
+        self.manifest.stages[name].fingerprint = fp
+        self._save()
+        return fp
 
     def skip(self, name: StageName, detail: str, artifact: Optional[str] = None) -> StageOutcome:
         """Etapa não pedida. Um artefato válido de execução anterior é preservado.

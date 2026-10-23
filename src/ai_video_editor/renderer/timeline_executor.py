@@ -5,13 +5,21 @@ import os
 import subprocess
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Tuple
 
 from ai_video_editor.core.timeline import Timeline
-from ai_video_editor.renderer.executor import RenderExecutor, RenderProgress
+from ai_video_editor.renderer.encoders import (
+    DEFAULT_GPU_WORKERS,
+    EncoderChoice,
+    EncoderSelection,
+    NvencFailure,
+    fallback_selection,
+    fallback_warning,
+    select_encoder,
+)
+from ai_video_editor.renderer.executor import RenderExecutor, RenderProgress, run_parallel
 from ai_video_editor.renderer.ffmpeg_locator import get_ffprobe_path
 from ai_video_editor.renderer.loudness import (
     LoudnessResult,
@@ -35,6 +43,7 @@ class TimelineRenderResult:
     command_executed: list[str]
     loudness: Optional[LoudnessResult] = None
     warnings: list[str] = field(default_factory=list)
+    encoder: EncoderSelection = field(default_factory=EncoderSelection)
 
 
 class TimelineRenderExecutor:
@@ -46,11 +55,22 @@ class TimelineRenderExecutor:
         ffprobe_bin: Optional[Path] = None,
         max_workers: Optional[int] = None,
         temp_root: Optional[Path] = None,
+        encoder: EncoderChoice = "auto",
+        gpu_workers: int = DEFAULT_GPU_WORKERS,
     ):
         self.compiler = compiler or TimelineCompiler()
         self.ffprobe_bin = ffprobe_bin or get_ffprobe_path()
         self.max_workers = max_workers or min(8, os.cpu_count() or 2)
         self.temp_root = temp_root
+        self.encoder = encoder
+        self.gpu_workers = gpu_workers
+        self._selection: Optional[EncoderSelection] = None
+
+    def resolve_encoder(self) -> EncoderSelection:
+        """Codificador pedido resolvido (`auto` detecta o NVENC uma vez; o resultado fica guardado)."""
+        if self._selection is None:
+            self._selection = select_encoder(self.encoder, self.compiler.ffmpeg_bin)
+        return self._selection
 
     def probe_video(self, output_file: Path) -> tuple[float, int, Tuple[int, int], float]:
         """Duração, número de frames, resolução e fps da trilha de vídeo da saída."""
@@ -108,38 +128,38 @@ class TimelineRenderExecutor:
     def execute(self, timeline: Timeline, on_progress: Optional[RenderProgress] = None) -> TimelineRenderResult:
         """Renderiza a Timeline em `timeline.output_path`.
 
-        Pedaços de vídeo (sem áudio) rodam em paralelo (até `max_workers`), junto com o único
-        processo de áudio (principal recortado e concatenado + ambiente mixado); depois o áudio é
-        medido pelo loudnorm (se pedido) e unido ao vídeo concatenado num mux final. Temporários
-        apagados mesmo com erro.
+        Pedaços de vídeo (sem áudio) rodam em paralelo (até `max_workers`; no NVENC, até
+        `gpu_workers` pedaços na GPU ao mesmo tempo), junto com o único processo de áudio (principal
+        recortado e concatenado + ambiente mixado); depois o áudio é medido pelo loudnorm (se
+        pedido) e unido ao vídeo concatenado num mux final. Temporários apagados mesmo com erro.
+        Se o NVENC falhar em algum pedaço, o render inteiro é refeito na CPU, com aviso.
 
         Raises:
             RuntimeError: falha do FFmpeg ou saída com duração/fps diferentes do esperado.
         """
+        encoder = self.resolve_encoder()
+        try:
+            return self._execute(timeline, encoder, on_progress)
+        except NvencFailure as failure:
+            encoder = fallback_selection(failure)
+            result = self._execute(timeline, encoder, on_progress)
+            result.warnings.append(fallback_warning(encoder))
+            return result
+
+    def _execute(
+        self, timeline: Timeline, encoder: EncoderSelection, on_progress: Optional[RenderProgress]
+    ) -> TimelineRenderResult:
         timeline.output_path.parent.mkdir(parents=True, exist_ok=True)
         if self.temp_root is not None:
             self.temp_root.mkdir(parents=True, exist_ok=True)
 
         with tempfile.TemporaryDirectory(prefix="ave_timeline_", dir=self.temp_root) as tmp:
-            job = self.compiler.compile(timeline, Path(tmp))
+            job = self.compiler.compile(timeline, Path(tmp), encoder.video_args)
             job.audio_graph_path.write_text(job.audio_graph, encoding="utf-8")
-
-            with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-                # O áudio vai primeiro: é o processo mais longo e não depende dos pedaços de vídeo.
-                commands = [job.audio_command, *job.piece_commands]
-                futures = [pool.submit(RenderExecutor._run_ffmpeg, cmd) for cmd in commands]
-                total = len(futures)
-                if on_progress is not None:
-                    on_progress(0, total)
-                try:
-                    for done, future in enumerate(as_completed(futures), start=1):
-                        future.result()
-                        if on_progress is not None:
-                            on_progress(done, total)
-                except BaseException:
-                    for pending in futures:
-                        pending.cancel()
-                    raise
+            # O áudio vai primeiro: é o processo mais longo e não depende dos pedaços de vídeo.
+            run_parallel(
+                [job.audio_command, *job.piece_commands], self.max_workers, on_progress, encoder, self.gpu_workers
+            )
 
             job.video_list_path.write_text(job.video_list_content, encoding="utf-8")
             audio_filter, loudness = self._normalize_loudness(timeline, job)
@@ -170,4 +190,5 @@ class TimelineRenderExecutor:
             command_executed=mux,
             loudness=loudness,
             warnings=job.warnings + (loudness.warnings if loudness else []),
+            encoder=encoder,
         )

@@ -4,14 +4,25 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.renderer.compiler import FFmpegCompiler, SegmentedRender
+from ai_video_editor.renderer.encoders import (
+    DEFAULT_GPU_WORKERS,
+    EncoderChoice,
+    EncoderSelection,
+    NvencFailure,
+    fallback_selection,
+    fallback_warning,
+    is_nvenc_failure,
+    select_encoder,
+)
 from ai_video_editor.renderer.loudness import (
     LoudnessResult,
     apply_filter,
@@ -34,6 +45,56 @@ class RenderResult:
     size_bytes: int
     command_executed: list[str]
     loudness: Optional[LoudnessResult] = None  # só quando o plano pede normalização
+    encoder: EncoderSelection = field(default_factory=EncoderSelection)
+    warnings: list[str] = field(default_factory=list)
+
+
+def run_parallel(
+    commands: list[list[str]],
+    workers: int,
+    on_progress: Optional[RenderProgress] = None,
+    encoder: Optional[EncoderSelection] = None,
+    gpu_workers: int = DEFAULT_GPU_WORKERS,
+) -> None:
+    """Roda os comandos FFmpeg em até `workers` processos; a primeira falha cancela os pendentes.
+
+    Com o NVENC, no máximo `gpu_workers` comandos que codificam na GPU rodam ao mesmo tempo (os
+    outros, ex. o áudio, não contam), e uma falha que vem dele vira `NvencFailure` (o chamador
+    refaz tudo na CPU).
+    """
+    nvenc = encoder is not None and encoder.name == "nvenc"
+    gpu_slots = threading.BoundedSemaphore(max(1, gpu_workers))
+    # Depois de uma falha, quem ainda espera vaga na GPU desiste (já começou, então cancel() não o pega).
+    stopped = threading.Event()
+
+    def run(cmd: list[str]) -> str:
+        if not nvenc or "h264_nvenc" not in cmd:
+            return RenderExecutor._run_ffmpeg(cmd)
+        try:
+            with gpu_slots:
+                if stopped.is_set():
+                    return ""
+                return RenderExecutor._run_ffmpeg(cmd)
+        except RuntimeError as exc:
+            if is_nvenc_failure(str(exc)):
+                raise NvencFailure(str(exc)) from exc
+            raise
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(run, cmd) for cmd in commands]
+        total = len(futures)
+        if on_progress is not None:
+            on_progress(0, total)
+        try:
+            for done, future in enumerate(as_completed(futures), start=1):
+                future.result()
+                if on_progress is not None:
+                    on_progress(done, total)
+        except BaseException:
+            stopped.set()
+            for pending in futures:
+                pending.cancel()
+            raise
 
 
 class RenderExecutor:
@@ -45,12 +106,24 @@ class RenderExecutor:
         ffprobe_bin: Optional[Path] = None,
         max_workers: Optional[int] = None,
         temp_root: Optional[Path] = None,
+        encoder: EncoderChoice = "auto",
+        gpu_workers: int = DEFAULT_GPU_WORKERS,
     ):
         self.compiler = compiler or FFmpegCompiler()
         self.ffprobe_bin = ffprobe_bin or get_ffprobe_path()
         # Limita quantos ffmpeg rodam ao mesmo tempo (memória independe do total de segmentos)
         self.max_workers = max_workers or min(8, os.cpu_count() or 2)
         self.temp_root = temp_root
+        self.encoder = encoder
+        # Na GPU, menos processos: a GeForce limita as sessões NVENC simultâneas.
+        self.gpu_workers = gpu_workers
+        self._selection: Optional[EncoderSelection] = None
+
+    def resolve_encoder(self) -> EncoderSelection:
+        """Codificador pedido resolvido (`auto` detecta o NVENC uma vez; o resultado fica guardado)."""
+        if self._selection is None:
+            self._selection = select_encoder(self.encoder, self.compiler.ffmpeg_bin)
+        return self._selection
 
     def probe_output(self, output_file: Path) -> Tuple[float, Tuple[int, int]]:
         """Extracts verified duration and resolution from rendered video."""
@@ -126,34 +199,33 @@ class RenderExecutor:
     def execute(self, plan: EditPlan, on_progress: Optional[RenderProgress] = None) -> RenderResult:
         """Renders the edit plan to disk and validates output integrity.
 
-        Cada segmento vira um arquivo intermediário (em paralelo, até `max_workers`),
-        depois os intermediários são unidos pelo concat demuxer. Os temporários são
+        Cada segmento vira um arquivo intermediário (em paralelo, até `max_workers`; no NVENC, até
+        `gpu_workers` ao mesmo tempo), depois os intermediários são unidos pelo concat demuxer. Os temporários são
         apagados ao final, mesmo em caso de erro. `on_progress` recebe (trechos prontos, total)
         no início e a cada trecho concluído. Com `plan.loudness`, uma passada de medição lê
-        o áudio concatenado antes do concat final, que aplica o loudnorm.
+        o áudio concatenado antes do concat final, que aplica o loudnorm. Se o NVENC falhar em
+        algum trecho, o render inteiro é refeito na CPU (o resultado diz o codificador e o motivo).
         """
+        encoder = self.resolve_encoder()
+        try:
+            return self._execute(plan, encoder, on_progress)
+        except NvencFailure as failure:
+            encoder = fallback_selection(failure)
+            result = self._execute(plan, encoder, on_progress)
+            result.warnings.append(fallback_warning(encoder))
+            return result
+
+    def _execute(
+        self, plan: EditPlan, encoder: EncoderSelection, on_progress: Optional[RenderProgress]
+    ) -> RenderResult:
         # Ensure target directory exists
         plan.output_path.parent.mkdir(parents=True, exist_ok=True)
         if self.temp_root is not None:
             self.temp_root.mkdir(parents=True, exist_ok=True)
 
         with tempfile.TemporaryDirectory(prefix="ave_render_", dir=self.temp_root) as tmp:
-            job = self.compiler.compile_segmented(plan, Path(tmp))
-
-            with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-                futures = [pool.submit(self._run_ffmpeg, cmd) for cmd in job.segment_commands]
-                total = len(futures)
-                if on_progress is not None:
-                    on_progress(0, total)
-                try:
-                    for done, future in enumerate(as_completed(futures), start=1):
-                        future.result()
-                        if on_progress is not None:
-                            on_progress(done, total)
-                except BaseException:
-                    for pending in futures:
-                        pending.cancel()
-                    raise
+            job = self.compiler.compile_segmented(plan, Path(tmp), encoder.video_args)
+            run_parallel(job.segment_commands, self.max_workers, on_progress, encoder, self.gpu_workers)
 
             job.concat_list_path.write_text(job.concat_list_content, encoding="utf-8")
             concat_command, loudness = self._normalize_loudness(plan, job)
@@ -179,4 +251,5 @@ class RenderExecutor:
             size_bytes=file_size,
             command_executed=concat_command,
             loudness=loudness,
+            encoder=encoder,
         )
