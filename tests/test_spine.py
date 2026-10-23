@@ -399,7 +399,7 @@ def test_cli_rejects_recipe_for_the_wrong_input(vlog_folder, tmp_path, capsys):
     assert handle_edit(build_parser().parse_args(["edit", str(vlog_folder), "--receita", "fala"])) == 1
     assert "edita um vídeo só" in capsys.readouterr().err
     args = build_parser().parse_args(["edit", str(vlog_folder), "--pedido", "foque na praia"])
-    assert args.instructions == "foque na praia"
+    assert args.pedido == "foque na praia" and args.instructions is None
 
 
 # --- render de verdade ---

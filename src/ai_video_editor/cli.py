@@ -311,20 +311,105 @@ def default_edit_recipe(video_path: Path, is_folder: bool, transcribe: bool, pro
     return DEFAULT_FOLDER_RECIPE
 
 
+def _edit_briefing(args: argparse.Namespace, video_path: Path):
+    """Briefing do `edit` (`EditBriefing`): desligado por `--sem-briefing`, reaproveitado ou gerado agora."""
+    from ai_video_editor.pipeline.briefing import EditBriefing, briefing_location, prepare_briefing
+
+    if args.sem_briefing:
+        return EditBriefing(None, "desligado", briefing_location(video_path, Path(args.projects_dir)))
+    status = LiveStatus(live=False if args.no_live else None)
+    printer = CatalogProgressPrinter(status)
+    with status:
+        return prepare_briefing(
+            video_path, args.pedido, Path(args.projects_dir), lambda: _announce_producer(_build_producer(args)),
+            forced_recipe=args.receita, on_progress=printer, on_stage_progress=printer.progress,
+        )
+
+
+def _announce_producer(producer):
+    if producer is not None and producer.model_chain:
+        print(f"[produtor] {producer.model_chain[0]}", flush=True)
+    return producer
+
+
+def _briefing_recipe_problem(recipe: Recipe, is_folder: bool, video_path: Path, projects_dir: Path) -> Optional[str]:
+    """Por que a receita escolhida pelo briefing não serve para este material (None = serve)."""
+    if recipe.multi_clip != is_folder:
+        kind = "uma pasta de clipes" if recipe.multi_clip else "um vídeo só"
+        given = "uma pasta" if is_folder else "um vídeo"
+        return f"edita {kind}, mas recebido {given} ({video_path})"
+    if "visual" in recipe.steps:
+        from ai_video_editor.pipeline.clips import catalog_location
+
+        project_dir, _ = catalog_location(video_path.resolve(), projects_dir)
+        if not (project_dir / "visual" / "visual.json").is_file():
+            return "precisa da análise visual da pasta, e ela não existe (rode `visual <pasta>` antes)"
+    return None
+
+
+def _print_settings(settings, path: Optional[Path]) -> None:
+    """O "Entendi" do briefing e os valores efetivos com a origem de cada um."""
+    from ai_video_editor.pipeline.report import SETTING_LABELS, format_setting_value
+
+    by = "IA" if settings.briefing_origin == "ia" else "regra sem IA"
+    print(settings.understood or "")
+    print(f"Briefing: {settings.briefing} ({by}; {path})")
+    for name, label in SETTING_LABELS.items():
+        setting = getattr(settings, name)
+        print(f"  {label}: {format_setting_value(name, setting.value)} ({setting.origin_label})")
+
+
 def handle_edit(args: argparse.Namespace) -> int:
-    """Edita um vídeo falado (receita `fala`) ou uma pasta de clipes (receitas `vlog`/`vlog_cobertura`), com cache por etapa."""
+    """Edita um vídeo falado (receita `fala`) ou uma pasta de clipes (receitas `vlog`/`vlog_cobertura`), com cache por etapa.
+
+    Com `--pedido` (ou um `briefing.json` atual no projeto), o briefing do Produtor dá receita, intensidade,
+    ritmo, instruções e duração alvo; opção explícita da CLI > briefing > padrão.
+    """
+    from ai_video_editor.pipeline.briefing import resolve_settings
+
     video_path = Path(args.video)
     is_folder = video_path.is_dir()
     if not is_folder and not video_path.is_file():
         print(f"Erro: vídeo ou pasta não encontrado: {video_path}", file=sys.stderr)
         return 1
+    if args.receita is not None:
+        try:
+            get_recipe(args.receita)
+        except RecipeError as e:
+            print(f"Erro: {e}", file=sys.stderr)
+            return 1
+
     try:
-        recipe = get_recipe(
-            args.receita or default_edit_recipe(video_path, is_folder, args.transcribe, Path(args.projects_dir))
-        )
-    except RecipeError as e:
-        print(f"Erro: {e}", file=sys.stderr)
+        edit_briefing = _edit_briefing(args, video_path)
+    except Exception as e:
+        print(f"Erro: briefing: {e}", file=sys.stderr)
         return 1
+    # Sem briefing, o `--pedido` vai direto ao Diretor (como antes do Produtor no `edit`).
+    instructions = args.instructions
+    if instructions is None and edit_briefing.briefing is None:
+        instructions = args.pedido
+    settings = resolve_settings(
+        edit_briefing,
+        default_edit_recipe(video_path, is_folder, args.transcribe, Path(args.projects_dir)),
+        recipe=args.receita, intensity=args.intensity, pace=args.ritmo, instructions=instructions,
+        target_duration_sec=args.target_duration,
+    )
+    for note in settings.notes:
+        print(f"Aviso: {note}", file=sys.stderr)
+    try:
+        recipe = get_recipe(str(settings.recipe.value))
+    except RecipeError as e:
+        print(f"Erro: o briefing ({edit_briefing.path}) escolheu uma receita que não existe. {e}", file=sys.stderr)
+        return 1
+    if settings.recipe.origin == "briefing":
+        problem = _briefing_recipe_problem(recipe, is_folder, video_path, Path(args.projects_dir))
+        if problem is not None:
+            print(
+                f"Erro: o briefing ({edit_briefing.path}) escolheu a receita '{recipe.name}', que {problem}. "
+                "Escolha outra com --receita, refaça o briefing com outro --pedido ou use --sem-briefing.",
+                file=sys.stderr,
+            )
+            return 1
     if recipe.multi_clip != is_folder:
         kind = "uma pasta de clipes" if recipe.multi_clip else "um vídeo só"
         print(f"Erro: a receita '{recipe.name}' edita {kind}; recebido {video_path}.", file=sys.stderr)
@@ -353,11 +438,12 @@ def handle_edit(args: argparse.Namespace) -> int:
             director_thinking=args.director_thinking,
             director_timeout_sec=args.director_timeout,
             api_retries=args.api_retries,
+            pacing=settings.pace.value,
             brief=UserBrief(
-                intensity=args.intensity,
-                target_duration_sec=args.target_duration,
+                intensity=settings.intensity.value,
+                target_duration_sec=settings.target_duration_sec.value,
                 remove_fillers=not args.keep_fillers,
-                instructions=args.instructions,
+                instructions=settings.instructions.value,
             ),
             subtitles=not args.no_subtitles,
             subtitle=SubtitleParams(max_chars_per_line=args.subtitle_max_chars),
@@ -376,7 +462,9 @@ def handle_edit(args: argparse.Namespace) -> int:
         print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
         return 1
 
-    if is_folder and args.receita is None:
+    if settings.uses_briefing:
+        _print_settings(settings, edit_briefing.path)
+    elif is_folder and args.receita is None:
         why = " (a pasta tem análise visual)" if recipe.name == COVERAGE_FOLDER_RECIPE else ""
         print(f"Receita: {recipe.name}{why}")
     status = LiveStatus(live=False if args.no_live else None)
@@ -393,9 +481,12 @@ def handle_edit(args: argparse.Namespace) -> int:
         executor.resolve_encoder()  # `--encoder nvenc` sem GPU falha aqui, antes das etapas
         with status:
             if is_folder:
-                result = pipeline.run(video_path, params, force=args.force, coverage=coverage)
+                result = pipeline.run(
+                    video_path, params, force=args.force, coverage=coverage, settings=settings,
+                    use_briefing=settings.uses_briefing,
+                )
             else:
-                result = pipeline.run(video_path, params, force=args.force)
+                result = pipeline.run(video_path, params, force=args.force, settings=settings)
     except Exception as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 1
@@ -1260,20 +1351,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Tempo limite em segundos da chamada ao Diretor de cobertura (padrão: o do Diretor)",
     )
     edit_parser.add_argument(
-        "--intensity",
+        "--pedido", default=None,
+        help="Pedido livre (ex: \"vlog de 8 minutos, ritmo rápido\"): o Produtor escreve o briefing.json do projeto "
+        "(reaproveitado enquanto o pedido e o material não mudam), que dá receita, intensidade, ritmo, "
+        "instruções e duração alvo; com --sem-briefing, vai direto ao Diretor",
+    )
+    edit_parser.add_argument(
+        "--sem-briefing", action="store_true",
+        help="Não usa nem gera o briefing.json (valores só da CLI e padrões)",
+    )
+    edit_parser.add_argument(
+        "--intensity", "--intensidade", dest="intensity",
         choices=["light", "medium", "aggressive"],
-        default="light",
-        help="Quanto o Diretor deve cortar (padrão: light)",
+        default=None,
+        help="Quanto o Diretor deve cortar (padrão: a do briefing, senão light)",
+    )
+    edit_parser.add_argument(
+        "--ritmo", "--pace", dest="ritmo", choices=["natural", "normal", "tight"], default=None,
+        help="Ritmo das pausas: natural (mais folga), normal ou tight (menos) (padrão: o do briefing, senão normal)",
     )
     edit_parser.add_argument(
         "--target-duration",
         type=float,
         default=None,
-        help="Duração final desejada em segundos (opcional)",
+        help="Duração final desejada em segundos, informada ao Diretor (padrão: a do briefing, senão livre)",
     )
     edit_parser.add_argument(
-        "--instructions", "--pedido", dest="instructions", default=None,
-        help="Pedido livre ao Diretor (ex: 'corte as piadas')",
+        "--instructions", dest="instructions", default=None,
+        help="Instruções diretas ao Diretor (ex: 'corte as piadas'); valem mais que as do briefing",
     )
     edit_parser.add_argument(
         "--keep-fillers",

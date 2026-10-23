@@ -56,11 +56,13 @@ from ai_video_editor.pipeline.schema import (
     EditDiff,
     EditPipelineParams,
     EditPipelineResult,
+    EditSettings,
     ProjectManifest,
     StageName,
     StageOutcome,
     StageProgress,
     StageRecord,
+    settings_fingerprint,
 )
 from ai_video_editor.planning import build_edit_plan, removed_ranges
 from ai_video_editor.intelligence.retry import RetryEvent, RetryPolicy
@@ -154,6 +156,7 @@ class _EditState:
     subtitle_blocks: Optional[int] = None
     encoder_label: str = "cpu"
     render_warnings: list[str] = field(default_factory=list)
+    settings: Optional[EditSettings] = None
 
 
 class EditPipeline:
@@ -243,8 +246,13 @@ class EditPipeline:
         video_path: Path,
         params: Optional[EditPipelineParams] = None,
         force: bool = False,
+        settings: Optional[EditSettings] = None,
     ) -> EditPipelineResult:
-        """Executa (ou retoma do cache) as etapas da receita, na ordem dela, e devolve o resumo."""
+        """Executa (ou retoma do cache) as etapas da receita, na ordem dela, e devolve o resumo.
+
+        `settings`: valores efetivos e a origem de cada um (CLI, briefing ou padrão), para o `project.json`
+        e o relatório; não muda nenhuma etapa além do relatório.
+        """
         video_path = Path(video_path).resolve()
         if not video_path.is_file():
             raise VideoNotFoundError(video_path)
@@ -260,6 +268,7 @@ class EditPipeline:
             manifest.params = params
         else:
             manifest = ProjectManifest(video_path=video_path, video_hash=video_hash, params=params)
+        manifest.settings = settings
         manifest.save(manifest_path)
 
         state = _EditState(
@@ -270,6 +279,7 @@ class EditPipeline:
             project_dir=project_dir,
             output_path=project_dir / output_video_name(video_path),
             srt_path=project_dir / subtitles_file_name(video_path),
+            settings=settings,
         )
         steps: dict[str, Callable[[_EditState], StageOutcome]] = {
             "probe": self._probe,
@@ -461,7 +471,7 @@ class EditPipeline:
             s.project_dir / AUDIO_ANALYSIS_FILE
         ).params.threshold_db
         s.fp_plan = fingerprint(
-            "plan", s.fp_silences, effective_threshold, s.fp_director, params.cut, s.video_path, s.resolution,
+            "plan", s.fp_silences, effective_threshold, s.fp_director, params.effective_cut, s.video_path, s.resolution,
             s.source_fps, params.loudness,
         )
 
@@ -472,7 +482,7 @@ class EditPipeline:
             if director_run is not None and director_run.decision is not None:
                 removed_ids = {r.sentence_id for r in director_run.decision.removals}
                 sentences = director_run.sentences
-            keep, director_cuts = plan_keep_ranges(audio, sentences, removed_ids, params.cut)
+            keep, director_cuts = plan_keep_ranges(audio, sentences, removed_ids, params.effective_cut)
             plan = build_edit_plan(
                 s.video_path,
                 keep,
@@ -560,8 +570,8 @@ class EditPipeline:
         """Relatório (+ transcrição comparativa, que só existe com transcrição)."""
         params, plan, director_run, project_dir = s.params, s.plan, s.director_run, s.project_dir
         fp_report = fingerprint(
-            "report", REPORT_FORMAT, s.fp_render, s.fp_director, s.fp_subtitles, s.fp_transcript, params,
-            s.encoder_label,
+            "report", REPORT_FORMAT, s.fp_render, s.fp_director, s.fp_subtitles, s.fp_transcript,
+            params.fingerprint_view(), s.encoder_label, *settings_fingerprint(s.settings),
         )
         removed = removed_ranges(
             [TimeRange(start_sec=x.start_sec, end_sec=x.end_sec) for x in plan.segments],
@@ -601,6 +611,7 @@ class EditPipeline:
                 removal_label="Diretor" if has_decision else None,
                 loudness=s.loudness,
                 encoder=s.encoder_label,
+                settings=s.settings,
             )
             (project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
             metrics: dict = {"cuts": len(removed)}
@@ -635,7 +646,7 @@ def _edit_comparison(
         if director_run.decision is not None:
             removals = {r.sentence_id: r for r in director_run.decision.removals}
             # Mesmo cálculo da etapa do plano: explica remoções não aplicadas ou parciais.
-            _, cut_results = plan_keep_ranges(audio, sentences, set(removals), params.cut)
+            _, cut_results = plan_keep_ranges(audio, sentences, set(removals), params.effective_cut)
     else:
         sentences = build_sentences(transcript, params.sentences)
     return build_edit_diff(

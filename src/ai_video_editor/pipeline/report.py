@@ -8,7 +8,7 @@ from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.director.schema import DirectorRun
 from ai_video_editor.revision.schema import RevisionRun
 from ai_video_editor.pipeline.project import EDIT_DIFF_FILE, EDIT_TIMELINE_FILE, EDIT_TRANSCRIPT_FILE
-from ai_video_editor.pipeline.schema import EditDiff, EditPipelineParams, RunTimings
+from ai_video_editor.pipeline.schema import EditDiff, EditPipelineParams, EditSettings, RunTimings
 from ai_video_editor.pipeline.timing import build_timings_section
 from ai_video_editor.planning.schema import TimeRange
 from ai_video_editor.renderer.loudness import LoudnessResult
@@ -75,6 +75,48 @@ def _loudness_section(params: EditPipelineParams, loudness: Optional[LoudnessRes
     return lines if not loudness.warnings else [*lines, ""]
 
 
+def pacing_rows(params: EditPipelineParams) -> list[str]:
+    """Linha do ritmo das pausas na tabela de parâmetros (só fora do `normal`, que não muda o corte)."""
+    return [] if params.pacing == "normal" else [f"| Ritmo das pausas | {params.pacing} (padding e min_gap ajustados) |"]
+
+
+def format_setting_value(name: str, value: object) -> str:
+    """Valor efetivo para leitura: duração em segundos, texto livre ou `—` quando vazio."""
+    if value is None or value == "":
+        return "livre" if name == "target_duration_sec" else "—"
+    if name == "target_duration_sec":
+        return f"{float(value):.0f}s"
+    return str(value)
+
+
+SETTING_LABELS: dict[str, str] = {
+    "recipe": "Receita",
+    "intensity": "Intensidade",
+    "pace": "Ritmo das pausas",
+    "target_duration_sec": "Duração alvo (informada ao Diretor)",
+    "instructions": "Instruções ao Diretor",
+}
+
+
+def briefing_section(settings: Optional[EditSettings]) -> list[str]:
+    """Seção "Briefing": o "Entendi", o pedido e cada valor efetivo com a origem (só com briefing)."""
+    if settings is None or not settings.uses_briefing:
+        return []
+    by = "IA" if settings.briefing_origin == "ia" else "regra sem IA"
+    lines = ["## Briefing", ""]
+    if settings.understood:
+        lines += [f"> {settings.understood}", ""]
+    lines += [
+        "| Valor | Efetivo | Origem |",
+        "| --- | --- | --- |",
+        f"| Pedido | {_cell(settings.request or '—')} | briefing.json ({by}) |",
+    ]
+    for name, label in SETTING_LABELS.items():
+        setting = getattr(settings, name)
+        lines.append(f"| {label} | {_cell(format_setting_value(name, setting.value))} | {setting.origin_label} |")
+    return [*lines, ""]
+
+
 def build_edit_report(
     video_path: Path,
     original_duration_sec: float,
@@ -93,6 +135,7 @@ def build_edit_report(
     removal_label: Optional[str] = None,
     loudness: Optional[LoudnessResult] = None,
     encoder: Optional[str] = None,
+    settings: Optional[EditSettings] = None,
 ) -> str:
     """Monta o Markdown com resumo, parâmetros, trechos removidos, decisões do Diretor e tempos.
 
@@ -102,7 +145,7 @@ def build_edit_report(
     removed_sec = max(0.0, original_duration_sec - final_duration_sec)
     pct = removed_sec / original_duration_sec * 100 if original_duration_sec > 0 else 0.0
     width, height = plan.target_resolution
-    cut = params.cut
+    cut = params.effective_cut
     subtitle_rows = (
         [f"| Legendas | `{subtitles_path.name}` ({subtitle_blocks} blocos) |"]
         if subtitles_path is not None and subtitle_blocks is not None
@@ -136,11 +179,13 @@ def build_edit_report(
         *([f"| Transcrição | `{transcription_model}` |"] if transcription_model else []),
         comparison_row,
         "",
+        *briefing_section(settings),
         "## Parâmetros",
         "",
         "| Parâmetro | Valor |",
         "| --- | --- |",
         *_threshold_rows(params, audio),
+        *pacing_rows(params),
         f"| min_silence_sec | {params.min_silence_sec}s |",
         f"| padding_before_sec | {cut.padding_before_sec}s |",
         f"| padding_after_sec | {cut.padding_after_sec}s |",
