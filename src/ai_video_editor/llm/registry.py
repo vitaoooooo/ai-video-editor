@@ -57,6 +57,17 @@ def default_fallback(name: str) -> tuple[str, ...]:
     return tuple(get_factory(name).default_fallback)
 
 
+def default_timeout(name: str, fallback: float) -> float:
+    """Tempo limite padrão do provedor (o Ollama local é mais lento), ou `fallback`.
+
+    `none` e provedores desconhecidos devolvem `fallback` (a CLI valida o nome depois).
+    """
+    if name not in provider_names():
+        return fallback
+    return get_factory(name).default_timeout_sec or fallback
+
+
 register_provider("gemini", "ai_video_editor.llm.providers.gemini:GeminiLLMClient")
 register_provider("openai", "ai_video_editor.llm.providers.openai:OpenAILLMClient")
+register_provider("ollama", "ai_video_editor.llm.providers.ollama:OllamaLLMClient")
 register_provider("mock", "ai_video_editor.llm.providers.mock:MockLLMClient")

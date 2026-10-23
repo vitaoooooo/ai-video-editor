@@ -161,6 +161,7 @@ python -m venv .venv
 pip install -e ".[transcription]"   # CPU
 pip install -e ".[gpu]"             # GPU NVIDIA: faster-whisper + cuBLAS/cuDNN (CUDA 12)
 pip install -e ".[openai]"          # opcional: Diretor/revisor na OpenAI
+# opcional: modelos locais pelo Ollama (sem extra): ollama pull qwen2.5:7b; depois `ollama-check`
 pip install -e ".[dev]"             # testes
 ```
 
@@ -204,7 +205,7 @@ Opções mais úteis do `edit`:
 | Opção | Padrão | Efeito |
 | --- | --- | --- |
 | `--transcribe` | desligado | Transcreve (necessário para Diretor, legendas e relatórios comparativos) |
-| `--director {none,mock,gemini,openai}` | `none` | Diretor de IA que remove frases |
+| `--director {none,mock,gemini,openai,ollama}` | `none` | Diretor de IA que remove frases (`ollama` = modelo local, sem chave) |
 | `--intensity {light,medium,aggressive}` | `light` | Quanto o Diretor corta |
 | `--instructions "..."` / `--target-duration S` | — | Pedido livre ao Diretor / duração final desejada |
 | `--keep-fillers` | desligado | Proíbe remover frases só por serem enrolação |
@@ -228,7 +229,7 @@ src/ai_video_editor/
 ├── director/     frases a partir da transcrição, prompt, validação e Diretor (LLM e mock)
 ├── coverage/     Diretor de cobertura: janelas com imagem ruim, b-roll relacionado por cima da fala e respiros, por IDs (LLM e mock)
 ├── revision/     revisor de pedidos em linguagem natural (LLM e mock)
-├── llm/          StructuredLLMClient, provedores gemini/openai/mock, cadeia de modelos, chaves e erros
+├── llm/          StructuredLLMClient, provedores gemini/openai/ollama/mock, cadeia de modelos, chaves e erros
 ├── planning/     corte de silêncio, aplicação dos cortes de frase e regra do pedaço de palavra
 ├── renderer/     compilador e executor FFmpeg (um processo por trecho, em paralelo), render da Timeline, x264 ou NVENC e loudnorm
 ├── subtitles/    remapeamento de tempo e .srt do vídeo editado
@@ -245,7 +246,7 @@ src/ai_video_editor/
 ## Limitações conhecidas
 
 - **Foco em vídeo falado** (aula, tutorial, pessoa falando). De um vlog, o `edit <pasta>` monta a espinha falada (clipes principais com fala, em ordem) e, com a análise visual feita, a cobertura de drone/b-roll/POV por cima da fala e respiros entre as falas; ainda sem música, transições e revisão multitrilha. Gameplay não é tratado.
-- **O Diretor e o revisor dependem de uma API** (Gemini ou OpenAI). Sem chave, o editor faz só corte de silêncio; com ela, há custo e latência de rede, e a decisão pode variar entre execuções.
+- **O Diretor e o revisor dependem de um modelo de IA**: uma API (Gemini ou OpenAI), com custo e latência de rede, ou um modelo local pelo Ollama (sem custo, mas lento numa GPU de 6 GB e ainda sem medição de qualidade). Sem nenhum, o editor faz só corte de silêncio; a decisão pode variar entre execuções.
 - **Palavras curtas**: o tempo que o Whisper atribui a "Um" ou "By" inclui a pausa ao redor, então o corte às vezes tira só o silêncio e a palavra fica (aparece como remoção parcial no relatório).
 - **Nomes e termos em outro idioma** saem errados na transcrição e, portanto, na legenda. Na palestra, transcrita com `--language en`, "gnu.org" virou "canoe org", "software livre" virou "software leave me" e "Pato Branco" virou "Patu".
 - **Testado sobretudo em inglês.** A normalização do WER só tem regras para inglês, e ainda falta um teste com um vídeo em português com mais enrolação.

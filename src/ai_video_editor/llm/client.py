@@ -36,6 +36,10 @@ class StructuredLLMClient(ABC):
     default_model: str = ""
     # Modelos de reserva do mesmo provedor quando o usuário não informa a cadeia.
     default_fallback: tuple[str, ...] = ()
+    # Tempo limite padrão das chamadas quando o usuário não informa (None = o da etapa).
+    default_timeout_sec: Optional[float] = None
+    # True se os IDs dos modelos têm `:` (`qwen2.5:7b`), para a cadeia não ler a tag como provedor.
+    model_ids_have_colon: bool = False
     # Métricas da última chamada desta thread (lotes do `visual` chamam em paralelo).
     last_metrics = PerThread(None)
 

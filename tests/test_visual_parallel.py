@@ -313,7 +313,7 @@ def test_parallel_batches_with_lazy_sdk_client(tmp_path):
 
 def test_cli_visual_parallel_option():
     args = cli.build_parser().parse_args(["visual", "pasta"])
-    assert args.visual_paralelo == 3
+    assert cli.visual_parallel(args) == 3
     assert cli.build_parser().parse_args(["visual", "pasta", "--visual-paralelo", "1"]).visual_paralelo == 1
     with pytest.raises(SystemExit):
         cli.build_parser().parse_args(["visual", "pasta", "--visual-paralelo", "0"])

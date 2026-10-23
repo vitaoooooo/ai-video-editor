@@ -62,6 +62,18 @@ class AIUnavailableError(AIProviderError):
         super().__init__(msg, provider=provider, details=details)
 
 
+class AIContextLimitError(AIProviderError):
+    """Lançada quando a entrada (ou a resposta) encostou no limite de contexto do modelo local.
+
+    O Ollama corta a entrada sem avisar quando ela passa do `num_ctx`; repetir não resolve
+    (não é transitório): é preciso aumentar o contexto ou reduzir a entrada.
+    """
+
+    def __init__(self, provider: str, details: str = ""):
+        msg = f"A entrada encostou no limite de contexto do provedor '{provider}' (truncamento silencioso)."
+        super().__init__(f"{msg} {details}".strip(), provider=provider, details=details)
+
+
 class AIResponseValidationError(AIProviderError):
     """Lançada quando a resposta da IA não atende ao formato ou schema Pydantic esperado."""
 
