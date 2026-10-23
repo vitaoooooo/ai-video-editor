@@ -81,7 +81,7 @@ from ai_video_editor.planning.timeline_plan import (
 )
 from ai_video_editor.recipes import DEFAULT_FOLDER_RECIPE, Recipe, RecipeError
 from ai_video_editor.renderer.loudness import LoudnessResult
-from ai_video_editor.renderer.timeline_executor import TimelineRenderExecutor
+from ai_video_editor.renderer.timeline_executor import TimelineRenderExecutor, TimelineRenderResult
 from ai_video_editor.subtitles import ClipSubtitleSource, build_clip_subtitle_blocks, write_srt
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript
@@ -125,6 +125,7 @@ class _SpineState:
     final_duration: float = 0.0
     loudness: Optional[LoudnessResult] = None
     render_warnings: list[str] = field(default_factory=list)
+    encoder_label: str = "cpu"
     subtitle_blocks: Optional[int] = None
 
     @property
@@ -534,7 +535,10 @@ class SpinePipeline(EditPipeline):
         return outcome
 
     def _timeline_render(self, s: _SpineState) -> StageOutcome:
-        s.fp_render = fingerprint("render", s.fp_timeline)
+        # O codificador entra só aqui (CPU = o fingerprint de antes); as etapas anteriores não mudam.
+        encoder = self.timeline_executor.resolve_encoder()
+        s.fp_render = fingerprint("render", s.fp_timeline, *encoder.fingerprint_parts)
+        used: list[TimelineRenderResult] = []
 
         def do_render() -> tuple[dict, str]:
             result = self.timeline_executor.execute(
@@ -543,22 +547,28 @@ class SpinePipeline(EditPipeline):
                     "render", StageProgress(done=done, total=total, unit="items")
                 ),
             )
+            used.append(result)
             metrics: dict = {
                 "duration_sec": round(result.duration_sec, 3),
                 "frames": result.frame_count,
                 "size_bytes": result.size_bytes,
+                "encoder": result.encoder.label,
             }
             if result.loudness is not None:
                 metrics.update(result.loudness.to_metrics())
             source_warnings = [w for w in result.warnings if not result.loudness or w not in result.loudness.warnings]
             if source_warnings:
                 metrics["warnings"] = " | ".join(source_warnings)
-            return metrics, f"{result.duration_sec:.2f}s, {result.size_bytes / 1_048_576:.1f} MB"
+            return metrics, f"{result.duration_sec:.2f}s, {result.size_bytes / 1_048_576:.1f} MB, {result.encoder.label}"
 
         outcome = s.run.stage("render", s.fp_render, s.output_path.name, do_render)
+        if used and used[0].encoder.name != encoder.name:
+            # Voltou para a CPU no meio: o vídeo é de CPU e fica registrado como tal.
+            s.fp_render = s.run.rekey("render", fingerprint("render", s.fp_timeline, *used[0].encoder.fingerprint_parts))
         metrics = s.run.manifest.stages["render"].metrics
         s.final_duration = float(metrics["duration_sec"])
         s.loudness = LoudnessResult.from_metrics(metrics)
+        s.encoder_label = str(metrics.get("encoder", "cpu"))
         s.render_warnings = [w for w in str(metrics.get("warnings", "")).split(" | ") if w]
         return outcome
 
@@ -595,7 +605,7 @@ class SpinePipeline(EditPipeline):
         params = s.params
         fp_report = fingerprint(
             "report", REPORT_FORMAT, s.fp_render, s.fp_director, s.fp_subtitles, s.fp_transcript, params,
-            s.selection,
+            s.selection, s.encoder_label,
         )
 
         def do_report() -> tuple[dict, str]:
@@ -622,6 +632,7 @@ class SpinePipeline(EditPipeline):
                 ),
                 timings=s.run.recorder.snapshot(in_progress=("report", started)),
                 loudness=s.loudness,
+                encoder=s.encoder_label,
             )
             (s.project_dir / EDIT_REPORT_FILE).write_text(markdown, encoding="utf-8")
             merged = diff.merged()

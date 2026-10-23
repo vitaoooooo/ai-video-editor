@@ -331,6 +331,7 @@ def build_spine_report(
     transcription_model: Optional[str] = None,
     timings: Optional[RunTimings] = None,
     loudness: Optional[LoudnessResult] = None,
+    encoder: Optional[str] = None,
 ) -> str:
     """Markdown do `edit_report.md`: resumo, resumo por clipe, clipes não usados, parâmetros, volume,
     Diretor, o que saiu de cada clipe (categoria, motivo, aplicação) e tempos."""
@@ -367,6 +368,7 @@ def build_spine_report(
         f"| Número de cortes | {cuts} |",
         f"| Trechos mantidos | {len(timeline.video_main)} |",
         f"| Saída | {width}x{height} @ {timeline.fps}fps{fps_note} |",
+        *([f"| Codificador de vídeo | {_cell(encoder)} |"] if encoder else []),
         f"| Timeline | `{TIMELINE_FILE}` |",
         *(
             [f"| Legendas | `{subtitles_path.name}` ({subtitle_blocks} blocos) |"]

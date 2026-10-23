@@ -92,6 +92,7 @@ def build_edit_report(
     comparison: Optional[EditDiff] = None,
     removal_label: Optional[str] = None,
     loudness: Optional[LoudnessResult] = None,
+    encoder: Optional[str] = None,
 ) -> str:
     """Monta o Markdown com resumo, parâmetros, trechos removidos, decisões do Diretor e tempos.
 
@@ -130,6 +131,7 @@ def build_edit_report(
         f"| Número de cortes | {len(removed)} |",
         f"| Trechos mantidos | {len(plan.segments)} |",
         f"| Saída | {width}x{height} @ {plan.target_fps}fps |",
+        *([f"| Codificador de vídeo | {_cell(encoder)} |"] if encoder else []),
         *subtitle_rows,
         *([f"| Transcrição | `{transcription_model}` |"] if transcription_model else []),
         comparison_row,

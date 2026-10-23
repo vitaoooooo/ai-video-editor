@@ -421,7 +421,7 @@ def test_render_command_accepts_timeline_json(mixed_sources, tmp_path: Path, cap
     plan_file = tmp_path / "timeline.json"
     plan_file.write_text(json.dumps(doc), encoding="utf-8")
 
-    assert handle_plan_render(argparse.Namespace(plan_file=str(plan_file))) == 0
+    assert handle_plan_render(argparse.Namespace(plan_file=str(plan_file), encoder="auto", gpu_paralelo=3)) == 0
     out = capsys.readouterr().out
     assert "Timeline carregada" in out and "30 frames" in out
     assert (tmp_path / "cli.mp4").is_file()

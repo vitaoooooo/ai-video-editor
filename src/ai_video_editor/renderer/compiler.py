@@ -180,13 +180,17 @@ class FFmpegCompiler:
             )
         return timings
 
-    def compile_segmented(self, plan: EditPlan, work_dir: Path) -> SegmentedRender:
+    def compile_segmented(
+        self, plan: EditPlan, work_dir: Path, video_args: Optional[list[str]] = None
+    ) -> SegmentedRender:
         """Gera um comando curto por segmento e um concat final (demuxer, -c:v copy).
 
         Cada segmento usa seek rápido (-ss antes do -i), então só decodifica a partir do
         keyframe anterior ao corte. O áudio intermediário é PCM, sem priming de encoder,
-        e é codificado em AAC uma única vez no concat final.
+        e é codificado em AAC uma única vez no concat final. `video_args` (padrão: x264 na CPU)
+        vale para todos os segmentos.
         """
+        video_args = video_args or VIDEO_ENCODE_ARGS
         width, height = plan.target_resolution
         fps = plan.target_fps
         infos = self.probe_sources(plan)
@@ -226,7 +230,7 @@ class FFmpegCompiler:
                 "[v]",
                 "-map",
                 "[a]",
-                *VIDEO_ENCODE_ARGS,
+                *video_args,
                 "-r",
                 str(fps),
                 "-c:a",

@@ -5,7 +5,19 @@ from pathlib import Path
 from typing import Tuple
 import pytest
 
+from ai_video_editor.renderer import encoders
 from ai_video_editor.renderer.ffmpeg_locator import get_ffmpeg_path, get_ffprobe_path
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _render_on_cpu():
+    """O render dos testes fica na CPU (`--encoder auto` vê "sem GPU"), com ou sem placa NVIDIA na máquina.
+
+    Escopo de sessão para valer também nas fixtures de módulo/sessão que renderizam (rodam antes das de função).
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(encoders, "detect_nvenc", lambda ffmpeg_bin: encoders.NvencStatus(False, "testes na CPU"))
+        yield
 
 
 def create_synthetic_video(

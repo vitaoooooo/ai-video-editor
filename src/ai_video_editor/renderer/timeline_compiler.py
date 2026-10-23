@@ -194,7 +194,10 @@ class TimelineCompiler:
             if info.is_hdr
         ]
 
-    def compile(self, timeline: Timeline, work_dir: Path) -> TimelineRenderJob:
+    def compile(
+        self, timeline: Timeline, work_dir: Path, video_args: Optional[list[str]] = None
+    ) -> TimelineRenderJob:
+        """`video_args` (padrão: x264 na CPU) vale para todos os pedaços: o concat final é `-c copy`."""
         infos = self.probe_sources(timeline)
         flat = flatten(timeline)
 
@@ -202,7 +205,7 @@ class TimelineCompiler:
         video_lines = ["ffconcat version 1.0"]
         for idx, piece in enumerate(flat.video):
             path = work_dir / f"v_{idx:05d}.mov"
-            commands.append(self._video_command(timeline, piece, path))
+            commands.append(self._video_command(timeline, piece, path, video_args or VIDEO_ENCODE_ARGS))
             video_lines += [f"file '{path.name}'", f"duration {_fmt(piece.frame_count / flat.fps)}"]
 
         with_audio = {path for path, info in infos.items() if info.has_audio}
@@ -227,7 +230,9 @@ class TimelineCompiler:
             warnings=self.source_warnings(infos),
         )
 
-    def _video_command(self, timeline: Timeline, piece: VideoPiece, out: Path) -> list[str]:
+    def _video_command(
+        self, timeline: Timeline, piece: VideoPiece, out: Path, video_args: list[str]
+    ) -> list[str]:
         width, height = timeline.resolution
         read = piece.source_out - piece.source_in + INPUT_READ_MARGIN_SEC
         return [
@@ -244,7 +249,7 @@ class TimelineCompiler:
             "-map",
             "[v]",
             "-an",
-            *VIDEO_ENCODE_ARGS,
+            *video_args,
             "-r",
             str(timeline.fps),
             str(out),

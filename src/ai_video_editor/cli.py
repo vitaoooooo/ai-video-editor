@@ -45,6 +45,7 @@ from ai_video_editor.recipes import (
     get_recipe,
     recipe_names,
 )
+from ai_video_editor.renderer.encoders import DEFAULT_GPU_WORKERS, ENCODER_CHOICES
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.renderer.timeline_executor import TimelineRenderExecutor
 from ai_video_editor.revision import RevisionError
@@ -70,23 +71,30 @@ def handle_plan_render(args: argparse.Namespace) -> int:
         data = json.load(f)
 
     if is_timeline_document(data):
-        return _render_timeline(Timeline.model_validate(data))
+        return _render_timeline(Timeline.model_validate(data), args)
 
     plan = EditPlan.model_validate(data)
     print(f"Plano carregado: '{plan.title}' com {len(plan.segments)} segmentos.")
     print(f"Destino: {plan.target_resolution[0]}x{plan.target_resolution[1]} @ {plan.target_fps}fps")
 
-    executor = RenderExecutor()
-    result = executor.execute(plan)
+    executor = RenderExecutor(encoder=args.encoder, gpu_workers=args.gpu_paralelo)
+    try:
+        result = executor.execute(plan)
+    except RuntimeError as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
 
     print("Renderização concluída com sucesso!")
     print(f"Arquivo gerado: {result.output_path}")
     print(f"Duração: {result.duration_sec:.2f}s | Resolução: {result.resolution[0]}x{result.resolution[1]}")
     print(f"Tamanho: {result.size_bytes} bytes")
+    print(f"Codificador: {result.encoder.label}")
+    for warning in result.warnings:
+        print(f"Aviso: {warning}")
     return 0
 
 
-def _render_timeline(timeline: Timeline) -> int:
+def _render_timeline(timeline: Timeline, args: argparse.Namespace) -> int:
     print(
         f"Timeline carregada: '{timeline.title}' com {len(timeline.video_main)} itens na base, "
         f"{len(timeline.video_overlay)} overlays e {len(timeline.audio_ambient)} áudios de ambiente "
@@ -94,7 +102,11 @@ def _render_timeline(timeline: Timeline) -> int:
     )
     print(f"Destino: {timeline.resolution[0]}x{timeline.resolution[1]} @ {timeline.fps}fps")
 
-    result = TimelineRenderExecutor().execute(timeline)
+    try:
+        result = TimelineRenderExecutor(encoder=args.encoder, gpu_workers=args.gpu_paralelo).execute(timeline)
+    except RuntimeError as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
 
     print("Renderização concluída com sucesso!")
     print(f"Arquivo gerado: {result.output_path}")
@@ -103,6 +115,7 @@ def _render_timeline(timeline: Timeline) -> int:
         f"Resolução: {result.resolution[0]}x{result.resolution[1]}"
     )
     print(f"Tamanho: {result.size_bytes} bytes")
+    print(f"Codificador: {result.encoder.label}")
     for warning in result.warnings:
         print(f"Aviso: {warning}")
     return 0
@@ -341,11 +354,15 @@ def handle_edit(args: argparse.Namespace) -> int:
     status = LiveStatus(live=False if args.no_live else None)
     printer = EditProgressPrinter(status, recipe)
     pipeline_class = SpinePipeline if is_folder else EditPipeline
+    executor = (TimelineRenderExecutor if is_folder else RenderExecutor)(
+        encoder=args.encoder, gpu_workers=args.gpu_paralelo
+    )
     pipeline = pipeline_class(
         projects_root=Path(args.projects_dir), on_progress=printer, on_stage_progress=printer.progress,
-        recipe=recipe,
+        recipe=recipe, render_executor=executor,
     )
     try:
+        executor.resolve_encoder()  # `--encoder nvenc` sem GPU falha aqui, antes das etapas
         with status:
             result = pipeline.run(video_path, params, force=args.force)
     except Exception as e:
@@ -1285,6 +1302,19 @@ def build_parser() -> argparse.ArgumentParser:
                 "Novas tentativas da API de IA em falhas temporárias (503, 504, 429, conexão), "
                 f"com espera crescente; 0 desliga (padrão: {DEFAULT_API_RETRIES})"
             ),
+        )
+
+    for render_options in (render_parser, edit_parser):
+        render_options.add_argument(
+            "--encoder", choices=ENCODER_CHOICES, default="auto",
+            help=(
+                "Codificador de vídeo: auto = NVENC (GPU NVIDIA) se disponível, senão CPU (padrão); "
+                "cpu = x264; nvenc = exige a GPU. Se o NVENC falhar no meio, o render inteiro é refeito na CPU"
+            ),
+        )
+        render_options.add_argument(
+            "--gpu-paralelo", type=_positive_int, default=DEFAULT_GPU_WORKERS, metavar="N",
+            help=f"Pedaços codificados ao mesmo tempo no NVENC (a GeForce limita as sessões; padrão: {DEFAULT_GPU_WORKERS})",
         )
 
     for live_parser in (edit_parser, revise_parser):

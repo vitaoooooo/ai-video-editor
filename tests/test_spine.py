@@ -30,6 +30,7 @@ from ai_video_editor.pipeline.spine_schema import SpineDiff, SpineManifest, Spin
 from ai_video_editor.planning import TimeRange
 from ai_video_editor.planning.timeline_plan import ClipCut, build_spine_timeline, clip_spans, spine_fps
 from ai_video_editor.recipes import PIECES, get_recipe
+from ai_video_editor.renderer.encoders import EncoderSelection
 from ai_video_editor.renderer.timeline_executor import TimelineRenderResult
 from ai_video_editor.revision.exceptions import ProjectStateError
 from ai_video_editor.revision.providers.mock import MockReviser
@@ -102,6 +103,9 @@ class FakeTimelineExecutor:
 
     def __init__(self) -> None:
         self.timelines: list[Timeline] = []
+
+    def resolve_encoder(self) -> EncoderSelection:
+        return EncoderSelection()
 
     def execute(self, timeline: Timeline, on_progress=None) -> TimelineRenderResult:
         self.timelines.append(timeline)

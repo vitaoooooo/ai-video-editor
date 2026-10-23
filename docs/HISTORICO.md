@@ -271,6 +271,55 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - ✅ **`get_client` seguro para threads** na base (trava com verificação dupla: o cliente é criado uma única vez e todas as threads recebem o mesmo objeto); nenhum provedor mudou. `ModelChain.client_for` tinha a mesma corrida no dicionário de clientes por provedor e agora cria sob a trava da cadeia. `thinking_label` não guarda estado e ficou como estava.
 - 📊 Testes novos (sem rede; falham sem a correção): 8 threads em `get_client` com criação lenta → 1 cliente; o mesmo para `ModelChain.client_for`; `visual` com 6 lotes em paralelo 3 e cliente criado sob demanda (o falso "fecha" quando é substituído, como o SDK) → 1 cliente e todas as tomadas analisadas.
 
+## Render na GPU NVIDIA (NVENC) com volta automática para a CPU (2026-10-23)
+
+- 📊 **Problema medido:** no vlog real (espinha de 22 clipes, 138 pedaços 1080p, Diretor mock) o render levou **10min 56s de 16min 13s**, quase tudo codificação x264 na CPU.
+- ✅ **`--encoder auto|cpu|nvenc`** no `edit` e no `render` (padrão `auto`) e **`--gpu-paralelo N`** (padrão 3). `auto` = NVENC se o FFmpeg lista o `h264_nvenc` **e** uma codificação de teste de 1 s (`testsrc` → `null`, com os parâmetros reais) funciona; senão CPU. A detecção roda uma vez por execução (cache por FFmpeg). `nvenc` explícito sem GPU falha antes das etapas. Módulo novo `renderer/encoders.py`. **Por quê a codificação de teste:** o `h264_nvenc` aparece em qualquer build "full" do FFmpeg, com ou sem placa/driver; só listar daria falso positivo.
+- ✅ **Um codificador por vídeo:** os pedaços são unidos com concat `-c copy`, então todos usam o mesmo codificador e os mesmos parâmetros. Se um pedaço falha por causa do NVENC (sessões da GeForce, memória, driver), o render **inteiro** é refeito na CPU, com aviso (`cpu (NVENC falhou: ...)`). Outros erros falham como antes. Decodificação e filtros continuam na CPU (hwaccel de decodificação fica fora).
+- ✅ **Limite de sessões:** no NVENC, no máximo `--gpu-paralelo` pedaços codificam ao mesmo tempo (semáforo; o processo de áudio da Timeline não conta); quem ainda espera vaga desiste depois de uma falha.
+- ✅ **Onde aparece:** linha da etapa render, "Codificador de vídeo" no `edit_report.md`, métrica `encoder` no `project.json` e `Codificador:` no `render`.
+- ✅ **Cache:** o codificador só entra no fingerprint do render. Na CPU o fingerprint é **o mesmo de antes** (renders existentes continuam válidos; `tests/test_reference_fala.py` passa sem regenerar); no NVENC entram o nome e os parâmetros. Render que caiu para a CPU fica registrado com o fingerprint da CPU (um novo pedido de NVENC tenta a GPU de novo).
+- 🔁 **`-cq 25` em vez do ponto de partida `-cq 23`.** Parâmetros: `h264_nvenc -preset p5 -tune hq -rc vbr -cq 25 -b:v 0 -profile:v high -g 250 -bf 3 -pix_fmt yuv420p` (GOP 250 e 3 B-frames = padrões do x264). **Por quê:** medido no material real (abaixo), `-cq 23` sai com SSIM acima do x264 mas 41% maior; `-cq 25` é o primeiro valor com SSIM ≥ ao da CPU.
+- 📊 **Medido nesta máquina (RTX 2060, FFmpeg 9.0.2), material real:** EditPlan com 40 trechos de 2,5 s de 4 clipes do Osmo Pocket (1080p 29,97 → 30 fps; 100 s de saída), SSIM contra uma referência x264 `-crf 8`:
+
+  | Codificador | Render | Tamanho | SSIM (All) |
+  | --- | --- | --- | --- |
+  | CPU x264 `fast` `-crf 22` | 80,7 s | 92,9 MB | 0,98692 |
+  | NVENC `-cq 23` | 29,1 s | 131,2 MB | 0,98975 |
+  | NVENC `-cq 24` | 28,3 s | 115,9 MB | 0,98869 |
+  | **NVENC `-cq 25`** | **29,0 s** | **103,2 MB** | **0,98753** |
+  | NVENC `-cq 26` | 26,4 s | 91,7 MB | 0,98615 |
+  | NVENC `-cq 28` | 26,6 s | 71,9 MB | 0,98271 |
+
+  Todos com 3000 frames e 100,000 s. Paralelismo (`-cq 25`): 2 sessões 32,8 s, 3 → 29,0 s, 4 → 30,3 s, 6 → 26,5 s (ruído de ±2 s; com 3 a GPU já não é o gargalo, e sim decodificar e escalar na CPU). O padrão fica 3 por segurança com drivers GeForce antigos. Saída idêntica (mesmo SSIM) com qualquer número de sessões. Timeline real (10 trechos + overlay de b-roll do Fx30) também fecha com NVENC (750 frames). Em fonte sintética (`testsrc2`, 1080p, 20 trechos) o NVENC ganha menos: 28,9 s (CPU) vs 17,2 s.
+- 📊 **Estimativa (não medida) para o vlog completo:** render ~2,8× mais rápido → **~4 min em vez de 10min 56s** (−7 min de 16min 13s).
+- 📊 **A medir no vlog real** (cmd; `%VLOG%` = pasta do vlog; `%PROJ%` = pasta mostrada em `Projeto:`; `<pasta>` = nome da pasta do vlog). Rodar primeiro o NVENC: como o fingerprint da CPU não mudou, um `--encoder cpu` primeiro sairia do cache. Transcrição e Diretor mock vêm do cache; só render e relatório rodam:
+
+  ```bat
+  python -m ai_video_editor.cli edit "%VLOG%" --transcribe --director mock --encoder nvenc
+  copy "%PROJ%\<pasta>_edited.mp4" "%PROJ%\vlog_nvenc.mp4"
+  python -m ai_video_editor.cli edit "%VLOG%" --transcribe --director mock --encoder cpu
+  copy "%PROJ%\<pasta>_edited.mp4" "%PROJ%\vlog_cpu.mp4"
+
+  rem frames e duração (precisam ser iguais nos dois)
+  ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames,duration -of csv=p=0 "%PROJ%\vlog_cpu.mp4"
+  ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames,duration -of csv=p=0 "%PROJ%\vlog_nvenc.mp4"
+  rem SSIM entre a saída CPU e a NVENC (linha "SSIM ... All:")
+  ffmpeg -hide_banner -i "%PROJ%\vlog_cpu.mp4" -i "%PROJ%\vlog_nvenc.mp4" -lavfi "[0:v][1:v]ssim" -f null -
+  dir "%PROJ%\vlog_*.mp4"
+  ```
+
+  | Campo | CPU | NVENC |
+  | --- | --- | --- |
+  | Render (linha `[6/8] Renderização`) | _ | _ |
+  | Tempo total | _ | _ |
+  | Codificador no relatório | _ | _ |
+  | Tamanho | _ | _ |
+  | Frames / duração | _ | _ |
+  | SSIM CPU × NVENC (All) | — | _ |
+
+- 📊 Testes novos (sem GPU: FFmpeg falso e NVENC simulado; o `conftest.py` faz o `auto` ver "sem GPU"): detecção (não listado → CPU; listado mas o teste falha → CPU; listado e funciona → NVENC; FFmpeg ausente; uma detecção por FFmpeg), escolha `auto/cpu/nvenc`, argumentos NVENC iguais em todos os pedaços (EditPlan e Timeline), caminho CPU idêntico (argumentos e fingerprint), limite de sessões na GPU, erro do NVENC × outros erros, volta para a CPU no meio do render refazendo **todos** os pedaços (EditPlan e Timeline), codificador só no fingerprint do render (cache por codificador e render que caiu para a CPU) e opções da CLI. 616 → 632 testes; suíte completa em 3min 34s (`-n auto`). A fixture que força a CPU é de escopo de sessão: com escopo de função, as fixtures de módulo que renderizam rodavam antes dela e usavam o NVENC de verdade numa máquina com GPU (pego por `test_revision.py`).
+
 ---
 
 ## 🔄 Em andamento
@@ -283,7 +332,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - **Status "não aplicada (só a pausa saiu)"**: quando a parte removida de uma frase for apenas silêncio, marcar assim em vez de "parcial" (caso do "By": 0,19s de 0,74s saiu, mas era só pausa).
 - **Benchmark de transcrição com Gemini**: incluir o provedor (e custo) na comparação; a estrutura aceita novos provedores (`register_benchmark_provider`).
 - **Provedor de transcrição Gemini** (alternativa para quem não tem GPU).
-- **Render na GPU (NVENC)**: o render é hoje a etapa mais lenta em vídeos longos (no vlog real, 10min 56s de 16min 13s).
+- **Medir o NVENC no vlog completo** (comandos e campos na entrada de 2026-10-23) e, se o render continuar pesado, decodificação na GPU (hwaccel).
 - **Teste com vídeo em português** com mais enrolação.
 - Pequenos ajustes: cópia de vídeo por versão ocupa o dobro de disco; motivo do Diretor às vezes truncado.
 

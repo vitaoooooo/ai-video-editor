@@ -210,6 +210,7 @@ Opções mais úteis do `edit`:
 | `--threshold-db` | `auto` | Limite de silêncio medido por vídeo, ou um número fixo em dB |
 | `--whisper-model` | `auto` | `large-v3-turbo` na GPU, `small` na CPU, ou um modelo explícito |
 | `--loudness {voz,youtube,broadcast,off}` | `voz` | Normalização de volume (−16 / −14 / −23 LUFS) |
+| `--encoder {auto,cpu,nvenc}` | `auto` | Codifica o vídeo no NVENC (GPU NVIDIA) se houver, senão na CPU; se o NVENC falhar, refaz na CPU |
 | `--director-fallback` | 3.6-flash, 3.5-flash-lite | Cadeia de modelos de reserva `provedor:modelo,...` |
 | `--force` | desligado | Ignora o cache |
 
@@ -227,7 +228,7 @@ src/ai_video_editor/
 ├── revision/     revisor de pedidos em linguagem natural (LLM e mock)
 ├── llm/          StructuredLLMClient, provedores gemini/openai/mock, cadeia de modelos, chaves e erros
 ├── planning/     corte de silêncio, aplicação dos cortes de frase e regra do pedaço de palavra
-├── renderer/     compilador e executor FFmpeg (um processo por trecho, em paralelo), render da Timeline e loudnorm
+├── renderer/     compilador e executor FFmpeg (um processo por trecho, em paralelo), render da Timeline, x264 ou NVENC e loudnorm
 ├── subtitles/    remapeamento de tempo e .srt do vídeo editado
 ├── benchmark/    WER, normalização, rescore e relatório do benchmark
 ├── core/         EditPlan, ClipSegment e Timeline (trilhas: base, overlay, ambiente)
@@ -246,7 +247,7 @@ src/ai_video_editor/
 - **Palavras curtas**: o tempo que o Whisper atribui a "Um" ou "By" inclui a pausa ao redor, então o corte às vezes tira só o silêncio e a palavra fica (aparece como remoção parcial no relatório).
 - **Nomes e termos em outro idioma** saem errados na transcrição e, portanto, na legenda. Na palestra, transcrita com `--language en`, "gnu.org" virou "canoe org", "software livre" virou "software leave me" e "Pato Branco" virou "Patu".
 - **Testado sobretudo em inglês.** A normalização do WER só tem regras para inglês, e ainda falta um teste com um vídeo em português com mais enrolação.
-- **O render é a etapa mais lenta** em vídeos longos (8min 45s dos 9min 59s da palestra) e ainda roda na CPU.
+- **O render é a etapa mais lenta** em vídeos longos (8min 45s dos 9min 59s da palestra, medido na CPU). Com `--encoder auto`, a codificação vai para o NVENC quando há GPU NVIDIA (~2,8× mais rápido em trechos 1080p reais numa RTX 2060), mas a decodificação e os filtros continuam na CPU.
 - Cada versão guarda uma cópia do vídeo, então várias revisões ocupam bastante disco.
 
 ## Como este projeto foi construído
