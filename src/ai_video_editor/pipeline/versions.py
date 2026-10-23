@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Optional
 from ai_video_editor.core.schema import EditPlan
 from ai_video_editor.core.timeline import Timeline
 from ai_video_editor.pipeline.project import (
+    COVERAGE_DECISION_FILE,
+    COVERAGE_TIMELINE_FILE,
     DIRECTOR_DECISION_FILE,
     EDIT_DIFF_FILE,
     EDIT_PLAN_FILE,
@@ -171,7 +173,10 @@ def register_spine_version(
     timings: Optional[RunTimings] = None,
 ) -> Optional[VersionRecord]:
     """Projeto com vários clipes: copia o resultado do `edit <pasta>` para uma versão nova, como no
-    `register_edit_version` (vídeo, timeline.json, relatórios, legendas, decisão do Diretor)."""
+    `register_edit_version` (vídeo, timeline.json, relatórios, legendas, decisão do Diretor).
+
+    Com cobertura, a Timeline renderizada é a `coverage_timeline.json` (é ela que aponta para o vídeo da
+    versão); a espinha (`timeline.json`) e a `coverage_decision.json` vão junto, como referência."""
     render, report = manifest.stages.get("render"), manifest.stages.get("report")
     timeline_path = project_dir / TIMELINE_FILE
     if (
@@ -192,9 +197,16 @@ def register_spine_version(
     video_name = render.artifact
     try:
         shutil.copy2(project_dir / video_name, target / video_name)
-        timeline = Timeline.model_validate_json(timeline_path.read_text(encoding="utf-8"))
+        coverage = manifest.stages.get("coverage")
+        with_coverage = (
+            coverage is not None and coverage.status == "done" and (project_dir / COVERAGE_TIMELINE_FILE).is_file()
+        )
+        rendered_file = COVERAGE_TIMELINE_FILE if with_coverage else TIMELINE_FILE
+        if with_coverage:
+            shutil.copy2(timeline_path, target / TIMELINE_FILE)
+        timeline = Timeline.model_validate_json((project_dir / rendered_file).read_text(encoding="utf-8"))
         timeline = timeline.model_copy(update={"output_path": target / video_name})
-        (target / TIMELINE_FILE).write_text(timeline.model_dump_json(indent=2), encoding="utf-8")
+        (target / rendered_file).write_text(timeline.model_dump_json(indent=2), encoding="utf-8")
         subtitles = None
         if subtitles_record is not None and subtitles_record.status == "done" and subtitles_record.artifact:
             if (project_dir / subtitles_record.artifact).is_file():
@@ -204,6 +216,8 @@ def register_spine_version(
         names = [EDIT_REPORT_FILE, SPINE_PLAN_FILE, EDIT_TRANSCRIPT_FILE, EDIT_DIFF_FILE, EDIT_TIMELINE_FILE]
         if director is not None and director.status == "done":
             names.append(DIRECTOR_DECISION_FILE)
+        if with_coverage:
+            names.append(COVERAGE_DECISION_FILE)
         for name in names:
             if (project_dir / name).is_file():
                 shutil.copy2(project_dir / name, target / name)

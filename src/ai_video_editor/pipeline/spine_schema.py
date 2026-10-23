@@ -8,6 +8,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from ai_video_editor.coverage.schema import CoverageRun
 from ai_video_editor.pipeline.schema import (
     EditDiff,
     EditPipelineParams,
@@ -167,4 +168,5 @@ class SpineResult(EditPipelineResult):
 
     clips_used: list[str] = Field(default_factory=list, description="IDs dos clipes na espinha, em ordem")
     clips_unused: int = 0
-    timeline_path: Optional[Path] = None
+    timeline_path: Optional[Path] = Field(default=None, description="Timeline renderizada (com cobertura, se houve)")
+    coverage: Optional[CoverageRun] = None

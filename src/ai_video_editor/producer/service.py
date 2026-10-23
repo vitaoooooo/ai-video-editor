@@ -22,7 +22,7 @@ MAX_ATTEMPTS = 2
 # Receita do fallback para pasta com papel principal falado, se estiver registrada.
 VLOG_RECIPE = "vlog"
 # Peças que chamam IA durante a edição (entram na estimativa de chamadas).
-AI_PIECES = ("director",)
+AI_PIECES = ("director", "coverage")
 # Mesmo número de tentativas do Diretor por etapa de IA (uma nova tentativa com o erro).
 AI_ATTEMPTS_PER_STEP = 2
 UNDERSTOOD_PREFIX = "Entendi: "

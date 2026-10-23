@@ -3,8 +3,10 @@
 from ai_video_editor.recipes.schema import Recipe, RecipeError
 
 DEFAULT_RECIPE = "fala"
-# Receita padrão de `edit <pasta>` (projeto com vários clipes).
+# Receita padrão de `edit <pasta>` (projeto com vários clipes) e a usada quando a pasta já tem a
+# análise visual (`visual <pasta>`), que acrescenta a cobertura.
 DEFAULT_FOLDER_RECIPE = "vlog"
+COVERAGE_FOLDER_RECIPE = "vlog_cobertura"
 
 _RECIPES: dict[str, Recipe] = {}
 
@@ -65,6 +67,34 @@ register_recipe(
             "timeline": ["director"],
             "render": ["timeline"],
             "subtitles": ["timeline"],
+            "report": ["transcription", "director", "subtitles"],
+        },
+    )
+)
+
+
+# Vlog com cobertura: a espinha da `vlog` + a análise visual já feita (`visual <pasta>`) + o Diretor de
+# cobertura (B-roll/drone/POV por cima da fala, respiros entre as falas), entre a Timeline e o render.
+register_recipe(
+    Recipe(
+        name="vlog_cobertura",
+        description=(
+            "Pasta de clipes com análise visual (vlog, viagem): a espinha falada da `vlog` mais cobertura de "
+            "drone/b-roll/POV por cima da fala (obrigatória onde a imagem do principal é ruim) e respiros"
+        ),
+        steps=[
+            "catalog", "silences", "transcription", "director", "timeline", "visual", "coverage",
+            "render", "subtitles", "report",
+        ],
+        multi_clip=True,
+        requires={
+            "silences": ["catalog"],
+            "transcription": ["catalog"],
+            "timeline": ["director"],
+            # Cobertura escolhe frases por ID: precisa da transcrição (e das remoções do Diretor).
+            "coverage": ["transcription", "director"],
+            "render": ["coverage"],
+            "subtitles": ["coverage"],
             "report": ["transcription", "director", "subtitles"],
         },
     )

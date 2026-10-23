@@ -32,6 +32,16 @@ PIECES: dict[str, Piece] = {
             description="Timeline com trilhas: trechos mantidos de cada clipe em sequência",
             needs=["catalog", "silences"],
         ),
+        Piece(
+            name="visual",
+            description="Lê a análise visual (visual.json, comando `visual`) das tomadas, sem chamar a IA",
+            needs=["catalog"],
+        ),
+        Piece(
+            name="coverage",
+            description="Diretor de cobertura: B-roll/drone/POV por cima da fala e respiros, por IDs",
+            needs=["visual", "timeline"],
+        ),
         Piece(name="render", description="Renderização com FFmpeg (do EditPlan ou da Timeline)"),
         Piece(name="subtitles", description="Legendas .srt no tempo editado", needs=["transcription"]),
         Piece(name="report", description="Relatório, transcrição comparativa e linha do tempo", needs=["render"]),
