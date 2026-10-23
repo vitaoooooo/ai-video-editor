@@ -14,17 +14,14 @@ from ai_video_editor.transcription.exceptions import (
     TranscriptionGpuError,
     TranscriptionMediaError,
 )
+from ai_video_editor.transcription.normalize import normalize_segments
 from ai_video_editor.transcription.provider import TranscriptionProgress, TranscriptionProvider
 from ai_video_editor.transcription.schema import (
     Transcript,
     TranscriptSegment,
     TranscriptionConfig,
-    Word,
     resolve_model_size,
 )
-
-# Menor duração aceita para uma palavra; o Whisper às vezes devolve start == end.
-_MIN_WORD_SEC = 0.001
 
 # O Whisper espera áudio mono em 16 kHz.
 _SAMPLE_RATE = 16000
@@ -214,6 +211,7 @@ class FasterWhisperProvider(TranscriptionProvider):
         else:
             self._effective = None
             model = self._load_model(config)
+        self._last_adjustments = None
         device, compute_type = self._effective or self._cpu_settings(config.compute_type)
         model_name = self._effective_model or resolve_model_size(config.model_size, device)
         audio = self._decode_audio(media_path)
@@ -255,36 +253,21 @@ class FasterWhisperProvider(TranscriptionProvider):
         )
         return self._convert_segments(raw_segments, self._progress), info.language
 
-    @staticmethod
     def _convert_segments(
-        raw_segments, progress: Optional[tuple[TranscriptionProgress, float]] = None
+        self, raw_segments, progress: Optional[tuple[TranscriptionProgress, float]] = None
     ) -> list[TranscriptSegment]:
-        """Converte os segmentos do faster-whisper (gerador) para o schema, com IDs 0..n-1.
+        """Converte os segmentos do faster-whisper (gerador) para o schema, normalizados (ordem,
+        repetições e palavras; ver `transcription/normalize.py`), com IDs 0..n-1.
 
         O gerador transcreve sob demanda; com `progress`, cada segmento consumido informa o
-        fim dele em relação à duração do áudio.
+        fim dele em relação à duração do áudio. O que a normalização mudou fica em `last_adjustments`.
         """
-        segments: list[TranscriptSegment] = []
-        for raw in raw_segments:
-            words = [
-                Word(
-                    text=w.word.strip(),
-                    start_sec=w.start,
-                    end_sec=max(w.end, w.start + _MIN_WORD_SEC),
-                    probability=w.probability,
-                )
-                for w in (getattr(raw, "words", None) or [])
-            ]
-            segments.append(
-                TranscriptSegment(
-                    id=len(segments),
-                    start_sec=raw.start,
-                    end_sec=max(raw.end, raw.start + _MIN_WORD_SEC),
-                    text=raw.text.strip(),
-                    words=words,
-                )
-            )
-            if progress is not None:
-                on_progress, duration = progress
+        on_segment = None
+        if progress is not None:
+            on_progress, duration = progress
+
+            def on_segment(raw) -> None:
                 on_progress(min(raw.end, duration), duration)
+
+        segments, self._last_adjustments = normalize_segments(raw_segments, on_segment)
         return segments

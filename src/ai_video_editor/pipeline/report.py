@@ -1,7 +1,7 @@
 """Relatório Markdown da edição (`edit_report.md`)."""
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Sequence, Union
 
 from ai_video_editor.audio import AudioAnalysisResult
 from ai_video_editor.core.schema import EditPlan
@@ -130,6 +130,7 @@ def build_edit_report(
     subtitles_path: Optional[Path] = None,
     subtitle_blocks: Optional[int] = None,
     transcription_model: Optional[str] = None,
+    transcription_notes: Sequence[str] = (),
     timings: Optional[RunTimings] = None,
     comparison: Optional[EditDiff] = None,
     removal_label: Optional[str] = None,
@@ -179,6 +180,8 @@ def build_edit_report(
         *([f"| Transcrição | `{transcription_model}` |"] if transcription_model else []),
         comparison_row,
         "",
+        *(f"> ⚠️ **Atenção:** {note}" for note in transcription_notes),
+        *([""] if transcription_notes else []),
         *briefing_section(settings),
         "## Parâmetros",
         "",

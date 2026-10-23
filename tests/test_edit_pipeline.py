@@ -13,6 +13,7 @@ from ai_video_editor.pipeline import runner as runner_module
 from ai_video_editor.planning import NoSpeechDetectedError, SilenceCutParams
 from ai_video_editor.renderer.executor import RenderExecutor
 from ai_video_editor.subtitles import SubtitleParams
+from ai_video_editor.transcription.normalize import SegmentAdjustments
 from ai_video_editor.transcription.providers.faster_whisper import FasterWhisperProvider
 from ai_video_editor.transcription.providers.mock import MockTranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript, TranscriptSegment, Word
@@ -564,3 +565,27 @@ def test_cli_edit_subtitle_options(tmp_path, monkeypatch):
     assert handle_edit(args) == 1
     assert captured["params"].subtitles is False
     assert captured["params"].subtitle.max_chars_per_line == 30
+
+
+@pytest.mark.slow
+def test_transcription_adjustments_are_warned_in_stage_and_report(tmp_path, short_video):
+    class AdjustingMock(MockTranscriptionProvider):
+        def transcribe(self, media_path, config, on_progress=None):
+            self._last_adjustments = SegmentAdjustments(segments_dropped_repeated=1)
+            return super().transcribe(media_path, config, on_progress)
+
+    events = []
+    pipeline = EditPipeline(
+        projects_root=tmp_path / "projects",
+        transcription_provider=AdjustingMock(),
+        on_progress=lambda stage, event, detail: events.append((stage, event, detail)),
+    )
+    result = pipeline.run(short_video, EditPipelineParams(transcribe=True))
+    note = "Transcrição: saída do Whisper fora de ordem corrigida — 1 repetição descartada."
+    done = next(d for stage, event, d in events if stage == "transcription" and event == "done")
+    assert "saída do Whisper corrigida: 1 repetição descartada" in done
+    assert note in result.warnings
+    assert f"> ⚠️ **Atenção:** {note}" in result.report_path.read_text(encoding="utf-8")
+
+    cached = pipeline.run(short_video, EditPipelineParams(transcribe=True))
+    assert cached.outcomes["transcription"] == "cached" and note in cached.warnings

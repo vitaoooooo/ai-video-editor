@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Callable, Optional
 
+from ai_video_editor.transcription.normalize import SegmentAdjustments
 from ai_video_editor.transcription.schema import Transcript, TranscriptionConfig, resolve_model_size
 
 # (segundos de áudio já transcritos, duração total do áudio em segundos).
@@ -12,6 +13,15 @@ TranscriptionProgress = Callable[[float, float], None]
 
 class TranscriptionProvider(ABC):
     """Contrato base para qualquer provedor de transcrição (faster-whisper, Mock, etc.)."""
+
+    # O que a normalização (`transcription/normalize.py`) mudou na última transcrição; None = nada
+    # foi normalizado (provedor que não usa a normalização ou nenhuma transcrição ainda).
+    _last_adjustments: Optional[SegmentAdjustments] = None
+
+    @property
+    def last_adjustments(self) -> Optional[SegmentAdjustments]:
+        """Ajustes da última chamada de `transcribe` (aviso no `edit`; não entra no Transcript)."""
+        return self._last_adjustments
 
     @property
     @abstractmethod

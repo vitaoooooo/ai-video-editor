@@ -35,6 +35,8 @@ from ai_video_editor.renderer.timeline_executor import TimelineRenderResult
 from ai_video_editor.revision.exceptions import ProjectStateError
 from ai_video_editor.revision.providers.mock import MockReviser
 from ai_video_editor.subtitles import ClipSubtitleSource, build_clip_subtitle_blocks
+from ai_video_editor.transcription.exceptions import TranscriptionError
+from ai_video_editor.transcription.normalize import SegmentAdjustments
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript, TranscriptSegment, TranscriptionConfig, Word
 from tests.conftest import create_tone_silence_video
@@ -446,3 +448,39 @@ def test_old_catalog_format_is_rebuilt_and_current_one_reused(vlog_folder, tmp_p
     current.save(catalog_path(project_dir))
     catalog, generated = load_or_build_catalog(vlog_folder, root, Builder)
     assert not generated and catalog.listing_hash == digest and len(calls) == 1
+
+
+class AdjustingTranscriber(FolderTranscriber):
+    """Como o FolderTranscriber, mas a saída do clip_b precisou de normalização; `fail` quebra um clipe."""
+
+    def __init__(self, fail: Optional[str] = None) -> None:
+        super().__init__()
+        self.fail = fail
+
+    def transcribe(self, media_path: Path, config: TranscriptionConfig, on_progress=None) -> Transcript:
+        if Path(media_path).stem == self.fail:
+            raise ValueError("segmentos devem estar em ordem cronológica")
+        transcript = super().transcribe(media_path, config, on_progress)
+        adjusted = Path(media_path).stem == "clip_b"
+        self._last_adjustments = SegmentAdjustments(segments_adjusted=1, words_dropped=2) if adjusted else SegmentAdjustments()
+        return transcript
+
+
+@pytest.mark.slow
+def test_transcription_adjustments_are_warned_and_survive_the_cache(vlog_folder, tmp_path):
+    transcriber = AdjustingTranscriber()
+    result = _pipeline(tmp_path, transcriber).run(vlog_folder, PARAMS)
+    note = "Transcrição (P002): saída do Whisper fora de ordem corrigida — 1 segmento com início ajustado, 2 palavras descartadas."
+    assert note in result.warnings and not any("(P001)" in w for w in result.warnings)
+    assert f"> ⚠️ **Atenção:** {note}" in (result.project_dir / "edit_report.md").read_text(encoding="utf-8")
+
+    # Nova execução com outro parâmetro: a transcrição vem do cache e o aviso continua.
+    transcriber.calls.clear()
+    again = _pipeline(tmp_path, transcriber).run(vlog_folder, PARAMS.model_copy(update={"min_silence_sec": 0.6}))
+    assert transcriber.calls == [] and note in again.warnings
+
+
+@pytest.mark.slow
+def test_clip_transcription_error_names_the_clip(vlog_folder, tmp_path):
+    with pytest.raises(TranscriptionError, match=r"^P002 \(clip_b\.mp4\): segmentos devem estar em ordem cronológica"):
+        _pipeline(tmp_path, AdjustingTranscriber(fail="clip_b")).run(vlog_folder, PARAMS)

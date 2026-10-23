@@ -270,7 +270,7 @@ def test_faster_whisper_reports_end_of_each_segment():
         types.SimpleNamespace(start=12.0, end=61.0, text="b", words=[]),
     ]
     calls = []
-    segments = FasterWhisperProvider._convert_segments(iter(raw), (lambda d, t: calls.append((d, t)), 60.0))
+    segments = FasterWhisperProvider()._convert_segments(iter(raw), (lambda d, t: calls.append((d, t)), 60.0))
     assert len(segments) == 2
     assert calls == [(12.0, 60.0), (60.0, 60.0)]
 
