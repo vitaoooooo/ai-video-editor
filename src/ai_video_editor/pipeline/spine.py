@@ -22,8 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from ai_video_editor.audio import AudioAnalysisResult, detect_silences
-from ai_video_editor.audio.levels import AUTO_RULE_VERSION
+from ai_video_editor.audio import AudioAnalysisResult
 from ai_video_editor.core.schema import LoudnessTarget
 from ai_video_editor.catalog.schema import ProjectCatalog
 from ai_video_editor.core.timeline import Timeline
@@ -58,8 +57,13 @@ from ai_video_editor.pipeline.clips import (
     catalog_location,
     catalog_path,
     clip_cache_file,
+    load_adjustments,
     load_or_build_catalog,
+    load_or_detect_silences,
     select_spine_clips,
+    silences_fingerprint,
+    transcribe_to_cache,
+    transcription_fingerprint,
 )
 from ai_video_editor.pipeline.cutting import plan_keep_ranges
 from ai_video_editor.pipeline.project import (
@@ -121,8 +125,7 @@ from ai_video_editor.recipes import DEFAULT_FOLDER_RECIPE, Recipe, RecipeError
 from ai_video_editor.renderer.loudness import LoudnessResult
 from ai_video_editor.renderer.timeline_executor import TimelineRenderExecutor, TimelineRenderResult
 from ai_video_editor.subtitles import ClipSubtitleSource, build_clip_subtitle_blocks, write_srt
-from ai_video_editor.transcription.exceptions import TranscriptionError
-from ai_video_editor.transcription.normalize import SegmentAdjustments, adjustments_note
+from ai_video_editor.transcription.normalize import adjustments_note
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript, TranscriptionConfig
 
@@ -441,22 +444,15 @@ class SpinePipeline(EditPipeline):
 
     def _silence_fps(self, s: _SpineState) -> dict[str, str]:
         params = s.params
-        threshold_key = (
-            ("auto", AUTO_RULE_VERSION) if params.threshold_db == "auto" else ("fixed", params.threshold_db)
-        )
         return {
-            clip.id: fingerprint("silences", s.hashes[clip.id], threshold_key, params.min_silence_sec)
+            clip.id: silences_fingerprint(s.hashes[clip.id], params.threshold_db, params.min_silence_sec)
             for clip in s.clips
         }
 
     def _clip_audio(self, s: _SpineState, clip: SpineClip, fp: str, force: bool = False) -> tuple[AudioAnalysisResult, bool]:
         """(silêncios do clipe, veio do cache por clipe)."""
         path = clip_cache_file(self.projects_root, s.hashes[clip.id], "silences", fp)
-        if path.is_file() and not force:
-            return AudioAnalysisResult.load_json(path), True
-        result = detect_silences(clip.path, s.params.threshold_db, s.params.min_silence_sec)
-        result.save_json(path)
-        return result, False
+        return load_or_detect_silences(clip.path, path, s.params.threshold_db, s.params.min_silence_sec, force)
 
     def _clip_silences(self, s: _SpineState) -> StageOutcome:
         per_clip = self._silence_fps(s)
@@ -498,12 +494,8 @@ class SpinePipeline(EditPipeline):
         if not params.transcribe:
             return s.run.skip("transcription", "use --transcribe para gerar")
         provider = self.transcription_provider
-        effective = provider.effective_settings(params.transcription)
-        config = params.transcription.model_copy(
-            update={"model_size": provider.effective_model(params.transcription), "device": effective[0], "compute_type": effective[1]}
-        )
         per_clip = {
-            clip.id: fingerprint("transcription", s.hashes[clip.id], provider.provider_name, config) for clip in s.clips
+            clip.id: transcription_fingerprint(s.hashes[clip.id], provider, params.transcription) for clip in s.clips
         }
         s.fp_transcript = fingerprint("transcription", [(clip.id, per_clip[clip.id]) for clip in s.clips])
         total_sec = sum(c.duration_sec for c in s.clips)
@@ -531,7 +523,7 @@ class SpinePipeline(EditPipeline):
                             "transcription", StageProgress(done=offset + done, total=total_sec, note=note)
                         ),
                     )
-                    adjusted = _load_adjustments(path)
+                    adjusted = load_adjustments(path)
                     if adjusted is not None:
                         self._emit("transcription", "notice", adjustments_note(adjusted.summary(), clip.id))
                 done_sec += clip.duration_sec
@@ -547,7 +539,7 @@ class SpinePipeline(EditPipeline):
             if not path.is_file():  # cache por clipe apagado depois da execução anterior
                 self._transcribe_clip(provider, clip, path, params.transcription)
             s.transcripts[clip.id] = Transcript.load(path)
-            adjusted = _load_adjustments(path)
+            adjusted = load_adjustments(path)
             if adjusted is not None:
                 s.transcription_notes.append(adjustments_note(adjusted.summary(), clip.id))
         return outcome
@@ -555,22 +547,8 @@ class SpinePipeline(EditPipeline):
     def _transcribe_clip(
         self, provider: TranscriptionProvider, clip: SpineClip, path: Path, config: TranscriptionConfig, on_progress=None
     ) -> Transcript:
-        """Transcreve um clipe e grava no cache por clipe, com os ajustes da normalização ao lado.
-
-        O erro diz o clipe: com 22 clipes, "segmentos fora de ordem" sozinho não diz onde olhar.
-        """
-        try:
-            transcript = provider.transcribe(clip.path, config, on_progress=on_progress)
-        except Exception as exc:
-            raise TranscriptionError(f"{clip.id} ({clip.path.name}): {exc}") from exc
-        transcript.save(path)
-        sidecar = _adjustments_path(path)
-        adjustments = provider.last_adjustments
-        if adjustments is not None and adjustments.changed:
-            sidecar.write_text(adjustments.model_dump_json(indent=2), encoding="utf-8")
-        elif sidecar.is_file():
-            sidecar.unlink()
-        return transcript
+        """Transcreve um clipe e grava no cache por clipe (`transcribe_to_cache`)."""
+        return transcribe_to_cache(provider, clip.id, clip.path, path, config, on_progress=on_progress)
 
     def _clip_director(self, s: _SpineState) -> StageOutcome:
         """Opcional; escolhe frases (com IDs globais) a remover, com os clipes como seções do prompt."""
@@ -984,14 +962,3 @@ class SpinePipeline(EditPipeline):
 def _json(data: dict) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
 
-
-def _adjustments_path(transcript_path: Path) -> Path:
-    """Ajustes da normalização ao lado da transcrição do cache por clipe (só existe se houve ajuste)."""
-    return transcript_path.with_name(f"{transcript_path.stem}.adjustments.json")
-
-
-def _load_adjustments(transcript_path: Path) -> Optional[SegmentAdjustments]:
-    sidecar = _adjustments_path(transcript_path)
-    if not sidecar.is_file():
-        return None
-    return SegmentAdjustments.model_validate_json(sidecar.read_text(encoding="utf-8"))

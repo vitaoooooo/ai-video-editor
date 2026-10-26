@@ -2,13 +2,22 @@
 
 O catálogo é só lido (`catalog/` não muda aqui); se o `catalog.json` ainda não existe, ele é gerado
 pela API pública do módulo (`CatalogBuilder`), no mesmo diretório de projeto do comando `catalog`.
+
+Silêncios e transcrição por clipe (fingerprints e cache em `_cache/edit_clips/`) ficam aqui para
+serem os mesmos em quem os usa (`edit <pasta>` e `roteiro`): um clipe já processado não é refeito.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional, Union
 
-from ai_video_editor.pipeline.project import CLIP_STAGE_CACHE_DIR
+from ai_video_editor.audio import AudioAnalysisResult, detect_silences
+from ai_video_editor.audio.levels import AUTO_RULE_VERSION
+from ai_video_editor.pipeline.project import CLIP_STAGE_CACHE_DIR, fingerprint
 from ai_video_editor.pipeline.spine_schema import SpineClip, SpineSelection, UnusedClip
+from ai_video_editor.transcription.exceptions import TranscriptionError
+from ai_video_editor.transcription.normalize import SegmentAdjustments
+from ai_video_editor.transcription.provider import TranscriptionProvider
+from ai_video_editor.transcription.schema import Transcript, TranscriptionConfig
 
 if TYPE_CHECKING:
     # `catalog.builder` importa `pipeline`; os imports de execução ficam dentro das funções.
@@ -145,3 +154,73 @@ def select_spine_clips(catalog: "ProjectCatalog") -> SpineSelection:
 def clip_cache_file(projects_root: Path, file_hash: str, stage: str, fp: str) -> Path:
     """Arquivo do cache por clipe: chave = hash do arquivo + fingerprint dos parâmetros da etapa."""
     return projects_root.resolve() / CLIP_STAGE_CACHE_DIR / file_hash / f"{stage}-{fp}.json"
+
+
+# --- silêncios e transcrição por clipe (mesmas chaves do `edit <vídeo>`) ---
+
+
+def silences_fingerprint(file_hash: str, threshold_db: Union[float, str], min_silence_sec: float) -> str:
+    """Chave dos silêncios de um arquivo. No modo `auto` vale o modo + a versão da regra."""
+    threshold_key = ("auto", AUTO_RULE_VERSION) if threshold_db == "auto" else ("fixed", threshold_db)
+    return fingerprint("silences", file_hash, threshold_key, min_silence_sec)
+
+
+def load_or_detect_silences(
+    path: Path, cache_path: Path, threshold_db: Union[float, str], min_silence_sec: float, force: bool = False
+) -> tuple[AudioAnalysisResult, bool]:
+    """(silêncios do clipe, veio do cache por clipe)."""
+    if cache_path.is_file() and not force:
+        return AudioAnalysisResult.load_json(cache_path), True
+    result = detect_silences(path, threshold_db, min_silence_sec)
+    result.save_json(cache_path)
+    return result, False
+
+
+def effective_transcription_config(provider: TranscriptionProvider, config: TranscriptionConfig) -> TranscriptionConfig:
+    """Configuração com modelo, dispositivo e compute_type efetivos (resolvidos de "auto"): é o que entra no cache."""
+    effective = provider.effective_settings(config)
+    return config.model_copy(
+        update={"model_size": provider.effective_model(config), "device": effective[0], "compute_type": effective[1]}
+    )
+
+
+def transcription_fingerprint(file_hash: str, provider: TranscriptionProvider, config: TranscriptionConfig) -> str:
+    return fingerprint("transcription", file_hash, provider.provider_name, effective_transcription_config(provider, config))
+
+
+def transcribe_to_cache(
+    provider: TranscriptionProvider,
+    label: str,
+    path: Path,
+    cache_path: Path,
+    config: TranscriptionConfig,
+    on_progress=None,
+) -> Transcript:
+    """Transcreve um clipe e grava no cache por clipe, com os ajustes da normalização ao lado.
+
+    O erro diz o clipe (`label`): com 22 clipes, "segmentos fora de ordem" sozinho não diz onde olhar.
+    """
+    try:
+        transcript = provider.transcribe(path, config, on_progress=on_progress)
+    except Exception as exc:
+        raise TranscriptionError(f"{label} ({path.name}): {exc}") from exc
+    transcript.save(cache_path)
+    sidecar = adjustments_path(cache_path)
+    adjustments = provider.last_adjustments
+    if adjustments is not None and adjustments.changed:
+        sidecar.write_text(adjustments.model_dump_json(indent=2), encoding="utf-8")
+    elif sidecar.is_file():
+        sidecar.unlink()
+    return transcript
+
+
+def adjustments_path(transcript_path: Path) -> Path:
+    """Ajustes da normalização ao lado da transcrição do cache por clipe (só existe se houve ajuste)."""
+    return transcript_path.with_name(f"{transcript_path.stem}.adjustments.json")
+
+
+def load_adjustments(transcript_path: Path) -> Optional[SegmentAdjustments]:
+    sidecar = adjustments_path(transcript_path)
+    if not sidecar.is_file():
+        return None
+    return SegmentAdjustments.model_validate_json(sidecar.read_text(encoding="utf-8"))
