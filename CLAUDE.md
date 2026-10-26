@@ -34,7 +34,11 @@ python -m pytest -q              # testes (devem passar todos antes de concluir)
 python -m ai_video_editor.cli --help
 ```
 
+<<<<<<< HEAD
+Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit` (vídeo ou pasta de clipes, com cobertura se a pasta tem análise visual; ver docs/REFERENCIA.md, opções E e K), `revise`, `versions`, `catalog` (pasta de clipes; ver docs/REFERENCIA.md, opção H), `briefing` (Produtor; opção I), `visual` (tomadas e descrição por IA; opção J), `benchmark transcription` (WER e velocidade; ver docs/REFERENCIA.md, opção G), `ollama-check` (diagnóstico do Ollama local; opção L).
+=======
 Subcomandos da CLI: `analyze`, `report-ai`, `quick-cut`, `render`, `edit` (vídeo ou pasta de clipes, com cobertura se a pasta tem análise visual; ver docs/REFERENCIA.md, opções E e K), `revise`, `versions`, `catalog` (pasta de clipes; ver docs/REFERENCIA.md, opção H), `briefing` (Produtor; opção I), `visual` (tomadas e descrição por IA; opção J), `roteiro` (roteiro unificado para o Editor de IA; opção M), `benchmark transcription` (WER e velocidade; ver docs/REFERENCIA.md, opção G), `ollama-check` (diagnóstico do Ollama local; opção L).
+>>>>>>> vitaoooooo/fix-ollama-gramatica
 
 ## Convenções
 

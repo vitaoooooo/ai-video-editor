@@ -390,6 +390,8 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 📊 Testes: 691 → 700 (`tests/test_coverage.py`: janela que exige cobertura só com tomada grave, o que está na tela, prompt com tela/relacionadas/proximidade, resposta antiga com `shot_id`, item inválido descartado sem derrubar os outros (6 casos) e do clipe que fala, tomada inválida retirada da lista, trecho curto estendido ou descartado, nova tentativa só com janela que exige cobertura descoberta ou mais da metade descartada (com só os problemas e os itens aceitos), manter aceito com motivo e recusado onde a cobertura é exigida, fallback só com tomada relacionada e mantendo sem ela, tags em comum, sem repetir o clipe em pedaços seguidos, divisão do tempo entre as tomadas; material real: resposta do Gemini aceita com ajustes, 22,9 s completado na janela, 21,2 s encurtado fora, 1,1 s estendido, 22,9 s com 3 tomadas distribuído, fallback mantendo ônibus e hotel, prompt real). Suíte completa em 5min 35s (`-n auto`).
 - ❌ **Fora desta tarefa:** Diretor de cortes, render, regras de detecção das janelas e análise visual.
 
+<<<<<<< HEAD
+=======
 ## Provedor `ollama`: modelos locais na camada `llm/` (2026-10-23)
 
 - **Por quê:** a IA do projeto vai rodar localmente (RTX 2060, 6 GB) pelo Ollama: `qwen2.5vl:3b` para as imagens e `qwen2.5:7b` como Diretor. Sem chave, sem custo por chamada.
@@ -408,6 +410,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 📊 Testes: 700 → 724 (`tests/test_ollama_provider.py`, transporte HTTP falso: payload de texto com o schema no `format` e `num_ctx`, raciocínio ignorado, imagens em base64 depois de cada legenda com `detail` registrado, chamada sem imagem sem `images`, `num_ctx`/host/`keep_alive` por variável e por argumento, host normalizado, sem chave; truncamento da entrada (erro claro, uma chamada, sem troca na cadeia) e da resposta, entrada abaixo do limite; conexão recusada sem troca nem nova tentativa, modelo ausente, tempo esgotado repetido, queda do processo e 503 transitórios e falta de memória permanente, JSON inválido; `urllib` real com `urlopen` falso; registro e cadeias com `:`; CLI com `ollama` em todos os provedores, timeouts por provedor, `--ollama-*` gravando o ambiente, paralelismo 1 no `visual` e o timeout do descritor; `ollama-check` completo, servidor fora do ar e modelo faltando). `test_visual_parallel.py` passou a conferir o paralelismo resolvido (o padrão da opção virou `None`). Suíte completa em 3min 51s (`-n auto`).
 - ❌ **Fora desta tarefa:** roteiro, Diretor novo e mudanças nos prompts. **A medir:** `ollama-check` de novo com o Ollama recém-aberto (tempos com e sem carga), `--ollama-ctx 4096` × 8192 (`ollama ps`: quanto vai para a CPU), um `edit --director ollama` e um `visual --visual-provider ollama --visual-model qwen2.5vl:3b` de verdade (tokens por lote de 24 miniaturas contra o `num_ctx`).
 
+>>>>>>> vitaoooooo/fix-ollama-gramatica
 ## Roteiro unificado (fala + imagem + ritmo) para o Editor de IA (2026-10-26)
 
 - 🧭 **Por quê:** nova direção aprovada (ARQUITETURA, seção 4): o editor tem de funcionar para **qualquer** vídeo, então o programa só mede, descreve, confere e executa, e a IA decide. O primeiro passo é dar à IA um texto único com tudo o que ela precisa citar por ID: o **roteiro unificado**. Nada aqui edita vídeo; o diretor em passadas (resumos, estrutura, detalhe, montagem) é a próxima tarefa.
@@ -437,6 +440,8 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   ```
   Anotar: fotos antes/depois do descarte (e se o limite 6 descarta demais ou de menos), momentos, segundos por foto da visão (substituir `SECONDS_PER_PHOTO_ESTIMATE` = 3 s) e o total, tokens estimados do roteiro (total e por clipe), e conferir no `roteiro.json` os volumes/velocidades medidos para calibrar os limites do ritmo.
 - ❌ **Fora desta tarefa:** o diretor (resumos, passadas, montagem), render, mudar as receitas existentes e o provedor `ollama`.
+<<<<<<< HEAD
+=======
 
 ## Ollama: resposta zerada com o JSON schema e JSON pelo texto do pedido (2026-10-26)
 
@@ -451,6 +456,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 📊 Testes: 743 → 757 (`tests/test_ollama_provider.py`, transporte falso: resposta zerada → erro certo e uma chamada só com `OLLAMA_FORMATO=schema`; resposta terminada e vazia continua "sem conteúdo"; resposta zerada → nova chamada sem `format` com o schema no fim do prompt, `people: "2"` aceito, o modelo fica em `texto` nas próximas e outro modelo continua no schema; zerada também sem `format` → erro; `OLLAMA_FORMATO=texto` já começa sem `format` (imagem na mensagem dela); texto sem JSON ou sem os obrigatórios → `AIResponseValidationError`; contexto conferido no `texto`; extração com cercas e texto em volta; schema compacto; opção inválida; CLI `--ollama-formato`; aviso uma vez só com 6 threads; describer sem correção gasta e fingerprint igual; `ollama-check` com só o texto funcionando). Suíte completa em 4min 06s (`-n auto`).
 - ❌ **Não medido aqui** (sem Ollama nesta execução). Para medir no vlog real: `ollama-check` (qual formato funciona com imagem) e `roteiro "%VLOG%" --language pt` (o aviso aparece na primeira foto; anotar fotos descritas × sem descrição, correções e segundos por foto; comparar com `--ollama-formato texto` desde o início).
 - ❌ **Fora desta tarefa:** trocar de modelo, mudar o prompt das fotos, temperatura e atualizar o Ollama.
+>>>>>>> vitaoooooo/fix-ollama-gramatica
 
 ---
 

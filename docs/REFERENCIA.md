@@ -549,6 +549,9 @@ Etapas (`[n/10]`): catálogo → silêncios → transcrição → Diretor → Ti
 * **Cache:** `visual` = hash do `visual.json` + do catálogo + clipes da espinha; `coverage` = Timeline (que já inclui o Diretor) + `coverage_shots.json` + instruções e papéis do briefing + instruções ao Diretor + IA (provedor, modelo, raciocínio, cadeia pedida) + versão do prompt + as constantes acima (`COVERAGE_RULES` em `pipeline/spine.py`, com as de relação, nova tentativa e fallback). Formatos `coverage-shots-v2` e `coverage-v2`: projetos de antes refazem as etapas `visual` (sem IA, menos de 1 s) e `coverage`. Render, legendas e relatório seguem o **resultado** da cobertura (hash do `coverage_timeline.json` e, nos dois últimos, do `coverage_decision.json`), não só as entradas: se a etapa for refeita com as mesmas entradas (artefato apagado, `--force`) e a IA decidir diferente, o que vem depois acompanha. Trocar só a IA da cobertura refaz cobertura, render, legendas e relatório. Na `vlog`, nenhum fingerprint mudou.
 * **Versões:** `versions/vN/` leva `coverage_timeline.json` (apontando para o vídeo da versão), a espinha `timeline.json` e `coverage_decision.json`.
 
+<<<<<<< HEAD
+### Opção L: Roteiro unificado para o Editor de IA (`roteiro`)
+=======
 ### Opção L: Modelos locais com o Ollama (`--*-provider ollama` e `ollama-check`)
 
 Roda o Diretor, o revisor, o Produtor, a cobertura e a descrição visual num modelo local pelo [Ollama](https://ollama.com), sem chave de API. Perfil pensado para uma RTX 2060 (6 GB): `qwen2.5:7b` como Diretor e `qwen2.5vl:3b` para as imagens.
@@ -587,6 +590,7 @@ As opções valem para o processo inteiro (gravam as variáveis acima), inclusiv
 * **Paralelismo:** com `--visual-provider ollama`, `--visual-paralelo` passa a 1 por padrão; pedir mais é aceito com aviso (os lotes disputam a mesma GPU).
 
 ### Opção M: Roteiro unificado para o Editor de IA (`roteiro`)
+>>>>>>> vitaoooooo/fix-ollama-gramatica
 
 Lê **qualquer material** (um vídeo = projeto de 1 clipe; uma pasta = N clipes de qualquer papel) e escreve o **roteiro unificado**: fala, imagem e ritmo de cada clipe, tudo com IDs para o Editor de IA citar. Não edita nada. O programa mede, descreve e confere; nenhuma regra depende de papel ou de tipo de vídeo (drone, b-roll, gameplay sem voz e evento entram com momentos e descrições; o papel e "tem fala" são só informação para a IA).
 
