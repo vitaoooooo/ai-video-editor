@@ -172,12 +172,13 @@ class StageProgress(BaseModel):
     """Andamento de uma etapa em curso, para exibição ao vivo (não é gravado no projeto).
 
     `done`/`total` em segundos de mídia (`unit="sec"`, transcrição), em itens
-    (`unit="items"`, trechos do render) ou em clipes (`unit="clips"`, comando `catalog`). `note` é um texto livre, ex: modelo e tentativa do Diretor.
+    (`unit="items"`, trechos do render), em clipes (`unit="clips"`, comando `catalog`) ou em fotos
+    (`unit="photos"`, comando `roteiro`). `note` é um texto livre, ex: modelo e tentativa do Diretor.
     """
 
     done: Optional[float] = None
     total: Optional[float] = None
-    unit: Literal["sec", "items", "clips"] = "sec"
+    unit: Literal["sec", "items", "clips", "photos"] = "sec"
     note: str = ""
 
     @property

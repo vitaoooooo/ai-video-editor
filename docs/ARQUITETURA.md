@@ -63,6 +63,21 @@ flowchart LR
     T --> F[Render FFmpeg]
 ```
 
+### Nova direção: o programa mede, a IA decide (roteiro unificado)
+
+O editor deve funcionar para **qualquer tipo de vídeo**. Para isso a divisão de trabalho fica explícita: **o programa só mede, descreve, confere e executa; a IA toma as decisões de edição.** Nenhuma regra do código depende de um papel específico (principal, drone, POV, b-roll...) ou do tipo "vlog": o papel e "tem fala/não tem" são informação para a IA. Um arquivo é um projeto de 1 clipe; uma pasta com várias câmeras é um projeto com vários papéis.
+
+Fluxo do **Editor de IA**:
+
+```text
+catálogo → silêncios → transcrição → frases + ritmo → fotos → descrições (IA de visão local) → momentos → ROTEIRO UNIFICADO
+        → [próximo: resumos por clipe → passada 1 (estrutura) → passada 2 (detalhe por bloco) → montagem por IDs → render]
+```
+
+- **Roteiro unificado (`roteiro <arquivo-ou-pasta>`, feito):** por clipe, os **momentos** (`P007.M04`: fotos seguidas com a mesma imagem, descritas por uma IA de visão local — Qwen2.5-VL-3B via Ollama, ou qualquer provedor da camada `llm/`), as **frases** (`S012`, com volume, velocidade e pausas medidos pelo programa) ligadas aos momentos que atravessam, problemas de imagem e medidas. Todo clipe entra, com ou sem fala. Tempos ficam no JSON; o texto (`roteiro.md`) mostra mm:ss só como contexto e traz o tamanho estimado em tokens, total e por clipe, para dimensionar o diretor.
+- **Diretor em passadas (próxima tarefa):** resumos por clipe, uma passada de estrutura sobre o roteiro inteiro, uma passada de detalhe por bloco e a montagem só por IDs (frases, momentos, fotos), validada e convertida em Timeline pelo código, como hoje.
+- **Até o editor novo provar que é melhor**, as receitas `vlog`/`vlog_cobertura` e o comando `visual` ficam como estão (o roteiro só reaproveita os caches e as funções deles).
+
 ## 5. Plano de rodadas
 
 Cada rodada tem tarefas em paralelo (um worktree por tarefa):
@@ -71,3 +86,4 @@ Cada rodada tem tarefas em paralelo (um worktree por tarefa):
 2. **Produtor** ∥ **espinha falada multiclipe** ∥ **análise visual.** Briefing a partir do pedido + catálogo; a receita de fala sobre vários clipes principais em sequência (IDs de frase passam a incluir o clipe); análise visual dos clipes (tomadas, miniaturas, medidas e descrição por IA — feita: comando `visual`) para os Diretores visuais. ✅ Espinha pronta: `edit <pasta>` (receita `vlog`), com os principais sem fala listados como disponíveis para a cobertura.
 3. **Diretor de cobertura** + **render com cobertura.** B-roll/drone/POV cobrindo trechos da fala, por IDs de clipes e de frases. ✅ Feita: receita `vlog_cobertura` (peças `visual` e `coverage`), janelas obrigatórias pelo código, Diretor de cobertura (gemini/openai/mock) com validação, nova tentativa e fallback, coberturas em `video_overlay`, respiros na base e ambiente; legendas e relatórios na Timeline final.
 4. **`revise` multitrilha** + **relatórios.** Pedidos em linguagem natural sobre a Timeline inteira, e relatórios/linha do tempo por trilha.
+5. **Editor de IA (nova direção, seção 4).** ✅ Roteiro unificado (comando `roteiro`: fotos, descrição por IA de visão local, ritmo, momentos, IDs). Próximo: resumos por clipe, passadas de estrutura e de detalhe, montagem por IDs e render; depois, comparar com `vlog_cobertura` no material real antes de trocar o padrão.

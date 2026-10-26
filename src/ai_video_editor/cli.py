@@ -1100,6 +1100,176 @@ def handle_visual(args: argparse.Namespace) -> int:
     return 0
 
 
+class RoteiroProgressPrinter:
+    """Andamento das etapas do `roteiro` (linha ao vivo em um terminal)."""
+
+    def __init__(self, status: LiveStatus):
+        self.status = status
+
+    def step(self, stage: str) -> str:
+        from ai_video_editor.roteiro import ROTEIRO_STAGE_LABELS, ROTEIRO_STAGES
+
+        return f"[{ROTEIRO_STAGES.index(stage) + 1}/{len(ROTEIRO_STAGES)}] {ROTEIRO_STAGE_LABELS[stage]}"
+
+    def __call__(self, stage: str, event: str, detail: str) -> None:
+        step = self.step(stage)
+        if event == "start":
+            self.status.begin(step)
+        elif event == "done":
+            self.status.end(f"{step}: ok — {detail}")
+        elif event == "skipped":
+            self.status.message(f"{step}: pulada ({detail})")
+        elif event == "notice":
+            self.status.message(f"{step}: {detail}")
+
+    def progress(self, stage: str, progress: StageProgress) -> None:
+        self.status.apply(progress)
+
+
+# Modelo padrão da IA de visão por provedor (os outros usam o padrão do provedor).
+DEFAULT_VISION_MODELS = {"ollama": "qwen2.5vl:3b"}
+
+
+def _default_vision_provider() -> Optional[str]:
+    """`ollama` (Qwen2.5-VL-3B local) quando o provedor está registrado; senão é preciso escolher."""
+    return "ollama" if "ollama" in provider_names() else None
+
+
+def _build_photo_describer(args: argparse.Namespace, printer: "RoteiroProgressPrinter"):
+    """IA de visão pedida na CLI (None com `--visao-provider none`)."""
+    from ai_video_editor.roteiro import PhotoDescriber, mock_vision_responder
+
+    provider = args.visao_provider or _default_vision_provider()
+    if provider is None:
+        raise ValueError(
+            "o provedor ollama (IA de visão local) ainda não está disponível nesta instalação; "
+            "escolha --visao-provider (gemini, openai, mock ou none)"
+        )
+    if provider == "none":
+        return None
+    clients = None
+    if provider == "mock":
+        from ai_video_editor.llm.providers.mock import MockLLMClient
+
+        clients = {"mock": MockLLMClient(responses=[mock_vision_responder])}
+    chain = ModelChain(
+        resolve_chain(provider, args.visao_model or DEFAULT_VISION_MODELS.get(provider), "none"),
+        thinking=args.visao_thinking,
+        timeout_sec=args.visao_timeout,
+        retry=RetryPolicy(
+            max_retries=args.api_retries,
+            on_retry=lambda event: printer(
+                "vision", "notice", f"{event.message} (tentativa {event.next_attempt}/{event.total_attempts})"
+            ),
+        ),
+        on_event=lambda message: printer("vision", "notice", message),
+        clients=clients,
+    )
+    return PhotoDescriber(chain, on_retry=lambda message: printer("vision", "notice", message))
+
+
+def handle_roteiro(args: argparse.Namespace) -> int:
+    """Roteiro unificado (fala + imagem + ritmo) de um arquivo ou de uma pasta de clipes, com IDs."""
+    from ai_video_editor.intelligence.exceptions import AIProviderError
+    from ai_video_editor.roteiro import ROTEIRO_STAGE_LABELS, RoteiroBuilder, RoteiroParams
+    from ai_video_editor.roteiro.describer import IMAGE_TOKENS_ESTIMATE, SECONDS_PER_PHOTO_ESTIMATE
+
+    target = Path(args.target)
+    if not target.exists():
+        print(f"Erro: arquivo ou pasta não encontrado: {target}", file=sys.stderr)
+        return 1
+    status = LiveStatus(live=False if args.no_live else None)
+    printer = RoteiroProgressPrinter(status)
+    try:
+        describer = _build_photo_describer(args, printer)
+        params = RoteiroParams(
+            interval_sec=args.intervalo,
+            threshold_db=args.threshold_db,
+            min_silence_sec=args.min_silence_sec,
+            transcription=TranscriptionConfig(
+                model_size=args.whisper_model,
+                language=args.language,
+                device=args.whisper_device,
+                compute_type=args.whisper_compute_type,
+            ),
+        )
+    except ValueError as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+    if describer is not None:
+        print(f"[visão] {' → '.join(describer.model_chain)}", flush=True)
+    builder = RoteiroBuilder(
+        projects_root=Path(args.projects_dir),
+        describer=describer,
+        on_progress=printer,
+        on_stage_progress=printer.progress,
+        vision_parallel=args.visao_paralelo,
+    )
+    try:
+        with status:
+            result = builder.build(target, params, estimate_only=args.so_estimar, force=args.force)
+    except AIProviderError as e:
+        print(f"Erro da IA: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    times = ", ".join(
+        f"{ROTEIRO_STAGE_LABELS[t.name].lower()} {format_duration(t.elapsed_sec)}" for t in result.stage_times
+    )
+    if result.estimate is not None:
+        est = result.estimate
+        print("\nEstimativa (a IA de visão não foi chamada):")
+        print(f"Projeto: {result.project_dir}")
+        print(f"Fotos: {est.photos_before} extraídas, {est.photos_kept} depois do descarte das quase iguais")
+        if est.cached:
+            print(f"Já descritas (cache, não serão enviadas): {est.cached}")
+        print(f"A descrever: {est.to_describe} fotos = {est.calls} chamadas (sem contar novas tentativas)")
+        print(
+            f"Tempo estimado: ~{format_duration(est.seconds)} ({SECONDS_PER_PHOTO_ESTIMATE:g}s por foto, "
+            f"{args.visao_paralelo} ao mesmo tempo; estimativa para o Qwen2.5-VL-3B local, a calibrar)"
+        )
+        print(
+            f"Tokens estimados: ~{_thousands(est.input_tokens)} de entrada (~{IMAGE_TOKENS_ESTIMATE} por imagem) "
+            f"e ~{_thousands(est.output_tokens)} de saída"
+        )
+        print(f"Tempos: {times}")
+        return 0
+
+    roteiro = result.roteiro
+    before = sum(c.photos_before for c in roteiro.clips)
+    described = sum(1 for p in roteiro.photos if p.status == "descrita")
+    missing = sum(1 for p in roteiro.photos if p.status == "sem_descricao")
+    print("\nRoteiro concluído!")
+    print(f"Projeto: {result.project_dir}")
+    print(f"Roteiro: {result.md_path}")
+    print(f"Dados: {result.json_path}")
+    roles = ", ".join(sorted({c.role for c in roteiro.clips}))
+    print(f"Clipes: {len(roteiro.clips)} ({roles}), {sum(1 for c in roteiro.clips if c.has_speech)} com fala")
+    line = f"Fotos: {before} extraídas, {len(roteiro.photos)} mantidas ({before - len(roteiro.photos)} quase iguais descartadas)"
+    if roteiro.vision is not None:
+        line += f"; {described} descritas"
+        if missing:
+            line += f", {missing} sem descrição (pedidas de novo na próxima execução)"
+    print(line)
+    print(f"Momentos: {len(roteiro.moments)} · Frases: {len(roteiro.sentences)}")
+    vision = roteiro.vision
+    if vision is not None:
+        speed = f", {vision.sec_per_photo:.1f}s por foto".replace(".", ",") if vision.sec_per_photo else ""
+        print(
+            f"Visão: {vision.effective_model or vision.model_chain[0]} — {vision.described} agora, {vision.cached} do "
+            f"cache, {vision.api_calls} chamada(s){speed}; total {format_duration(vision.wall_sec)}"
+        )
+    per_clip = ", ".join(f"{c.id} ~{_thousands(c.estimated_tokens)}" for c in roteiro.clips)
+    print(f"Tamanho do roteiro: ~{_thousands(roteiro.estimated_tokens)} tokens (estimativa: caracteres/4; {per_clip})")
+    for warning in roteiro.warnings:
+        print(f"Aviso: {warning}")
+    print(f"Tempos: {times}")
+    print(f"Tempo total: {format_duration(roteiro.total_sec)}")
+    return 0
+
+
 def _non_negative_int(value: str) -> int:
     number = int(value)
     if number < 0:
@@ -1611,6 +1781,72 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-live", action="store_true", help="Sem linha de andamento ao vivo; só as linhas finais de cada etapa"
     )
 
+    # Subcomando: roteiro
+    roteiro_parser = subparsers.add_parser(
+        "roteiro",
+        help="Roteiro unificado (fala + imagem + ritmo) de um arquivo ou pasta de clipes, com IDs para o Editor de IA",
+    )
+    roteiro_parser.add_argument(
+        "target", help="Vídeo (projeto de 1 clipe) ou pasta de clipes (a mesma do catalog); o catálogo é gerado se faltar"
+    )
+    roteiro_parser.add_argument(
+        "--intervalo", type=float, default=2.0, metavar="SEG",
+        help="Uma foto a cada SEG segundos em todos os clipes, além das extras em início de frase e troca de cena "
+        "(padrão: 2)",
+    )
+    roteiro_parser.add_argument(
+        "--visao-provider", choices=["none", "mock", *_llm_providers()], default=None,
+        help="IA que descreve as fotos; none = sem descrição (padrão: ollama, Qwen2.5-VL-3B local, quando instalado)",
+    )
+    roteiro_parser.add_argument(
+        "--visao-model", default=None, help="Modelo da IA de visão (padrão: qwen2.5vl:3b no ollama; o do provedor nos outros)"
+    )
+    roteiro_parser.add_argument(
+        "--visao-thinking", choices=["off", "low", "high"], default="off",
+        help="Raciocínio da IA de visão, se o modelo tiver (padrão: off)",
+    )
+    roteiro_parser.add_argument(
+        "--visao-timeout", type=float, default=120.0, help="Tempo limite em segundos de cada foto (padrão: 120)"
+    )
+    roteiro_parser.add_argument(
+        "--visao-paralelo", type=_positive_int, default=1, metavar="N",
+        help="Clipes descritos ao mesmo tempo (as fotos de um clipe vão em ordem); padrão 1 (GPU local)",
+    )
+    roteiro_parser.add_argument(
+        "--api-retries", type=_non_negative_int, default=DEFAULT_API_RETRIES, metavar="N",
+        help=f"Novas tentativas da API em falhas temporárias (padrão: {DEFAULT_API_RETRIES})",
+    )
+    roteiro_parser.add_argument(
+        "--so-estimar", action="store_true",
+        help="Faz catálogo, silêncios, transcrição e fotos; mostra fotos, chamadas e tempo estimado da IA de visão "
+        "e para (sem chamá-la)",
+    )
+    roteiro_parser.add_argument(
+        "--threshold-db", type=_threshold_arg, default="auto",
+        help="Limiar de silêncio em dB, ou `auto` (padrão: auto; o mesmo do edit, para usar o mesmo cache)",
+    )
+    roteiro_parser.add_argument(
+        "--min-silence-sec", type=float, default=0.5, help="Duração mínima de um silêncio (padrão: 0.5)"
+    )
+    roteiro_parser.add_argument("--language", default=None, help="Idioma da transcrição (ex: pt); padrão: automático")
+    roteiro_parser.add_argument(
+        "--whisper-model", default="auto", help="Modelo do faster-whisper (padrão: auto, como no edit)"
+    )
+    roteiro_parser.add_argument(
+        "--whisper-device", choices=["auto", "cpu", "cuda"], default="auto", help="Dispositivo do faster-whisper"
+    )
+    roteiro_parser.add_argument("--whisper-compute-type", default="auto", help="Precisão do faster-whisper")
+    roteiro_parser.add_argument(
+        "--force", action="store_true",
+        help="Refaz silêncios, volume, cenas e fotos (a transcrição e as descrições em cache continuam valendo)",
+    )
+    roteiro_parser.add_argument(
+        "--projects-dir", default="output/projects", help="Diretório base dos projetos (padrão: output/projects)"
+    )
+    roteiro_parser.add_argument(
+        "--no-live", action="store_true", help="Sem linha de andamento ao vivo; só as linhas finais de cada etapa"
+    )
+
     # Subcomando: benchmark
     benchmark_parser = subparsers.add_parser("benchmark", help="Benchmarks reproduzíveis")
     benchmark_sub = benchmark_parser.add_subparsers(dest="benchmark_command", required=True)
@@ -1682,6 +1918,8 @@ def main() -> None:
         sys.exit(handle_briefing(args))
     elif args.command == "visual":
         sys.exit(handle_visual(args))
+    elif args.command == "roteiro":
+        sys.exit(handle_roteiro(args))
     elif args.command == "benchmark":
         if args.benchmark_command == "rescore":
             sys.exit(handle_benchmark_rescore(args))

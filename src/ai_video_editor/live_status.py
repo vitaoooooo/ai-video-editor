@@ -40,8 +40,8 @@ def describe_progress(progress: StageProgress) -> str:
     if fraction is None:
         return ""
     pct = int(fraction * 100)
-    if progress.unit in ("items", "clips"):
-        noun = "trechos" if progress.unit == "items" else "clipes"
+    if progress.unit in ("items", "clips", "photos"):
+        noun = {"items": "trechos", "clips": "clipes", "photos": "fotos"}[progress.unit]
         return f"{int(progress.done)}/{int(progress.total)} {noun} ({pct}%)"
     return f"{pct}% ({format_media_time(progress.done)} de {format_media_time(progress.total)})"
 
