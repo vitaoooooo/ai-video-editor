@@ -14,7 +14,7 @@ chave: a mesma imagem com o mesmo modelo não é descrita de novo.
 import hashlib
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -68,6 +68,7 @@ class PhotoOutcome:
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     model: Optional[str] = None
+    warnings: list[str] = field(default_factory=list)  # avisos do provedor (uma vez por processo)
 
 
 def image_hash(path: Path) -> str:
@@ -182,6 +183,7 @@ class PhotoDescriber(ChainBackedStage):
         metrics = self.chain.last_metrics
         if metrics is not None:
             outcome.model = f"{metrics.provider}:{metrics.model_id}"
+            outcome.warnings += metrics.warnings
 
 
 # --- cache por foto ---

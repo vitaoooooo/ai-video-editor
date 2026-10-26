@@ -195,6 +195,7 @@ class VisionRun(BaseModel):
     output_tokens: Optional[int] = None
     wall_sec: float = 0.0
     sec_per_photo: Optional[float] = Field(default=None, description="Média das fotos descritas agora")
+    notes: list[str] = Field(default_factory=list, description="Avisos do provedor (ex: troca do formato do JSON)")
 
 
 class RoteiroEstimate(BaseModel):

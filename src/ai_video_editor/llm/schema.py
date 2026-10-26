@@ -59,6 +59,10 @@ class LLMCallMetrics(BaseModel):
     notes: list[str] = Field(
         default_factory=list, description="Observações do provedor (ex: parâmetro ignorado, contexto usado)"
     )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Avisos do provedor para mostrar ao usuário, uma vez por processo (ex: troca de formato)",
+    )
 
 
 @dataclass

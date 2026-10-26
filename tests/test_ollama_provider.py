@@ -3,6 +3,7 @@
 import base64
 import io
 import json
+import threading
 import urllib.error
 
 import pytest
@@ -12,6 +13,7 @@ from ai_video_editor import cli
 from ai_video_editor.director import DirectorDecision
 from ai_video_editor.intelligence.exceptions import (
     AIContextLimitError,
+    AIProviderError,
     AIResponseValidationError,
     AITimeoutError,
     AIUnavailableError,
@@ -26,13 +28,20 @@ from ai_video_editor.llm.providers.ollama import (
     OllamaHTTPError,
     OllamaLLMClient,
     OllamaTransport,
+    compact_schema,
+    extract_json_object,
     normalize_host,
+    reset_format_modes,
 )
 from ai_video_editor.llm.registry import create_client, default_timeout, provider_names
 from ai_video_editor.pipeline import EditPipelineParams
+from ai_video_editor.roteiro.describer import PhotoDescriber, PhotoRequest
+from ai_video_editor.roteiro.schema import PhotoDescription
 
 PAYLOAD = {"removals": [{"sentence_id": 2, "category": "filler", "reason": "Enrolação."}], "summary": "Uma removida."}
 JPEG_BYTES = b"\xff\xd8\xff\xe0fake-jpeg\xff\xd9"
+# Resposta zerada do Ollama 0.40 quando o sampler da gramática do JSON schema quebra (medida no material real).
+ZERO_RESPONSE = {"model": "", "created_at": "0001-01-01T00:00:00Z", "message": {"role": "", "content": ""}, "done": False}
 
 
 class Answer(BaseModel):
@@ -66,8 +75,11 @@ class FakeTransport:
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    for env in ("OLLAMA_HOST", "OLLAMA_CONTEXT_LENGTH", "OLLAMA_KEEP_ALIVE"):
+    for env in ("OLLAMA_HOST", "OLLAMA_CONTEXT_LENGTH", "OLLAMA_KEEP_ALIVE", "OLLAMA_FORMATO"):
         monkeypatch.delenv(env, raising=False)
+    reset_format_modes()
+    yield
+    reset_format_modes()
 
 
 def _client(transport: FakeTransport, **kwargs) -> OllamaLLMClient:
@@ -363,7 +375,7 @@ def test_visual_describer_uses_the_ollama_timeout():
 # --- ollama-check ---
 
 
-def _check_server(missing=()):
+def _check_server(missing=(), broken_schema=False):
     models = [m for m in ("qwen2.5:7b", "qwen2.5vl:3b") if m not in missing]
 
     def respond(method, path, body):
@@ -372,6 +384,8 @@ def _check_server(missing=()):
         if path == "/api/tags":
             return {"models": [{"name": m} for m in models]}
         if body.get("messages", [{}])[-1].get("images"):
+            if broken_schema and "format" in body:
+                return ZERO_RESPONSE
             return chat_response({"cor_esquerda": "vermelho", "cor_direita": "azul", "descricao": "duas cores"},
                                  prompt_tokens=900, load_duration=3_000_000_000)
         return chat_response({"ok": True, "soma": 5}, prompt_tokens=60)
@@ -386,14 +400,32 @@ def test_ollama_check_reports_both_calls_with_time():
 
     assert report.ok, lines
     assert report.version == "0.40.10"
-    text, image = [s for s in report.steps if s.name in ("texto", "imagem")]
+    text, schema_step, text_step, image = [
+        s for s in report.steps if s.name in ("texto", "imagem (schema)", "imagem (texto)", "imagem")
+    ]
     assert text.latency_sec is not None and text.input_tokens == 60
-    assert image.input_tokens == 900 and "certas" in image.detail
+    assert schema_step.input_tokens == 900 and "certas" in schema_step.detail and text_step.ok
+    assert image.ok and image.detail == "schema, texto"
     chat_bodies = [body for _, path, body, _ in transport.calls if path == "/api/chat"]
-    assert [b["model"] for b in chat_bodies] == ["qwen2.5:7b", "qwen2.5vl:3b"]
+    assert [b["model"] for b in chat_bodies] == ["qwen2.5:7b", "qwen2.5vl:3b", "qwen2.5vl:3b"]
     assert chat_bodies[1]["messages"][1]["content"] == "Imagem TESTE.F1:"
-    assert any("Chamada de imagem (qwen2.5vl:3b): JSON válido" in line and "carga do modelo 3,0 s" in line
-               for line in lines)
+    assert "format" in chat_bodies[1] and "format" not in chat_bodies[2]
+    assert any("Chamada com imagem (qwen2.5vl:3b), JSON schema em format: JSON válido" in line
+               and "carga do modelo 3,0 s" in line for line in lines)
+    assert any("Formato com imagem (qwen2.5vl:3b): os dois funcionaram" in line for line in lines)
+
+
+def test_ollama_check_says_only_text_format_worked():
+    lines: list[str] = []
+    client = _client(_check_server(broken_schema=True))
+    report = run_ollama_check(on_line=lines.append, client=client)
+
+    assert report.ok, lines
+    steps = {s.name: s for s in report.steps}
+    assert not steps["imagem (schema)"].ok and "interrompeu a geração" in steps["imagem (schema)"].detail
+    assert steps["imagem (texto)"].ok and steps["imagem"].detail == "texto"
+    assert any("só o JSON pelo texto funcionou" in line for line in lines)
+    assert client.format_mode == "auto"  # o diagnóstico devolve o formato configurado
 
 
 def test_ollama_check_server_down_and_missing_model():
@@ -406,3 +438,216 @@ def test_ollama_check_server_down_and_missing_model():
     assert not report.ok
     assert any("rode `ollama pull qwen2.5vl:3b`" in line for line in lines)
     assert [s.name for s in report.steps if s.ok] == ["servidor", "modelo qwen2.5:7b", "texto"]
+
+
+# --- formato: resposta zerada do Ollama e JSON pelo texto do pedido ---
+
+
+def _photo(**extra) -> dict:
+    return {"what": "Pessoa na praia.", "place": "praia", "people": 1, "tags": ["praia", "mar"], **extra}
+
+
+def _schema_breaks(answer: str):
+    """Servidor que devolve a resposta zerada a todo pedido com `format` e `answer` aos outros."""
+
+    def respond(method, path, body):
+        return ZERO_RESPONSE if "format" in body else chat_response(answer)
+
+    return respond
+
+
+def test_zero_response_is_an_ollama_failure_not_invalid_json(monkeypatch):
+    monkeypatch.setenv("OLLAMA_FORMATO", "schema")
+    transport = FakeTransport(ZERO_RESPONSE)
+    with pytest.raises(AIProviderError) as info:
+        _client(transport).generate("p", PhotoDescription, _config(model_id="qwen2.5vl:3b"), _policy()[0])
+
+    error = info.value
+    assert not isinstance(error, AIResponseValidationError) and error.transient is False
+    assert "O Ollama interrompeu a geração" in str(error) and "formato JSON forçado" in str(error)
+    assert "server.log" in str(error)
+    # OLLAMA_FORMATO=schema: sem o fallback, uma chamada só, ainda com `format`.
+    assert len(transport.calls) == 1 and "format" in transport.calls[0][2]
+
+
+def test_finished_empty_answer_is_still_response_without_content():
+    empty = {"model": "qwen2.5vl:3b", "message": {"role": "assistant", "content": ""}, "done": True}
+    transport = FakeTransport(empty)
+    with pytest.raises(AIResponseValidationError) as info:
+        _client(transport).generate("p", PhotoDescription, _config(model_id="qwen2.5vl:3b"), _policy()[0])
+    assert info.value.details == "resposta sem conteúdo" and len(transport.calls) == 1
+
+
+def test_zero_response_retries_at_once_without_format_and_model_stays_in_text():
+    answer = "Claro! Aqui está:\n```json\n" + json.dumps(_photo(people="2", talking_to_camera="false")) + "\n```\nPronto."
+    transport = FakeTransport(_schema_breaks(answer))
+    warnings: list[str] = []
+    client = _client(transport, on_warning=warnings.append)
+    config = _config(model_id="qwen2.5vl:3b")
+
+    result = client.generate("Descreva a foto.", PhotoDescription, config, _policy()[0])
+
+    assert result.value.people == 2 and result.value.talking_to_camera is False and result.value.place == "praia"
+    first, second = (body for _, _, body, _ in transport.calls)
+    assert "format" in first and "format" not in second
+    prompt = second["messages"][0]["content"]
+    assert prompt.startswith("Descreva a foto.\n\nResponda só com um objeto JSON com estes campos")
+    assert prompt.endswith(json.dumps(compact_schema(PhotoDescription), ensure_ascii=False, separators=(",", ":")))
+    assert first["messages"][0]["content"] == "Descreva a foto."
+    expected = "qwen2.5vl:3b: o Ollama falhou com o JSON schema; usando JSON pelo texto do pedido"
+    assert warnings == [expected] and result.metrics.warnings == [expected]
+    assert expected in result.metrics.notes
+    assert result.metrics.input_tokens == 120  # métricas da resposta que valeu
+
+    # A próxima chamada do mesmo modelo já vai sem `format`, sem aviso de novo.
+    result = client.generate("Outra foto.", PhotoDescription, config, _policy()[0])
+    assert len(transport.calls) == 3 and "format" not in transport.calls[2][2]
+    assert result.metrics.warnings == [] and warnings == [expected]
+    assert "formato: JSON pelo texto do pedido (sem format)" in result.metrics.notes
+    # Outro modelo continua no JSON schema.
+    other = FakeTransport()
+    _client(other).generate("p", DirectorDecision, _config(), _policy()[0])
+    assert "format" in other.calls[0][2]
+
+
+def test_zero_response_also_without_format_is_the_ollama_error():
+    transport = FakeTransport(ZERO_RESPONSE)
+    with pytest.raises(AIProviderError) as info:
+        _client(transport).generate("p", PhotoDescription, _config(model_id="qwen2.5vl:3b"), _policy()[0])
+    assert "interrompeu" in str(info.value) and "sem o formato JSON forçado" in str(info.value)
+    assert len(transport.calls) == 2
+
+
+def test_forced_text_format_starts_without_format(monkeypatch, images):
+    monkeypatch.setenv("OLLAMA_FORMATO", "texto")
+    transport = FakeTransport(chat_response(json.dumps(_photo())))
+    client = _client(transport)
+    client.generate("Descreva.", PhotoDescription, _config(model_id="qwen2.5vl:3b"), _policy()[0], images[:1])
+
+    body = transport.calls[0][2]
+    assert len(transport.calls) == 1 and "format" not in body
+    assert "Responda só com um objeto JSON" in body["messages"][0]["content"]
+    # A imagem continua na sua mensagem, depois do prompt.
+    assert body["messages"][1]["content"] == "Imagem P001.T01.F1:" and body["messages"][1]["images"]
+    assert body["options"] == {"num_ctx": DEFAULT_NUM_CTX, "temperature": 0.2}
+
+
+def test_text_format_without_json_is_a_validation_error():
+    transport = FakeTransport(chat_response("Vejo uma praia com uma pessoa."))
+    client = _client(transport, format_mode="texto")
+    with pytest.raises(AIResponseValidationError) as info:
+        client.generate("p", PhotoDescription, _config(model_id="qwen2.5vl:3b"), _policy()[0])
+    assert "nenhum objeto JSON" in info.value.details
+    with pytest.raises(AIResponseValidationError):  # JSON sem os obrigatórios
+        _client(FakeTransport(chat_response('{"place": "praia"}')), format_mode="texto").generate(
+            "p", PhotoDescription, _config(model_id="qwen2.5vl:3b"), _policy()[0]
+        )
+
+
+def test_text_format_still_checks_the_context():
+    transport = FakeTransport(chat_response(json.dumps(_photo()), prompt_tokens=4090))
+    with pytest.raises(AIContextLimitError):
+        _client(transport, num_ctx=4096, format_mode="texto").generate(
+            "p", PhotoDescription, _config(model_id="qwen2.5vl:3b"), _policy()[0]
+        )
+
+
+def test_extract_json_object():
+    assert extract_json_object('```json\n{"a": 1}\n```') == {"a": 1}
+    assert extract_json_object('Resposta: {"a": {"b": [1, 2]}} e mais texto {"c": 3}') == {"a": {"b": [1, 2]}}
+    assert extract_json_object('chaves soltas { aqui } e depois {"a": "{x}"}') == {"a": "{x}"}
+    with pytest.raises(ValueError):
+        extract_json_object("[1, 2] sem objeto")
+
+
+def test_compact_schema_keeps_only_types_enums_and_required():
+    compact = compact_schema(PhotoDescription)
+    assert set(compact) == {"type", "properties", "required"}
+    assert compact["required"] == ["what", "tags"]
+    props = compact["properties"]
+    assert props["what"] == {"type": "string"} and props["people"] == {"type": "integer"}
+    assert props["tags"] == {"type": "array", "items": {"type": "string"}}
+    assert "tela uniforme" in props["issue"]["enum"]
+    assert "description" not in json.dumps(compact) and "title" not in json.dumps(compact)
+    nested = compact_schema(DirectorDecision)  # $ref de modelo aninhado resolvido
+    assert "$ref" not in json.dumps(nested)
+    assert "properties" in nested["properties"]["removals"]["items"]
+
+
+def test_format_option_validation(monkeypatch):
+    monkeypatch.setenv("OLLAMA_FORMATO", "xml")
+    with pytest.raises(ValueError, match="OLLAMA_FORMATO"):
+        OllamaLLMClient()
+    assert OllamaLLMClient(format_mode="TEXTO").format_mode == "texto"
+
+
+def test_cli_ollama_format_option(monkeypatch):
+    parser = cli.build_parser()
+    args = parser.parse_args(["roteiro", "pasta", "--ollama-formato", "texto", "--ollama-ctx", "4096"])
+    cli.apply_ollama_args(args)
+    client = OllamaLLMClient()
+    assert (client.format_mode, client.num_ctx) == ("texto", 4096)
+    for command in (["edit", "v.mp4"], ["visual", "p"], ["ollama-check"]):
+        assert parser.parse_args([*command, "--ollama-formato", "schema"]).ollama_formato == "schema"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["visual", "p", "--ollama-formato", "xml"])
+
+
+def test_switch_warning_once_with_many_threads():
+    workers = 6
+    barrier = threading.Barrier(workers, timeout=10)
+    answer = json.dumps(_photo())
+
+    def respond(method, path, body):
+        if "format" in body:
+            barrier.wait()  # todas as threads recebem a resposta zerada ao mesmo tempo
+            return ZERO_RESPONSE
+        return chat_response(answer)
+
+    transport = FakeTransport(respond)
+    warnings: list[str] = []
+    client = _client(transport, on_warning=warnings.append)
+    config = _config(model_id="qwen2.5vl:3b")
+    results, errors = [], []
+
+    def work():
+        try:
+            results.append(client.generate("p", PhotoDescription, config, _policy()[0]))
+        except Exception as e:  # pragma: no cover - aparece no assert
+            errors.append(e)
+
+    threads = [threading.Thread(target=work) for _ in range(workers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+
+    assert errors == [] and len(results) == workers
+    assert len(warnings) == 1
+    assert sum(len(r.metrics.warnings) for r in results) == 1
+    assert all(r.value.place == "praia" for r in results)
+
+
+def test_photo_describer_does_not_spend_a_correction_on_the_zero_response(tmp_path):
+    image = tmp_path / "P001.F01.jpg"
+    image.write_bytes(JPEG_BYTES)
+    transport = FakeTransport(_schema_breaks(json.dumps(_photo())))
+    chain = ModelChain(
+        [ModelSpec(provider="ollama", model_id="qwen2.5vl:3b")], retry=_policy()[0],
+        clients={"ollama": _client(transport)},
+    )
+    retries: list[str] = []
+    describer = PhotoDescriber(chain, on_retry=retries.append)
+    fingerprint = describer.fingerprint
+
+    outcome = describer.describe(PhotoRequest(photo_id="P001.F01", clip_id="P001", role="principal",
+                                              image=image, speech=""))
+
+    assert outcome.description is not None and outcome.description.place == "praia"
+    assert outcome.corrections == 0 and retries == []
+    assert outcome.warnings == ["qwen2.5vl:3b: o Ollama falhou com o JSON schema; usando JSON pelo texto do pedido"]
+    # O formato não entra na chave do cache: as descrições já gravadas continuam valendo.
+    assert describer.fingerprint == fingerprint
+    outcome = describer.describe(PhotoRequest(photo_id="P001.F02", clip_id="P001", role="principal",
+                                              image=image, speech=""))
+    assert outcome.warnings == [] and len(transport.calls) == 3

@@ -19,6 +19,8 @@ from ai_video_editor.llm.chain import ModelChain, resolve_chain
 from ai_video_editor.llm.providers.ollama import (
     DEFAULT_NUM_CTX,
     DEFAULT_OLLAMA_TIMEOUT_SEC,
+    FORMAT_CHOICES as OLLAMA_FORMAT_CHOICES,
+    FORMAT_ENV as OLLAMA_FORMAT_ENV,
     HOST_ENV as OLLAMA_HOST_ENV,
     KEEP_ALIVE_ENV as OLLAMA_KEEP_ALIVE_ENV,
     NUM_CTX_ENV as OLLAMA_NUM_CTX_ENV,
@@ -332,12 +334,19 @@ def _add_ollama_args(parser: argparse.ArgumentParser) -> None:
         help=f"Tempo que o modelo fica carregado depois da chamada (ex: 10m, 3600, -1 = sempre; "
         f"padrão: {OLLAMA_KEEP_ALIVE_ENV} ou o do servidor)",
     )
+    group.add_argument(
+        "--ollama-formato", choices=OLLAMA_FORMAT_CHOICES, default=None,
+        help=f"Como pedir o JSON ao Ollama: schema = JSON schema em format; texto = schema no fim do prompt e "
+        f"JSON lido do texto; auto = schema e, se o Ollama devolver a resposta zerada, texto para aquele modelo "
+        f"até o fim (padrão: {OLLAMA_FORMAT_ENV} ou auto)",
+    )
 
 
 def apply_ollama_args(args: argparse.Namespace) -> None:
     """Grava `--ollama-*` nas variáveis de ambiente lidas pelo provedor (inclusive nas etapas internas)."""
     for attr, env in (
         ("ollama_host", OLLAMA_HOST_ENV), ("ollama_ctx", OLLAMA_NUM_CTX_ENV), ("ollama_keep_alive", OLLAMA_KEEP_ALIVE_ENV),
+        ("ollama_formato", OLLAMA_FORMAT_ENV),
     ):
         value = getattr(args, attr, None)
         if value is not None:
@@ -1362,6 +1371,8 @@ def handle_roteiro(args: argparse.Namespace) -> int:
             f"Visão: {vision.effective_model or vision.model_chain[0]} — {vision.described} agora, {vision.cached} do "
             f"cache, {vision.api_calls} chamada(s){speed}; total {format_duration(vision.wall_sec)}"
         )
+        for note in vision.notes:
+            print(f"Aviso da visão: {note}")
     per_clip = ", ".join(f"{c.id} ~{_thousands(c.estimated_tokens)}" for c in roteiro.clips)
     print(f"Tamanho do roteiro: ~{_thousands(roteiro.estimated_tokens)} tokens (estimativa: caracteres/4; {per_clip})")
     for warning in roteiro.warnings:
@@ -2010,7 +2021,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Tempo limite em segundos de cada chamada (padrão: {DEFAULT_OLLAMA_TIMEOUT_SEC:.0f})",
     )
 
-    for sub in (edit_parser, revise_parser, briefing_parser, visual_parser, check_parser):
+    for sub in (edit_parser, revise_parser, briefing_parser, visual_parser, roteiro_parser, check_parser):
         _add_ollama_args(sub)
 
     return parser

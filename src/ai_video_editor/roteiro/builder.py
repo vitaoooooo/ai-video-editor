@@ -772,6 +772,10 @@ class RoteiroBuilder:
                         run.output_tokens = (run.output_tokens or 0) + outcome.output_tokens
                     if outcome.model:
                         run.effective_model = outcome.model
+                    for warning in outcome.warnings:
+                        if warning not in run.notes:
+                            run.notes.append(warning)
+                            self._emit("vision", "notice", warning)
                 if photo.status == "descrita":
                     run.described += 1
                     described_sec += elapsed

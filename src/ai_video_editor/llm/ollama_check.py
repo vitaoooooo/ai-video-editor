@@ -1,7 +1,9 @@
-"""Diagnóstico do Ollama local (`ollama-check`): servidor, modelos baixados e duas chamadas mínimas.
+"""Diagnóstico do Ollama local (`ollama-check`): servidor, modelos baixados e chamadas mínimas.
 
-As chamadas usam o mesmo `OllamaLLMClient` do Diretor e do `visual` (mesmo `format`, `num_ctx`
-e mapeamento de erros), sem novas tentativas, para o tempo medido ser o de uma chamada.
+As chamadas usam o mesmo `OllamaLLMClient` do Diretor e do `visual` (mesmo `num_ctx` e mapeamento
+de erros), sem novas tentativas, para o tempo medido ser o de uma chamada. A de texto usa o formato
+configurado (`--ollama-formato`, padrão `auto`); a com imagem é feita nos dois formatos (`schema` e
+`texto`), e o diagnóstico diz qual funcionou: basta um.
 """
 
 import tempfile
@@ -12,12 +14,19 @@ from pydantic import BaseModel, Field
 
 from ai_video_editor.intelligence.exceptions import AIProviderError
 from ai_video_editor.intelligence.retry import RetryPolicy
-from ai_video_editor.llm.providers.ollama import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_TIMEOUT_SEC, OllamaLLMClient
+from ai_video_editor.llm.providers.ollama import (
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OLLAMA_TIMEOUT_SEC,
+    TEXT_FORMAT_NOTE,
+    OllamaLLMClient,
+)
 from ai_video_editor.llm.schema import ImageInput, LLMCallConfig, LLMCallMetrics
 
 DEFAULT_CHECK_TEXT_MODEL = DEFAULT_OLLAMA_MODEL
 DEFAULT_CHECK_IMAGE_MODEL = "qwen2.5vl:3b"
 CHECK_IMAGE_LABEL = "TESTE.F1"
+# Formatos testados na chamada com imagem (nome no diagnóstico).
+IMAGE_FORMATS = (("schema", "JSON schema em format"), ("texto", "JSON pelo texto do pedido"))
 
 TEXT_PROMPT = (
     "Teste de diagnóstico. Responda só com o JSON pedido: `ok` = true e `soma` = o resultado de 2 + 3."
@@ -45,6 +54,8 @@ class CheckStep(BaseModel):
 
     name: str
     ok: bool
+    # Informativo: a falha não reprova o diagnóstico (outro passo resume, como o formato da imagem).
+    optional: bool = False
     detail: str = ""
     latency_sec: Optional[float] = None
     input_tokens: Optional[int] = None
@@ -60,7 +71,7 @@ class OllamaCheckReport(BaseModel):
 
     @property
     def ok(self) -> bool:
-        return bool(self.steps) and all(step.ok for step in self.steps)
+        return bool(self.steps) and all(step.ok or step.optional for step in self.steps)
 
 
 def full_model_name(model: str) -> str:
@@ -88,7 +99,7 @@ def _call_line(label: str, metrics: Optional[LLMCallMetrics], extra: str = "") -
         parts.append(_seconds(metrics.latency_sec))
         if metrics.input_tokens is not None:
             parts.append(f"tokens {metrics.input_tokens} de entrada / {metrics.output_tokens} de saída")
-        parts.extend(note for note in metrics.notes if not note.startswith("num_ctx"))
+        parts.extend(note for note in metrics.notes if not note.startswith("num_ctx") and note != TEXT_FORMAT_NOTE)
     if extra:
         parts.append(extra)
     return f"{label}: JSON válido" + (f" em {'; '.join(parts)}" if parts else "")
@@ -141,36 +152,77 @@ def run_ollama_check(
             if not available[model]:
                 continue
             config = LLMCallConfig(model_id=model, thinking="off", temperature=0.0, timeout_sec=timeout_sec)
-            label = f"Chamada de {kind} ({model})"
-            try:
-                if kind == "texto":
-                    result = client.generate(TEXT_PROMPT, TextProbe, config, retry)
-                    right = result.value.ok and result.value.soma == 5
-                    extra = "resposta certa" if right else f"resposta errada ({result.value.model_dump()})"
-                else:
-                    image = ImageInput(
-                        path=write_check_image(Path(tmp) / "teste.jpg"), label=CHECK_IMAGE_LABEL, detail="auto"
-                    )
-                    result = client.generate(IMAGE_PROMPT, ImageProbe, config, retry, [image])
-                    value = result.value
-                    right = "vermelh" in value.cor_esquerda.lower() and "azul" in value.cor_direita.lower()
-                    extra = (
-                        f"cores {'certas' if right else 'erradas'} "
-                        f"({value.cor_esquerda} / {value.cor_direita}); \"{value.descricao}\""
-                    )
-            except AIProviderError as error:
-                metrics = client.last_metrics
-                report.steps.append(CheckStep(
-                    name=kind, ok=False, detail=str(error), latency_sec=metrics.latency_sec if metrics else None,
-                ))
-                on_line(f"{label}: FALHOU — {error}")
+            if kind == "texto":
+                _probe(report, client, on_line, "texto", f"Chamada de texto ({model})",
+                       lambda: _text_call(client, config, retry))
                 continue
-            metrics = result.metrics
-            report.steps.append(CheckStep(
-                name=kind, ok=True, detail=extra, latency_sec=metrics.latency_sec,
-                input_tokens=metrics.input_tokens, output_tokens=metrics.output_tokens,
-            ))
-            on_line(_call_line(label, metrics, extra))
+            image = ImageInput(path=write_check_image(Path(tmp) / "teste.jpg"), label=CHECK_IMAGE_LABEL, detail="auto")
+            configured = client.format_mode
+            worked = []
+            try:
+                for mode, name in IMAGE_FORMATS:
+                    client.format_mode = mode
+                    if _probe(report, client, on_line, f"imagem ({mode})", f"Chamada com imagem ({model}), {name}",
+                              lambda: _image_call(client, config, retry, image), optional=True):
+                        worked.append(mode)
+            finally:
+                client.format_mode = configured
+            report.steps.append(CheckStep(name="imagem", ok=bool(worked), detail=", ".join(worked) or "nenhum"))
+            on_line(f"Formato com imagem ({model}): {_format_verdict(worked)}")
 
     on_line("Tudo certo." if report.ok else "Diagnóstico com falhas (veja acima).")
     return report
+
+
+def _text_call(client: OllamaLLMClient, config: LLMCallConfig, retry: RetryPolicy):
+    result = client.generate(TEXT_PROMPT, TextProbe, config, retry)
+    right = result.value.ok and result.value.soma == 5
+    return result, "resposta certa" if right else f"resposta errada ({result.value.model_dump()})"
+
+
+def _image_call(client: OllamaLLMClient, config: LLMCallConfig, retry: RetryPolicy, image: ImageInput):
+    result = client.generate(IMAGE_PROMPT, ImageProbe, config, retry, [image])
+    value = result.value
+    right = "vermelh" in value.cor_esquerda.lower() and "azul" in value.cor_direita.lower()
+    colors = f"cores {'certas' if right else 'erradas'} ({value.cor_esquerda} / {value.cor_direita})"
+    return result, f"{colors}; \"{value.descricao}\""
+
+
+def _probe(
+    report: OllamaCheckReport,
+    client: OllamaLLMClient,
+    on_line: Callable[[str], None],
+    name: str,
+    label: str,
+    call: Callable,
+    optional: bool = False,
+) -> bool:
+    """Faz uma chamada do diagnóstico, registra o passo e escreve a linha; True se deu JSON válido."""
+    try:
+        result, extra = call()
+    except AIProviderError as error:
+        metrics = client.last_metrics
+        report.steps.append(CheckStep(
+            name=name, ok=False, optional=optional, detail=str(error),
+            latency_sec=metrics.latency_sec if metrics else None,
+        ))
+        on_line(f"{label}: FALHOU — {error}")
+        return False
+    metrics = result.metrics
+    report.steps.append(CheckStep(
+        name=name, ok=True, optional=optional, detail=extra, latency_sec=metrics.latency_sec,
+        input_tokens=metrics.input_tokens, output_tokens=metrics.output_tokens,
+    ))
+    on_line(_call_line(label, metrics, extra))
+    return True
+
+
+def _format_verdict(worked: list[str]) -> str:
+    if worked == ["schema", "texto"]:
+        return "os dois funcionaram (auto usa o JSON schema e passa para o texto se o Ollama falhar)"
+    if worked == ["texto"]:
+        return ("só o JSON pelo texto funcionou; o padrão auto passa para ele na primeira falha "
+                "(ou use --ollama-formato texto)")
+    if worked == ["schema"]:
+        return "só o JSON schema funcionou (use --ollama-formato schema)"
+    return "nenhum funcionou (veja acima)"

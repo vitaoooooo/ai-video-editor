@@ -13,14 +13,25 @@ estas variáveis para o processo):
   com que o servidor define o contexto padrão).
 - `OLLAMA_KEEP_ALIVE`: quanto tempo o modelo fica na memória depois da chamada (`10m`, `3600`,
   `-1`); sem ela, o parâmetro não é enviado e vale o padrão do servidor.
+- `OLLAMA_FORMATO` (`--ollama-formato`): `auto` (padrão), `schema` ou `texto` (abaixo).
+
+Formato da resposta:
+- `schema`: `format` = JSON schema (o servidor restringe a geração por uma gramática).
+- `texto`: sem `format`; o prompt termina com o JSON schema compacto e a ordem de responder só com
+  o objeto JSON, e a leitura extrai o primeiro objeto JSON do texto.
+- `auto`: começa em `schema`. O llama.cpp do Ollama 0.40 às vezes quebra no sampler da gramática
+  ("Unexpected empty grammar stack" no server.log) e o servidor devolve HTTP 200 com a resposta
+  zerada (sem modelo, sem conteúdo, `done` falso). Aí a mesma chamada é refeita na hora em `texto`,
+  e aquele modelo fica em `texto` até o fim do processo (aviso uma vez só).
 """
 
 import base64
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Callable, Literal, Optional, Sequence, Union
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel
@@ -49,6 +60,13 @@ CONTEXT_MARGIN_TOKENS = 32
 HOST_ENV = "OLLAMA_HOST"
 NUM_CTX_ENV = "OLLAMA_CONTEXT_LENGTH"
 KEEP_ALIVE_ENV = "OLLAMA_KEEP_ALIVE"
+FORMAT_ENV = "OLLAMA_FORMATO"
+
+FormatMode = Literal["schema", "texto"]
+FORMAT_CHOICES = ("auto", "schema", "texto")
+# Chave que `_request` acrescenta à resposta: o formato com que ela foi pedida (lida no `_parse`).
+_FORMAT_KEY = "_formato"
+TEXT_FORMAT_NOTE = "formato: JSON pelo texto do pedido (sem format)"
 
 KeepAlive = Union[str, int, float]
 # Texto do 500 quando o processo do modelo (llama-server) cai no meio da chamada.
@@ -105,6 +123,25 @@ def resolve_keep_alive(keep_alive: Optional[KeepAlive] = None) -> Optional[KeepA
             return value
         return int(number) if number.is_integer() else number
     return value
+
+
+def resolve_format(format_mode: Optional[str] = None) -> str:
+    """Formato explícito, o de `OLLAMA_FORMATO` ou `auto`."""
+    value = (format_mode or os.environ.get(FORMAT_ENV, "").strip() or "auto").lower()
+    if value not in FORMAT_CHOICES:
+        raise ValueError(f"{FORMAT_ENV} deve ser {', '.join(FORMAT_CHOICES)}; recebido {value!r}")
+    return value
+
+
+# Modo `auto`: modelos que já falharam com o JSON schema neste processo, por (host, modelo).
+_text_models: set[tuple[str, str]] = set()
+_text_models_lock = threading.Lock()
+
+
+def reset_format_modes() -> None:
+    """Esquece os modelos que passaram para `texto` (testes)."""
+    with _text_models_lock:
+        _text_models.clear()
 
 
 class OllamaHTTPError(Exception):
@@ -218,6 +255,92 @@ def map_ollama_error(error: Exception, timeout_sec: float, host: str = DEFAULT_O
     return build(AIProviderError(f"Erro na chamada do Ollama. Detalhe: {detail}", provider="ollama"), False)
 
 
+def is_broken_response(response: dict) -> bool:
+    """True na resposta zerada do Ollama: HTTP 200, sem conteúdo e `done` não verdadeiro (ou sem modelo).
+
+    É a struct vazia que o servidor devolve quando o runner falha no meio da geração (visto no
+    Ollama 0.40 com "Unexpected empty grammar stack" do sampler de gramática no server.log). Resposta
+    terminada (`done` true, com modelo) e vazia é outro caso: "resposta sem conteúdo".
+    """
+    content = (response.get("message") or {}).get("content")
+    return not content and (response.get("done") is not True or not response.get("model"))
+
+
+def broken_response_error(model: str, format_mode: str) -> AIProviderError:
+    """Erro da resposta zerada (permanente: a mesma chamada tende a falhar igual)."""
+    cause = "provável falha do formato JSON forçado" if format_mode == "schema" else "sem o formato JSON forçado"
+    error = AIProviderError(
+        f"O Ollama interrompeu a geração do modelo '{model}' ({cause}; veja server.log do Ollama).",
+        provider="ollama",
+    )
+    error.details = "resposta HTTP 200 zerada: sem modelo nem conteúdo e done != true"
+    error.transient = False
+    error.status_code = None
+    return error
+
+
+def compact_schema(schema: type[BaseModel]) -> dict[str, Any]:
+    """JSON schema só com propriedades, tipos, enums e obrigatórios (`$ref` resolvidos), para o prompt."""
+    full = schema.model_json_schema()
+    defs = full.get("$defs", {})
+
+    def walk(node: dict) -> dict:
+        all_of = node.get("allOf") or []
+        ref = node.get("$ref") or (all_of[0].get("$ref") if len(all_of) == 1 else None)
+        if ref:
+            node = defs[ref.rsplit("/", 1)[-1]]
+        options = node.get("anyOf") or node.get("oneOf")
+        if options:
+            walked = [walk(option) for option in options]
+            if all(set(item) == {"type"} and isinstance(item["type"], str) for item in walked):
+                return {"type": [item["type"] for item in walked]}
+            return {"anyOf": walked}
+        out: dict[str, Any] = {}
+        if "type" in node:
+            out["type"] = node["type"]
+        if "enum" in node:
+            out["enum"] = node["enum"]
+        elif "const" in node:
+            out["enum"] = [node["const"]]
+        if "properties" in node:
+            out["properties"] = {name: walk(value) for name, value in node["properties"].items()}
+            if node.get("required"):
+                out["required"] = node["required"]
+        if isinstance(node.get("items"), dict):
+            out["items"] = walk(node["items"])
+        return out
+
+    return walk(full)
+
+
+def text_format_prompt(prompt: str, schema: type[BaseModel]) -> str:
+    """Prompt do modo `texto`: o original + o schema compacto e a ordem de responder só com o JSON."""
+    compact = json.dumps(compact_schema(schema), ensure_ascii=False, separators=(",", ":"))
+    return (
+        f"{prompt}\n\nResponda só com um objeto JSON com estes campos (JSON schema; \"required\" = "
+        f"obrigatórios), sem texto antes ou depois:\n{compact}"
+    )
+
+
+def extract_json_object(text: str) -> dict:
+    """Primeiro objeto JSON do texto (tolera ```json ... ``` e texto antes ou depois).
+
+    Raises:
+        ValueError: nenhum objeto JSON no texto.
+    """
+    decoder = json.JSONDecoder()
+    start = text.find("{")
+    while start != -1:
+        try:
+            value, _ = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            value = None
+        if isinstance(value, dict):
+            return value
+        start = text.find("{", start + 1)
+    raise ValueError("nenhum objeto JSON na resposta")
+
+
 def build_messages(prompt: str, images: Sequence[ImageInput]) -> list[dict[str, Any]]:
     """Mensagens do usuário: o prompt e, para cada imagem, o rótulo com a imagem em base64.
 
@@ -241,7 +364,7 @@ def json_schema(schema: type[BaseModel]) -> dict[str, Any]:
 
 
 class OllamaLLMClient(StructuredLLMClient):
-    """Ollama local: `/api/chat` com `format` = JSON schema e `num_ctx` explícito.
+    """Ollama local: `/api/chat` com `num_ctx` explícito e o JSON pelo `format` ou pelo prompt.
 
     `client` (testes) substitui o transporte HTTP: um objeto com
     `request(method, path, body, timeout) -> dict`.
@@ -260,11 +383,16 @@ class OllamaLLMClient(StructuredLLMClient):
         host: Optional[str] = None,
         num_ctx: Optional[int] = None,
         keep_alive: Optional[KeepAlive] = None,
+        format_mode: Optional[str] = None,
+        on_warning: Optional[Callable[[str], None]] = None,
     ):
         super().__init__(api_key=api_key, client=client)
         self.host = resolve_host(host)
         self.num_ctx = resolve_num_ctx(num_ctx)
         self.keep_alive = resolve_keep_alive(keep_alive)
+        # `auto`, `schema` ou `texto` (ver "Formato da resposta" no início do módulo).
+        self.format_mode = resolve_format(format_mode)
+        self.on_warning = on_warning
 
     def has_credentials(self) -> bool:
         return True
@@ -283,16 +411,48 @@ class OllamaLLMClient(StructuredLLMClient):
         if metrics is not None and text not in metrics.notes:
             metrics.notes.append(text)
 
+    def model_format(self, model_id: str) -> FormatMode:
+        """Formato da chamada: o forçado ou, em `auto`, `texto` se o modelo já falhou com o schema."""
+        if self.format_mode != "auto":
+            return self.format_mode  # type: ignore[return-value]
+        with _text_models_lock:
+            return "texto" if (self.host, model_id) in _text_models else "schema"
+
+    def _switch_to_text(self, model_id: str) -> None:
+        """Passa o modelo para `texto` até o fim do processo; o aviso sai só na thread que trocou."""
+        with _text_models_lock:
+            key = (self.host, model_id)
+            first = key not in _text_models
+            _text_models.add(key)
+        if not first:
+            return
+        warning = f"{model_id}: o Ollama falhou com o JSON schema; usando JSON pelo texto do pedido"
+        metrics = self.last_metrics
+        if metrics is not None:
+            metrics.warnings.append(warning)
+        self._note(warning)
+        if self.on_warning is not None:
+            self.on_warning(warning)
+
     def build_payload(
-        self, prompt: str, schema: type[BaseModel], config: LLMCallConfig, images: Sequence[ImageInput] = ()
+        self,
+        prompt: str,
+        schema: type[BaseModel],
+        config: LLMCallConfig,
+        images: Sequence[ImageInput] = (),
+        format_mode: FormatMode = "schema",
     ) -> dict[str, Any]:
+        """Corpo do `/api/chat`; em `texto`, sem `format` e com o schema no fim do prompt."""
+        if format_mode == "texto":
+            prompt = text_format_prompt(prompt, schema)
         payload: dict[str, Any] = {
             "model": config.model_id,
             "messages": build_messages(prompt, images) if images else [{"role": "user", "content": prompt}],
-            "format": json_schema(schema),
             "stream": False,
             "options": {"num_ctx": self.num_ctx, "temperature": config.temperature},
         }
+        if format_mode == "schema":
+            payload["format"] = json_schema(schema)
         if self.keep_alive is not None:
             payload["keep_alive"] = self.keep_alive
         return payload
@@ -309,7 +469,31 @@ class OllamaLLMClient(StructuredLLMClient):
         details = sorted({image.detail for image in images} - {"auto"})
         if details:
             self._note(f"detalhe da imagem {'/'.join(details)} ignorado: o Ollama não tem esse parâmetro")
-        payload = self.build_payload(prompt, schema, config, images)
+        format_mode = self.model_format(config.model_id)
+        response = self._chat(prompt, schema, config, images, format_mode)
+        if is_broken_response(response):
+            if self.format_mode != "auto" or format_mode == "texto":
+                raise broken_response_error(config.model_id, format_mode)
+            # Falha da gramática do JSON schema: a mesma chamada, já em `texto` (não é nova tentativa).
+            self._switch_to_text(config.model_id)
+            self._note("resposta zerada com o JSON schema; chamada refeita sem format")
+            format_mode = "texto"
+            response = self._chat(prompt, schema, config, images, format_mode)
+            if is_broken_response(response):
+                raise broken_response_error(config.model_id, format_mode)
+        if format_mode == "texto":
+            self._note(TEXT_FORMAT_NOTE)
+        return {**response, _FORMAT_KEY: format_mode}
+
+    def _chat(
+        self,
+        prompt: str,
+        schema: type[BaseModel],
+        config: LLMCallConfig,
+        images: Sequence[ImageInput],
+        format_mode: FormatMode,
+    ) -> dict:
+        payload = self.build_payload(prompt, schema, config, images, format_mode)
         response = self.get_client().request("POST", "/api/chat", payload, timeout=config.timeout_sec)
         if not isinstance(response, dict):
             raise AIResponseValidationError("ollama", details="resposta do servidor não é um objeto JSON")
@@ -355,10 +539,12 @@ class OllamaLLMClient(StructuredLLMClient):
         load_ns = response.get("load_duration")
         if isinstance(load_ns, (int, float)) and load_ns >= 1e8:
             self._note(f"carga do modelo {load_ns / 1e9:.1f} s".replace(".", ","))
-        content =(response.get("message") or {}).get("content")
+        content = (response.get("message") or {}).get("content")
         if not content:
             raise AIResponseValidationError("ollama", details="resposta sem conteúdo")
         try:
+            if response.get(_FORMAT_KEY) == "texto":
+                return schema.model_validate(extract_json_object(content))
             return schema.model_validate(json.loads(content))
         except Exception as e:
             raise AIResponseValidationError("ollama", details=f"JSON inválido do modelo: {redact(str(e))}") from e
