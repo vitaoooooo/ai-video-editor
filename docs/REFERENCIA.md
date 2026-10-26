@@ -26,7 +26,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
 # 3. Instalar o pacote com as dependências de desenvolvimento e a transcrição
-pip install -e ".[dev,transcription]"   # ou ".[dev,gpu]" com GPU NVIDIA; acrescente ",openai" para o provedor OpenAI
+pip install -e ".[dev,transcription]"   # ou ".[dev,gpu]" com GPU NVIDIA; acrescente ",openai" para o provedor OpenAI (o Ollama não precisa de extra)
 ```
 
 ---
@@ -188,11 +188,11 @@ Fluxo completo: metadados → silêncios → transcrição (opcional) → Direto
 | `--min-gap` | 0.30 | Pausas menores que isso (após o padding) não são cortadas, inclusive no início/fim |
 | `--min-keep` | 0.10 | Falas mais curtas que isso são tratadas como ruído |
 | `--transcribe` | desligado | Gera `transcript.json` (necessário para o Diretor) |
-| `--director-provider` (ou `--director`) | `none` | Diretor de IA: `none`, `mock` (remove frases repetidas, sem rede), `gemini` (`GEMINI_API_KEY`) ou `openai` (`OPENAI_API_KEY`, extra `.[openai]`). Só roda com `--transcribe` |
-| `--director-model` | o do provedor | Modelo principal: `gemini-3.8-flash` no Gemini, `gpt-6-luna` na OpenAI |
+| `--director-provider` (ou `--director`) | `none` | Diretor de IA: `none`, `mock` (remove frases repetidas, sem rede), `gemini` (`GEMINI_API_KEY`), `openai` (`OPENAI_API_KEY`, extra `.[openai]`) ou `ollama` (modelo local, sem chave; Opção L). Só roda com `--transcribe` |
+| `--director-model` | o do provedor | Modelo principal: `gemini-3.8-flash` no Gemini, `gpt-6-luna` na OpenAI, `qwen2.5:7b` no Ollama |
 | `--director-fallback` | no Gemini: `gemini-3.6-flash`, `gemini-3.5-flash-lite` | Modelos de reserva, em ordem: `"provedor:modelo,..."` (pode misturar provedores; sem `provedor:` usa o do Diretor). `none` desliga. Veja "Troca automática de modelo" abaixo |
 | `--director-thinking` | `low` | Raciocínio do Diretor: `off`, `low` ou `high`. Cada provedor traduz (Gemini: `thinking_level` MINIMAL/LOW/HIGH, ou `thinking_budget` na família 2.5; OpenAI: `reasoning.effort` none/low/high; modelos sem raciocínio ignoram e o relatório diz isso). Se a API recusar o nível, sobe sozinho (off → low → high); o nível pedido e o efetivo aparecem no relatório e no `director_decision.json` |
-| `--director-timeout` | 120 | Tempo limite (s) da chamada ao Diretor |
+| `--director-timeout` | 120 (ollama: 600) | Tempo limite (s) da chamada ao Diretor. Sem a opção, vale o padrão do provedor; a cobertura e o Produtor herdam |
 | `--api-retries` | 4 | Novas tentativas da API de IA em falhas temporárias (503, 504, 429 por minuto, conexão), com espera de 2s, 4s, 8s, 16s + jitter (respeita `Retry-After`); `0` desliga. Erros permanentes (autenticação, 400, 404) nunca são repetidos. Cada tentativa aparece no terminal (`[4/8] Diretor: Gemini indisponível (503), nova tentativa em 4s (2/5)`), o erro final traz o detalhe original da API e o relatório registra as chamadas à API de cada tentativa. Vale também para `revise` e `report-ai` |
 | `--pedido` | — | Pedido livre (ex: `"aula sem enrolação, ritmo rápido"`): o Produtor escreve o `briefing.json` do projeto (ou ele é reaproveitado), e o briefing dá receita, intensidade, ritmo, instruções ao Diretor e duração alvo. Ver "Briefing no `edit`" abaixo. Com `--sem-briefing`, vai direto ao Diretor (como antes) |
 | `--sem-briefing` | desligado | Não usa nem gera o `briefing.json`: valores só da CLI e padrões (a cobertura também não lê o arquivo) |
@@ -260,7 +260,7 @@ Depois do `edit`, peça ajustes sem refazer as etapas caras (probe, silêncios e
 | Opção do `revise` | Padrão | Efeito |
 | --- | --- | --- |
 | `--from vN` | versão atual | Versão em que a revisão se baseia (as frases removidas/mantidas partem dela) |
-| `--reviser-provider` (ou `--reviser`) | o do Diretor do projeto (ou `gemini`) | `gemini`, `openai` ou `mock` (determinístico, sem rede) |
+| `--reviser-provider` (ou `--reviser`) | o do Diretor do projeto (ou `gemini`) | `gemini`, `openai`, `ollama` (local) ou `mock` (determinístico, sem rede) |
 | `--reviser-model` / `--reviser-fallback` / `--reviser-thinking` / `--reviser-timeout` | os do Diretor do projeto | Mesma configuração do Diretor: modelo, cadeia de reserva com troca automática, raciocínio (com subida automática de nível se a API recusar) e timeout. Trocando o provedor, o modelo e a reserva passam a ser os padrões dele |
 | `--loudness` | o da versão base | Normalização de volume da versão nova: `voz`, `youtube`, `broadcast` ou `off` (fica registrada no `version.json`) |
 | `--api-retries` | 4 | Novas tentativas em falhas temporárias da API (`0` desliga); mesma regra do `edit` |
@@ -450,12 +450,12 @@ Divide cada clipe do projeto em **tomadas**, mede a imagem sem IA (FFmpeg) e ped
 | --- | --- | --- |
 | `--papeis LISTA` | todos | Papéis analisados, separados por vírgula (aceita os sinônimos das pastas, ex.: `b-roll`) |
 | `--so-estimar` | desligado | Para depois das tomadas e medidas e mostra tomadas a analisar, imagens, chamadas e tokens estimados; não chama a IA e não grava `visual/` |
-| `--visual-provider` | `gemini` | `gemini`, `openai`, `mock` (respostas simuladas, sem rede) ou `none` (só tomadas e medidas) |
+| `--visual-provider` | `gemini` | `gemini`, `openai`, `ollama` (local, ex.: `--visual-model qwen2.5vl:3b`; Opção L), `mock` (respostas simuladas, sem rede) ou `none` (só tomadas e medidas) |
 | `--visual-model` / `--visual-fallback` | os do provedor | Modelo e cadeia de reserva, como no Diretor (`provedor:modelo,...`; `none` desliga). Padrão no Gemini: `gemini-3.8-flash` → `gemini-3.6-flash` → `gemini-3.5-flash-lite` |
 | `--visual-thinking` | `low` | Raciocínio `off`/`low`/`high` (cada provedor traduz) |
-| `--visual-timeout` | `180` | Tempo limite de cada chamada, em segundos |
-| `--detalhe-imagem` | `auto` | Resolução com que a IA lê as miniaturas: `low` (Gemini 3: 280 tokens/imagem; OpenAI `detail: low`), `auto` (padrão do provedor; Gemini 3: 1120) ou `high` |
-| `--visual-paralelo N` | `3` | Lotes enviados à IA ao mesmo tempo (`1` = um por vez, como antes). Se um lote falhar por cota esgotada ou limite de requisições (429), cai pela metade (mínimo 1) para os lotes seguintes, com um aviso |
+| `--visual-timeout` | `180` (ollama: `600`) | Tempo limite de cada chamada, em segundos |
+| `--detalhe-imagem` | `auto` | Resolução com que a IA lê as miniaturas: `low` (Gemini 3: 280 tokens/imagem; OpenAI `detail: low`), `auto` (padrão do provedor; Gemini 3: 1120) ou `high`. O Ollama não tem esse parâmetro: ignora, com aviso |
+| `--visual-paralelo N` | `3` (ollama: `1`) | Lotes enviados à IA ao mesmo tempo (`1` = um por vez, como antes). Se um lote falhar por cota esgotada ou limite de requisições (429), cai pela metade (mínimo 1) para os lotes seguintes, com um aviso. Com `--visual-provider ollama`, o padrão é 1 (uma GPU); pedir mais é aceito, com aviso |
 | `--api-retries N` | `4` | Novas tentativas em falhas temporárias |
 | `--force` | desligado | Refaz tomadas e medidas (as análises da IA em cache continuam valendo se as tomadas não mudarem) |
 | `--projects-dir` / `--no-live` | `output/projects` / desligado | Como no `catalog` |
@@ -521,10 +521,10 @@ Etapas (`[n/10]`): catálogo → silêncios → transcrição → Diretor → Ti
 
 | Opção | Padrão | Efeito |
 | --- | --- | --- |
-| `--coverage-provider` (ou `--coverage`) | o do Diretor | `none` (só as janelas com imagem ruim, pelo código, sem IA), `mock` (simulado: decide as janelas como o fallback e põe um respiro nas primeiras 5 trocas de clipe), `gemini` ou `openai` |
+| `--coverage-provider` (ou `--coverage`) | o do Diretor | `none` (só as janelas com imagem ruim, pelo código, sem IA), `mock` (simulado: decide as janelas como o fallback e põe um respiro nas primeiras 5 trocas de clipe), `gemini`, `openai` ou `ollama` |
 | `--coverage-model` / `--coverage-fallback` | os do Diretor, se o provedor for o mesmo | Modelo e reservas (`provedor:modelo,...`; `none` desliga), como no Diretor |
 | `--coverage-thinking` | o do Diretor | Raciocínio `off`/`low`/`high` |
-| `--coverage-timeout` | o do Diretor | Tempo limite da chamada, em segundos |
+| `--coverage-timeout` | o do Diretor | Tempo limite da chamada, em segundos (provedor diferente do Diretor e sem `--director-timeout`: o padrão do provedor, 600 no Ollama) |
 
 * **Receita padrão:** sem `--receita`, uma pasta usa `vlog_cobertura` quando o projeto já tem `visual/visual.json` **e** há `--transcribe` (a cobertura escolhe frases por ID); senão, `vlog`. O terminal diz qual foi (`Receita: vlog_cobertura (a pasta tem análise visual)`). `--receita vlog` continua dando a espinha sem cobertura, com os mesmos fingerprints e a mesma saída de antes. Com `--receita vlog_cobertura` e sem transcrição, a etapa de cobertura é pulada e o vídeo sai como a espinha.
 * **Análise visual (peça `visual`, sem IA):** lê `visual/visual.json` do projeto e grava `coverage_shots.json` (só o que a cobertura usa de cada tomada: tempos, miniaturas, medidas `tela uniforme` e `borrão alto`, fala, análise da IA, e do catálogo o caminho, o áudio e a data de gravação do clipe com a indicação de que ela é confiável, ordem do papel pela data). Sem `visual.json`: erro "rode `visual <pasta>` antes (ou use --receita vlog)". Um `visual.json` de outro catálogo (clipe que mudou de arquivo ou sumiu) também é recusado. Clipe da espinha sem análise: aviso (a imagem ruim dele não é detectada).
@@ -548,6 +548,41 @@ Etapas (`[n/10]`): catálogo → silêncios → transcrição → Diretor → Ti
 * **`coverage_decision.json`** (`CoverageRun`): cadeia pedida, modelo efetivo, trocas, tentativas, **a resposta crua da IA em cada tentativa** (`responses`), origem e motivo, itens recebidos, descartados (tentativa, item, categoria, motivo), janelas, decisão por janela (`window_outcomes`) e as mantidas, decisão aceita (IDs, com origem e ajustes de cada item e as tomadas acrescentadas), onde cada item foi parar (tempos e trechos de tomada), avisos (terminal) e notas (detalhes).
 * **Cache:** `visual` = hash do `visual.json` + do catálogo + clipes da espinha; `coverage` = Timeline (que já inclui o Diretor) + `coverage_shots.json` + instruções e papéis do briefing + instruções ao Diretor + IA (provedor, modelo, raciocínio, cadeia pedida) + versão do prompt + as constantes acima (`COVERAGE_RULES` em `pipeline/spine.py`, com as de relação, nova tentativa e fallback). Formatos `coverage-shots-v2` e `coverage-v2`: projetos de antes refazem as etapas `visual` (sem IA, menos de 1 s) e `coverage`. Render, legendas e relatório seguem o **resultado** da cobertura (hash do `coverage_timeline.json` e, nos dois últimos, do `coverage_decision.json`), não só as entradas: se a etapa for refeita com as mesmas entradas (artefato apagado, `--force`) e a IA decidir diferente, o que vem depois acompanha. Trocar só a IA da cobertura refaz cobertura, render, legendas e relatório. Na `vlog`, nenhum fingerprint mudou.
 * **Versões:** `versions/vN/` leva `coverage_timeline.json` (apontando para o vídeo da versão), a espinha `timeline.json` e `coverage_decision.json`.
+
+### Opção L: Modelos locais com o Ollama (`--*-provider ollama` e `ollama-check`)
+
+Roda o Diretor, o revisor, o Produtor, a cobertura e a descrição visual num modelo local pelo [Ollama](https://ollama.com), sem chave de API. Perfil pensado para uma RTX 2060 (6 GB): `qwen2.5:7b` como Diretor e `qwen2.5vl:3b` para as imagens.
+
+```powershell
+ollama pull qwen2.5:7b
+ollama pull qwen2.5vl:3b
+
+# Diagnóstico: servidor no ar, modelos baixados e uma chamada de texto e uma com imagem (miniatura sintética),
+# com JSON validado, tempo, tokens e o tempo de carga do modelo
+.\.venv\Scripts\python.exe -m ai_video_editor.cli ollama-check
+.\.venv\Scripts\python.exe -m ai_video_editor.cli ollama-check --modelo-texto qwen2.5:7b --modelo-imagem qwen2.5vl:3b --ollama-ctx 8192
+
+# Diretor local; descrição visual local (lotes um por vez)
+.\.venv\Scripts\python.exe -m ai_video_editor.cli edit aula.mp4 --transcribe --director ollama
+.\.venv\Scripts\python.exe -m ai_video_editor.cli visual "D:\Vlog Viagem" --visual-provider ollama --visual-model qwen2.5vl:3b
+# Cadeia: Ollama primeiro, Gemini de reserva (o modelo do Ollama tem ":"; sem provedor, a tag não é lida como provedor)
+.\.venv\Scripts\python.exe -m ai_video_editor.cli edit aula.mp4 --transcribe --director ollama --director-fallback "qwen2.5:3b,gemini:gemini-3.8-flash"
+```
+
+| Opção (em `edit`, `revise`, `briefing`, `visual` e `ollama-check`) | Padrão | Efeito |
+| --- | --- | --- |
+| `--ollama-host URL` | `OLLAMA_HOST` ou `http://localhost:11434` | Endereço do servidor (`localhost:11434` e `0.0.0.0` também valem; `0.0.0.0` vira `127.0.0.1`) |
+| `--ollama-ctx TOKENS` | `OLLAMA_CONTEXT_LENGTH` ou `8192` | `num_ctx` enviado em **toda** chamada. 8192 é uma estimativa para 6 GB, a medir: no primeiro `ollama-check` (RTX 2060), `qwen2.5:7b` com 8192 ocupou 5,4 GB e rodou 21% na CPU (`ollama ps`) |
+| `--ollama-keep-alive` | `OLLAMA_KEEP_ALIVE` ou o do servidor (5 min) | Quanto tempo o modelo fica carregado depois da chamada (`10m`, `3600`, `-1` = sempre) |
+
+As opções valem para o processo inteiro (gravam as variáveis acima), inclusive para as etapas internas do `edit` (Produtor, Diretor, cobertura). `ollama-check` tem também `--modelo-texto` (padrão `qwen2.5:7b`), `--modelo-imagem` (padrão `qwen2.5vl:3b`; `none` pula) e `--timeout` (600); sai com código 1 se algum item falhar.
+
+* **Chamada** (`llm/providers/ollama.py`): `POST /api/chat` com `stream: false`, `format` = JSON schema do modelo Pydantic (`model_json_schema()`), `options.num_ctx` e `options.temperature`, e `keep_alive` se configurado. Cliente HTTP = `urllib` da biblioteca padrão, sem novas tentativas internas (as da `RetryPolicy` valem). Sem chave (`has_credentials` sempre verdadeiro).
+* **Imagens:** o prompt numa mensagem do usuário e cada imagem numa mensagem do usuário própria, com o texto `Imagem <ID>:` e a imagem em base64 em `images` (a API do Ollama não posiciona a imagem dentro do texto; assim cada rótulo fica junto da sua imagem). `detail` é ignorado e registrado em `LLMCallMetrics.notes`. Sem imagens, uma única mensagem de texto.
+* **Contexto (truncamento silencioso):** o Ollama corta o começo da entrada que passa do `num_ctx` sem devolver erro. Depois de cada resposta, se `prompt_eval_count` ≥ `num_ctx` − 32 (ou entrada + resposta ≥ isso), a chamada falha com `AIContextLimitError` (não transitória, não troca de modelo): "aumente o contexto (`--ollama-ctx`) ou reduza a entrada". Com o prefixo do prompt em cache, o Ollama conta só a parte nova, então um corte pode passar despercebido (nunca o contrário).
+* **Raciocínio:** ignorado (`thinking_setting` = None; o relatório diz "ignorado"). Temperatura e timeout repassados; timeout padrão 600 s (`default_timeout_sec` do provedor; modelo local numa GPU de 6 GB é lento, e a primeira chamada inclui a carga do modelo).
+* **Erros:** conexão recusada → "Ollama não está rodando em <host>: abra o Ollama ou rode `ollama serve`" (não transitório, sem troca de modelo); 404/modelo não encontrado → "rode `ollama pull <modelo>`" (não transitório); tempo esgotado, 503 (servidor ocupado), queda do processo do modelo (500 "process has terminated", visto com um erro de CUDA ao carregar) e queda de conexão → transitórios; outros 4xx/5xx (ex.: falta de memória) → permanentes, com o detalhe do servidor; JSON inválido → `AIResponseValidationError` (o Diretor e o `visual` refazem com o erro, como nos outros provedores).
+* **Paralelismo:** com `--visual-provider ollama`, `--visual-paralelo` passa a 1 por padrão; pedir mais é aceito com aviso (os lotes disputam a mesma GPU).
 
 ### Usando a GPU
 A transcrição usa a GPU NVIDIA automaticamente quando ela existe e as bibliotecas CUDA estão instaladas (`--whisper-device auto`, o padrão); senão, volta para a CPU com um aviso. Para instalar as bibliotecas (cuBLAS para CUDA 12 e cuDNN 9, compatíveis com o ctranslate2 4.x do faster-whisper) no Windows:
@@ -634,9 +669,10 @@ Usado por `analyze`/`report-ai`; a análise visual passa para `visual/`. As exce
 ### Módulo LLM (provedores de IA com saída estruturada)
 * [`src/ai_video_editor/llm/client.py`](../src/ai_video_editor/llm/client.py): interface `StructuredLLMClient` (`generate(prompt, schema, config, retry, images=None)` → objeto validado + `LLMCallMetrics`), com novas tentativas, subida do nível de raciocínio e métricas já implementadas.
 * **Imagens** (opcionais): lista de `ImageInput` (`llm/schema.py`: caminho do JPEG, `label` = ID citado no prompt, `mime_type`, `detail` `low`/`auto`/`high`). O provedor envia o prompt e, para cada imagem, o texto `Imagem <label>:` seguido dos bytes inline — Gemini: `types.Part.from_bytes` numa `Content` do usuário, com `media_resolution` quando o detalhe não é `auto`; OpenAI: itens `input_text` e `input_image` (data URL base64, `detail`). Mesmas novas tentativas, mapeamento de erros e `ModelChain`; `LLMCallMetrics.images` registra quantas foram. Sem imagens, a chamada ao SDK é a mesma de antes (texto puro), assim como os fingerprints. O `MockLLMClient` guarda as imagens em `image_calls` e aceita funções `(prompt, imagens, schema) → resposta` na lista de respostas.
-* [`src/ai_video_editor/llm/registry.py`](../src/ai_video_editor/llm/registry.py): `register_provider`/`create_client` (`gemini`, `openai`, `mock`, com import tardio).
-* [`src/ai_video_editor/llm/chain.py`](../src/ai_video_editor/llm/chain.py): `ModelChain` (troca automática de modelo) e `resolve_chain`/`parse_chain` (`provedor:modelo,...`).
-* [`src/ai_video_editor/llm/providers/`](../src/ai_video_editor/llm/providers): `GeminiLLMClient` (`google-genai`, `response_schema`), `OpenAILLMClient` (SDK `openai`, Responses API com `text_format` / JSON schema estrito; as novas tentativas do SDK ficam desligadas) e `MockLLMClient`.
+* [`src/ai_video_editor/llm/registry.py`](../src/ai_video_editor/llm/registry.py): `register_provider`/`create_client` (`gemini`, `openai`, `ollama`, `mock`, com import tardio) e `default_timeout` (tempo limite padrão do provedor, `StructuredLLMClient.default_timeout_sec`; usado pela CLI quando o usuário não passa o timeout).
+* [`src/ai_video_editor/llm/chain.py`](../src/ai_video_editor/llm/chain.py): `ModelChain` (troca automática de modelo) e `resolve_chain`/`parse_chain` (`provedor:modelo,...`). Modelos com `:` no nome (Ollama, `model_ids_have_colon`): `ollama:qwen2.5:7b` separa no primeiro `:`, e numa reserva sem provedor (`qwen2.5:3b` com o Diretor no Ollama) o texto inteiro é o modelo.
+* [`src/ai_video_editor/llm/providers/`](../src/ai_video_editor/llm/providers): `GeminiLLMClient` (`google-genai`, `response_schema`), `OpenAILLMClient` (SDK `openai`, Responses API com `text_format` / JSON schema estrito; as novas tentativas do SDK ficam desligadas), `OllamaLLMClient` (local, `/api/chat` com `format` = JSON schema e `num_ctx` explícito; Opção L) e `MockLLMClient`. `LLMCallMetrics.notes`: observações do provedor (contexto usado, parâmetro ignorado, carga do modelo).
+* [`src/ai_video_editor/llm/ollama_check.py`](../src/ai_video_editor/llm/ollama_check.py): diagnóstico do comando `ollama-check` (`run_ollama_check`, `OllamaCheckReport`).
 * [`src/ai_video_editor/llm/keys.py`](../src/ai_video_editor/llm/keys.py) e [`errors.py`](../src/ai_video_editor/llm/errors.py): chaves por variável de ambiente/`.env` e utilitários de erro (remove chaves `AIza…`/`sk-…` das mensagens).
 
 ### Módulo Benchmark (comando `benchmark transcription`)

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional, get_args
@@ -15,7 +16,15 @@ from ai_video_editor.director.schema import UserBrief
 from ai_video_editor.intelligence.retry import DEFAULT_API_RETRIES, RetryPolicy
 from ai_video_editor.intelligence.schema import AIAnalysisConfig
 from ai_video_editor.llm.chain import ModelChain, resolve_chain
-from ai_video_editor.llm.registry import provider_names
+from ai_video_editor.llm.providers.ollama import (
+    DEFAULT_NUM_CTX,
+    DEFAULT_OLLAMA_TIMEOUT_SEC,
+    HOST_ENV as OLLAMA_HOST_ENV,
+    KEEP_ALIVE_ENV as OLLAMA_KEEP_ALIVE_ENV,
+    NUM_CTX_ENV as OLLAMA_NUM_CTX_ENV,
+)
+from ai_video_editor.llm.ollama_check import DEFAULT_CHECK_IMAGE_MODEL, DEFAULT_CHECK_TEXT_MODEL
+from ai_video_editor.llm.registry import default_timeout, provider_names
 from ai_video_editor.intelligence.service import MultimodalAnalysisService
 from ai_video_editor.live_status import LiveStatus
 from ai_video_editor.pipeline import (
@@ -288,6 +297,60 @@ def _llm_providers() -> list[str]:
     return [name for name in provider_names() if name != "mock"]
 
 
+# Tempo limite padrão das chamadas aos provedores de nuvem (o do Ollama é DEFAULT_OLLAMA_TIMEOUT_SEC).
+CLOUD_TIMEOUT_SEC = 120.0
+VISUAL_TIMEOUT_SEC = 180.0
+TIMEOUT_HELP = f"padrão: 120; ollama: {DEFAULT_OLLAMA_TIMEOUT_SEC:.0f}"
+
+
+def _director_timeout(args: argparse.Namespace) -> float:
+    """`--director-timeout`, ou o padrão do provedor do Diretor (o Ollama local é mais lento)."""
+    return args.director_timeout or default_timeout(args.director, CLOUD_TIMEOUT_SEC)
+
+
+def _coverage_timeout(args: argparse.Namespace) -> Optional[float]:
+    """`--coverage-timeout`; sem ele, o do Diretor (None), salvo provedor diferente com padrão próprio."""
+    if args.coverage_timeout is not None or args.coverage in (None, args.director) or args.director_timeout:
+        return args.coverage_timeout
+    return default_timeout(args.coverage, _director_timeout(args))
+
+
+def _add_ollama_args(parser: argparse.ArgumentParser) -> None:
+    """Opções do Ollama local; valem para o processo (gravam as variáveis de ambiente do provedor)."""
+    group = parser.add_argument_group("Ollama (modelos locais)")
+    group.add_argument(
+        "--ollama-host", default=None, metavar="URL",
+        help=f"Endereço do servidor Ollama (padrão: {OLLAMA_HOST_ENV} ou http://localhost:11434)",
+    )
+    group.add_argument(
+        "--ollama-ctx", type=_ctx_tokens, default=None, metavar="TOKENS",
+        help=f"Contexto (num_ctx) enviado em toda chamada ao Ollama (padrão: {OLLAMA_NUM_CTX_ENV} ou "
+        f"{DEFAULT_NUM_CTX}, estimativa para 6 GB de VRAM). Entrada que encosta no limite vira erro",
+    )
+    group.add_argument(
+        "--ollama-keep-alive", default=None, metavar="DURAÇÃO",
+        help=f"Tempo que o modelo fica carregado depois da chamada (ex: 10m, 3600, -1 = sempre; "
+        f"padrão: {OLLAMA_KEEP_ALIVE_ENV} ou o do servidor)",
+    )
+
+
+def apply_ollama_args(args: argparse.Namespace) -> None:
+    """Grava `--ollama-*` nas variáveis de ambiente lidas pelo provedor (inclusive nas etapas internas)."""
+    for attr, env in (
+        ("ollama_host", OLLAMA_HOST_ENV), ("ollama_ctx", OLLAMA_NUM_CTX_ENV), ("ollama_keep_alive", OLLAMA_KEEP_ALIVE_ENV),
+    ):
+        value = getattr(args, attr, None)
+        if value is not None:
+            os.environ[env] = str(value)
+
+
+def _ctx_tokens(value: str) -> int:
+    number = int(value)
+    if number < 256:
+        raise argparse.ArgumentTypeError("deve ser 256 tokens ou mais")
+    return number
+
+
 def _threshold_arg(value: str):
     """`auto` ou um número em dB."""
     if value.strip().lower() == "auto":
@@ -436,7 +499,7 @@ def handle_edit(args: argparse.Namespace) -> int:
             director_model=args.director_model,
             director_fallback=args.director_fallback,
             director_thinking=args.director_thinking,
-            director_timeout_sec=args.director_timeout,
+            director_timeout_sec=_director_timeout(args),
             api_retries=args.api_retries,
             pacing=settings.pace.value,
             brief=UserBrief(
@@ -454,7 +517,7 @@ def handle_edit(args: argparse.Namespace) -> int:
             params.director, params.director_model, params.director_fallback, params.director_thinking,
             params.director_timeout_sec, params.api_retries,
             provider=args.coverage, model=args.coverage_model, fallback=args.coverage_fallback,
-            thinking=args.coverage_thinking, timeout_sec=args.coverage_timeout,
+            thinking=args.coverage_thinking, timeout_sec=_coverage_timeout(args),
         )
         if coverage.provider not in ("none", "mock"):
             coverage.chain()  # valida provedor e reservas
@@ -594,7 +657,10 @@ def _build_reviser(
     chain = ModelChain(
         resolve_chain(provider, model, fallback),
         thinking=args.reviser_thinking or params.director_thinking,
-        timeout_sec=args.reviser_timeout or params.director_timeout_sec,
+        timeout_sec=args.reviser_timeout or (
+            params.director_timeout_sec if provider == params.director
+            else default_timeout(provider, params.director_timeout_sec)
+        ),
         retry=RetryPolicy(
             max_retries=args.api_retries,
             on_retry=lambda event: progress.retry(chain, event),
@@ -850,7 +916,7 @@ def _build_producer(args: argparse.Namespace):
     chain = ModelChain(
         resolve_chain(args.director, args.director_model, args.director_fallback),
         thinking=args.director_thinking,
-        timeout_sec=args.director_timeout,
+        timeout_sec=_director_timeout(args),
         retry=RetryPolicy(
             max_retries=args.api_retries,
             on_retry=lambda event: print(f"[produtor] {event.message}", flush=True),
@@ -990,7 +1056,7 @@ def _build_visual_describer(args: argparse.Namespace, printer: "VisualProgressPr
     chain = ModelChain(
         resolve_chain(provider, args.visual_model, args.visual_fallback),
         thinking=args.visual_thinking,
-        timeout_sec=args.visual_timeout,
+        timeout_sec=args.visual_timeout or default_timeout(provider, VISUAL_TIMEOUT_SEC),
         retry=RetryPolicy(
             max_retries=args.api_retries,
             on_retry=lambda event: printer(
@@ -1003,6 +1069,21 @@ def _build_visual_describer(args: argparse.Namespace, printer: "VisualProgressPr
     return VisualDescriber(
         chain, detail=args.detalhe_imagem, on_retry=lambda message: printer("ai", "notice", message)
     )
+
+
+def visual_parallel(args: argparse.Namespace) -> int:
+    """Lotes em paralelo do `visual`: com o Ollama (uma GPU), 1 por padrão, com aviso se pedirem mais."""
+    if args.visual_provider != "ollama":
+        return args.visual_paralelo or DEFAULT_AI_PARALLEL
+    if args.visual_paralelo is None:
+        return 1
+    if args.visual_paralelo > 1:
+        print(
+            f"Aviso: --visual-paralelo {args.visual_paralelo} com o Ollama: os lotes disputam a mesma GPU "
+            "(o servidor os enfileira ou divide a memória); o padrão com ollama é 1.",
+            file=sys.stderr,
+        )
+    return args.visual_paralelo
 
 
 def _thousands(value: Optional[int]) -> str:
@@ -1021,6 +1102,9 @@ def handle_visual(args: argparse.Namespace) -> int:
     if not folder.is_dir():
         print(f"Erro: pasta não encontrada: {folder}", file=sys.stderr)
         return 1
+    if args.visual_provider == "ollama" and args.detalhe_imagem != "auto":
+        print(f"Aviso: --detalhe-imagem {args.detalhe_imagem} é ignorado pelo Ollama (não tem esse parâmetro).",
+              file=sys.stderr)
     try:
         roles = _parse_roles(args.papeis)
         status = LiveStatus(live=False if args.no_live else None)
@@ -1039,7 +1123,7 @@ def handle_visual(args: argparse.Namespace) -> int:
         on_progress=printer,
         on_stage_progress=printer.progress,
         catalog_builder=CatalogBuilder(projects_root=Path(args.projects_dir)),
-        ai_parallel=args.visual_paralelo,
+        ai_parallel=visual_parallel(args),
     )
     try:
         with status:
@@ -1098,6 +1182,23 @@ def handle_visual(args: argparse.Namespace) -> int:
         print(f"Aviso: {warning}")
     print(f"Tempo total: {format_duration(visual.total_sec)}")
     return 0
+
+
+def handle_ollama_check(args: argparse.Namespace) -> int:
+    """Confere o Ollama local: servidor, modelos baixados e chamadas mínimas (texto e imagem) com JSON validado."""
+    from ai_video_editor.llm.ollama_check import run_ollama_check
+
+    try:
+        report = run_ollama_check(
+            text_model=args.modelo_texto,
+            image_model=None if args.modelo_imagem.lower() == "none" else args.modelo_imagem,
+            timeout_sec=args.timeout,
+            on_line=lambda line: print(line, flush=True),
+        )
+    except ValueError as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+    return 0 if report.ok else 1
 
 
 def _non_negative_int(value: str) -> int:
@@ -1326,8 +1427,8 @@ def build_parser() -> argparse.ArgumentParser:
     edit_parser.add_argument(
         "--director-timeout",
         type=float,
-        default=120.0,
-        help="Tempo limite em segundos da chamada ao Diretor (padrão: 120)",
+        default=None,
+        help=f"Tempo limite em segundos da chamada ao Diretor ({TIMEOUT_HELP})",
     )
     edit_parser.add_argument(
         "--coverage-provider", "--coverage", dest="coverage", choices=["none", "mock", *_llm_providers()], default=None,
@@ -1542,7 +1643,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--director-thinking", choices=["off", "low", "high"], default="low", help="Raciocínio (padrão: low)"
     )
     briefing_parser.add_argument(
-        "--director-timeout", type=float, default=120.0, help="Tempo limite em segundos da chamada (padrão: 120)"
+        "--director-timeout", type=float, default=None, help=f"Tempo limite em segundos da chamada ({TIMEOUT_HELP})"
     )
     briefing_parser.add_argument(
         "--api-retries", type=_non_negative_int, default=DEFAULT_API_RETRIES, metavar="N",
@@ -1585,17 +1686,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Raciocínio da descrição (padrão: low)",
     )
     visual_parser.add_argument(
-        "--visual-timeout", type=float, default=180.0,
-        help="Tempo limite em segundos de cada chamada (padrão: 180)",
+        "--visual-timeout", type=float, default=None,
+        help=f"Tempo limite em segundos de cada chamada (padrão: 180; ollama: {DEFAULT_OLLAMA_TIMEOUT_SEC:.0f})",
     )
     visual_parser.add_argument(
         "--detalhe-imagem", choices=["low", "auto", "high"], default="auto",
         help="Resolução com que a IA lê as miniaturas: low = ~4x menos tokens no Gemini 3 (padrão: auto)",
     )
     visual_parser.add_argument(
-        "--visual-paralelo", type=_positive_int, default=DEFAULT_AI_PARALLEL, metavar="N",
+        "--visual-paralelo", type=_positive_int, default=None, metavar="N",
         help=f"Lotes enviados à IA ao mesmo tempo; 1 = um por vez; cai pela metade se o provedor limitar "
-        f"(padrão: {DEFAULT_AI_PARALLEL})",
+        f"(padrão: {DEFAULT_AI_PARALLEL}; ollama: 1, uma GPU)",
     )
     visual_parser.add_argument(
         "--api-retries", type=_non_negative_int, default=DEFAULT_API_RETRIES, metavar="N",
@@ -1655,12 +1756,34 @@ def build_parser() -> argparse.ArgumentParser:
     versions_parser = subparsers.add_parser("versions", help="Lista as versões de um projeto")
     versions_parser.add_argument("project", help="Pasta do projeto")
 
+    # Subcomando: ollama-check
+    check_parser = subparsers.add_parser(
+        "ollama-check",
+        help="Diagnóstico do Ollama local: servidor no ar, modelos baixados e uma chamada de texto e uma com imagem",
+    )
+    check_parser.add_argument(
+        "--modelo-texto", default=DEFAULT_CHECK_TEXT_MODEL,
+        help=f"Modelo da chamada de texto (padrão: {DEFAULT_CHECK_TEXT_MODEL}, o do Diretor)",
+    )
+    check_parser.add_argument(
+        "--modelo-imagem", default=DEFAULT_CHECK_IMAGE_MODEL,
+        help=f"Modelo da chamada com imagem (padrão: {DEFAULT_CHECK_IMAGE_MODEL}); \"none\" pula",
+    )
+    check_parser.add_argument(
+        "--timeout", type=float, default=DEFAULT_OLLAMA_TIMEOUT_SEC,
+        help=f"Tempo limite em segundos de cada chamada (padrão: {DEFAULT_OLLAMA_TIMEOUT_SEC:.0f})",
+    )
+
+    for sub in (edit_parser, revise_parser, briefing_parser, visual_parser, check_parser):
+        _add_ollama_args(sub)
+
     return parser
 
 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    apply_ollama_args(args)
 
     if args.command == "render":
         sys.exit(handle_plan_render(args))
@@ -1682,6 +1805,8 @@ def main() -> None:
         sys.exit(handle_briefing(args))
     elif args.command == "visual":
         sys.exit(handle_visual(args))
+    elif args.command == "ollama-check":
+        sys.exit(handle_ollama_check(args))
     elif args.command == "benchmark":
         if args.benchmark_command == "rescore":
             sys.exit(handle_benchmark_rescore(args))

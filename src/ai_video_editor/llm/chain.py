@@ -12,7 +12,7 @@ from ai_video_editor.intelligence.exceptions import (
 from ai_video_editor.intelligence.retry import RetryPolicy
 from ai_video_editor.llm.client import StructuredLLMClient
 from ai_video_editor.llm.per_thread import PerThread
-from ai_video_editor.llm.registry import create_client, default_fallback, default_model, provider_names
+from ai_video_editor.llm.registry import create_client, default_fallback, default_model, get_factory, provider_names
 from ai_video_editor.llm.schema import (
     ImageInput,
     LLMCallConfig,
@@ -30,7 +30,14 @@ def parse_model_spec(text: str, default_provider: Optional[str] = None) -> Model
     """`provedor:modelo` (ou só `modelo`, se `default_provider` for dado)."""
     text = text.strip()
     provider, sep, model = text.partition(":")
-    if not sep:
+    # Modelos do Ollama têm `:` no nome (`qwen2.5:7b`): sem provedor conhecido antes do
+    # primeiro `:`, o texto inteiro é o modelo do provedor padrão, se ele usa essa forma.
+    if not sep or (
+        default_provider is not None
+        and provider.strip().lower() not in provider_names()
+        and default_provider in provider_names()
+        and get_factory(default_provider).model_ids_have_colon
+    ):
         if default_provider is None:
             raise ValueError(f"esperado `provedor:modelo`, recebido {text!r}")
         provider, model = default_provider, text

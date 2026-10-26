@@ -56,6 +56,9 @@ class LLMCallMetrics(BaseModel):
     output_tokens: Optional[int] = None
     api_calls: int = Field(default=0, ge=0, description="Chamadas à API, incluindo novas tentativas")
     images: int = Field(default=0, ge=0, description="Imagens enviadas junto com o prompt")
+    notes: list[str] = Field(
+        default_factory=list, description="Observações do provedor (ex: parâmetro ignorado, contexto usado)"
+    )
 
 
 @dataclass
