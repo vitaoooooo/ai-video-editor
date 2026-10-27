@@ -14,9 +14,10 @@ from ai_video_editor.audio.levels import AUTO_RULE_VERSION, measure_levels
 from ai_video_editor.audio.schema import SilenceInterval
 from ai_video_editor.catalog.schema import SpeechDetection
 from ai_video_editor.catalog.speech import SpeechDetector, merge_segments, speech_result
-from ai_video_editor.cli import build_parser, handle_roteiro
+from ai_video_editor.cli import _build_photo_describer, build_parser, handle_roteiro
 from ai_video_editor.director.sentences import build_clip_sentences
 from ai_video_editor.llm.chain import ModelChain
+from ai_video_editor.llm.ollama_check import DEFAULT_CHECK_IMAGE_MODEL
 from ai_video_editor.llm.providers.mock import MockLLMClient
 from ai_video_editor.llm.schema import ImageInput, ModelSpec
 from ai_video_editor.pipeline import EditPipelineParams, SpinePipeline
@@ -35,8 +36,15 @@ from ai_video_editor.roteiro import (
     RoteiroParams,
     mock_vision_responder,
 )
-from ai_video_editor.roteiro.describer import PhotoRequest, build_vision_prompt
-from ai_video_editor.roteiro.moments import MAX_MOMENT_SEC, build_moments, link_sentences
+from ai_video_editor.roteiro.describer import VISION_PROMPT_VERSION, PhotoRequest, build_vision_prompt
+from ai_video_editor.roteiro.moments import (
+    MAX_MOMENT_SEC,
+    PROMPT_TAGS,
+    build_moments,
+    finalize_issues,
+    is_prompt_tag,
+    link_sentences,
+)
 from ai_video_editor.roteiro.photos import (
     DUPLICATE_MAX_DIFF,
     MAX_KEPT_GAP_SEC,
@@ -46,9 +54,10 @@ from ai_video_editor.roteiro.photos import (
 )
 from ai_video_editor.roteiro.report import build_roteiro_markdown, estimate_tokens
 from ai_video_editor.roteiro.rhythm import measure_rhythm
-from ai_video_editor.roteiro.schema import RoteiroClip, RoteiroPhoto, RoteiroSentence
+from ai_video_editor.roteiro.schema import Moment, RoteiroClip, RoteiroPhoto, RoteiroSentence
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript, TranscriptionConfig, TranscriptSegment, Word
+from ai_video_editor.visual.schema import ShotMeasures
 
 # --- material sintético ---
 
@@ -279,6 +288,67 @@ def test_moments_respect_max_duration_and_link_sentences():
     assert [(m.id, m.start_sec, m.end_sec) for m in empty] == [("D001.M01", 0.0, 7.0)]
 
 
+def _moment_issues(issues: list[str], measures: ShotMeasures | None) -> list[str]:
+    descriptions = {
+        f"P001.F{n:03d}": PhotoDescription(what="x", tags=["mar"], issue=issue) for n, issue in enumerate(issues, 1)
+    }
+    moment = Moment(id="P001.M01", clip_id="P001", start_sec=0.0, end_sec=4.0, photo_ids=list(descriptions),
+                    measures=measures)
+    finalize_issues([moment], descriptions)
+    return moment.issues
+
+
+def test_light_issues_come_only_from_the_measures():
+    measures = ShotMeasures(samples=4, brightness=0.5, motion=0.0, luma_spread=0.5)
+    # "clara"/"escura" da IA são ignorados; os outros problemas da IA continuam.
+    assert _moment_issues(["clara", "escura", "borrada", "tremida", "obstruída", "tela uniforme"], measures) == [
+        "borrada", "tremida", "obstruída", "tela uniforme",
+    ]
+    assert _moment_issues(["clara", "clara"], None) == []
+    dark = measures.model_copy(update={"brightness": 0.1, "dark": True})
+    assert _moment_issues(["clara", "nenhum"], dark) == ["escura"]
+    bright = measures.model_copy(update={"brightness": 0.95, "bright": True, "blurry": True})
+    assert _moment_issues(["escura"], bright) == ["borrão alto", "clara"]
+
+
+def test_never_dark_and_bright_together():
+    both = ShotMeasures(samples=4, brightness=0.7, motion=0.0, luma_spread=0.9, dark=True, bright=True)
+    assert _moment_issues(["escura"], both) == ["clara"]
+    assert _moment_issues(["clara"], both.model_copy(update={"brightness": 0.3})) == ["escura"]
+
+
+def test_prompt_tags_are_filtered_when_building_moments():
+    assert all(is_prompt_tag(t) for t in [
+        "papel principal", "Papel", "principal", "drone", "pov", "broll", "b-roll", "contexto", "sem fala",
+        "com fala", "Silêncio", "foto", "imagem", "P001", "p001.f002", "D003.M04", "X001.T03",
+    ])
+    assert not any(is_prompt_tag(t) for t in ["praia", "mar", "fala alta", "a380", "pessoa"])
+    assert "papel principal" in PROMPT_TAGS
+    noise = ["papel principal", "sem fala", "contexto", "P001.F001"]
+    photos = [
+        _described("P001", 1, 0.0, "", ["mar", "areia", *noise]),
+        _described("P001", 2, 2.0, "", ["mar", "areia", "Silêncio", "papel"]),
+        _described("P001", 3, 4.0, "", ["rua", "carro", *noise]),  # só ruído em comum com as anteriores
+    ]
+    moments = build_moments("P001", photos, 6.0, scene_cuts=[])
+    assert [m.photo_ids for m in moments] == [["P001.F001", "P001.F002"], ["P001.F003"]]
+    assert moments[0].tags == ["mar", "areia"] and moments[1].tags == ["rua", "carro"]
+    # A descrição (a do cache) não muda: o filtro é só na hora de montar o momento.
+    assert photos[0].description.tags == ["mar", "areia", *[t.lower() for t in noise]]
+
+
+def test_vision_defaults_to_gemma_and_keeps_the_cache_fingerprint():
+    describer = _build_photo_describer(build_parser().parse_args(["roteiro", "x.mp4"]), lambda *a: None)
+    assert DEFAULT_CHECK_IMAGE_MODEL == "gemma3:4b" and describer.model_chain == ["ollama:gemma3:4b"]
+    assert build_parser().parse_args(["ollama-check"]).modelo_imagem == "gemma3:4b"
+    # Mesmo fingerprint das 644 descrições já gravadas com `--visao-model gemma3:4b` (não pode mudar).
+    assert VISION_PROMPT_VERSION == 1 and describer.fingerprint == "6859a494d42aad5e"
+    qwen = _build_photo_describer(
+        build_parser().parse_args(["roteiro", "x.mp4", "--visao-model", "qwen2.5vl:3b"]), lambda *a: None
+    )
+    assert qwen.model_chain == ["ollama:qwen2.5vl:3b"]
+
+
 # --- descrição por IA (mock, sem FFmpeg) ---
 
 
@@ -451,6 +521,22 @@ def test_photos_extras_discard_moments_and_retry_of_missing_description(scenes_v
     again = builder(tmp_path, good).build(scenes_video).roteiro
     assert len(client2.calls) == 1 and "Foto P001.F002 " in client2.calls[0][0]
     assert all(p.status == "descrita" for p in again.photos)
+
+
+@pytest.mark.slow
+def test_cached_descriptions_are_reused_and_cleaned_in_the_moments(scenes_video, tmp_path):
+    def noisy(prompt, images, schema):
+        good = mock_vision_responder(prompt, images, schema)
+        return good.model_copy(update={"tags": [*good.tags, "papel principal", "sem fala"], "issue": "clara"})
+
+    describer, _ = mock_describer(noisy)
+    builder(tmp_path, describer).build(scenes_video)
+    again, client = mock_describer()
+    roteiro = builder(tmp_path, again).build(scenes_video).roteiro
+    assert client.calls == [] and roteiro.vision.cached == len(roteiro.photos)
+    assert all("papel principal" in p.description.tags for p in roteiro.photos)  # cache intacto
+    assert all("clara" not in m.issues and not {"papel principal", "sem fala"} & set(m.tags) for m in roteiro.moments)
+    assert all(not {"escura", "clara"} <= set(m.issues) for m in roteiro.moments)
 
 
 @pytest.mark.slow

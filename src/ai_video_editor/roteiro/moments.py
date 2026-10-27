@@ -8,12 +8,19 @@ o momento (não há com o que comparar), só a troca de cena e a duração máxi
 Os momentos cobrem o clipe inteiro sem buracos: cada um vai da sua 1ª foto até a 1ª do seguinte (o 1º
 começa em 0 e o último termina no fim do clipe). As medidas de borrão/movimento do intervalo vêm das
 amostras do `scan_clip` (as mesmas do `visual`).
+
+Limpeza do que a IA de visão disse (feita aqui, ao montar o momento; a descrição em cache não muda):
+- tags que são palavras do pedido, não da imagem (`PROMPT_TAGS` e IDs), saem antes de comparar fotos
+  e de somar as tags do momento;
+- luz (escura/clara) vem só das medidas do programa: o `issue` "escura"/"clara" da IA é ignorado.
 """
 
+import re
 import unicodedata
 from collections import Counter
 from typing import Optional
 
+from ai_video_editor.catalog.schema import ROLE_PREFIX, ROLES
 from ai_video_editor.roteiro.schema import Moment, PhotoDescription, RoteiroPhoto, RoteiroSentence
 from ai_video_editor.visual.schema import ShotMeasures
 from ai_video_editor.visual.shots import Sample, ShotSpan, measure_shot
@@ -25,17 +32,38 @@ MAX_MOMENT_SEC = 20.0
 # Tags somadas que vão para o momento.
 MOMENT_MAX_TAGS = 8
 
+# Tags copiadas do pedido da visão (papel do clipe, "sem fala", "contexto"...) em vez do que a foto mostra.
+# Comparadas sem acentos e em minúsculas. Os IDs (P007, P007.F023, P007.M04) saem por `_ID_TAG`.
+PROMPT_TAGS: frozenset[str] = frozenset({
+    *ROLES, *(f"papel {role}" for role in ROLES), "b-roll", "b roll", "papel", "clipe", "contexto",
+    "sem fala", "com fala", "silencio", "foto", "imagem", "foto anterior",
+})
+_ID_TAG = re.compile(rf"^[{''.join(ROLE_PREFIX.values()).lower()}]\d{{3}}(\.[a-z]\d+)*$")
+# Problemas da IA que o momento não usa: a luz vem das medidas (o modelo entende "clara" como nítida/de dia).
+AI_IGNORED_ISSUES: frozenset[str] = frozenset({"escura", "clara"})
+
 
 def _plain(text: str) -> str:
     decomposed = unicodedata.normalize("NFKD", " ".join(text.lower().split()))
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
+def is_prompt_tag(tag: str) -> bool:
+    """Tag que repete o pedido (papel, "sem fala", ID...) e não diz nada da imagem."""
+    plain = _plain(tag)
+    return plain in PROMPT_TAGS or bool(_ID_TAG.match(plain))
+
+
+def content_tags(description: PhotoDescription) -> list[str]:
+    """Tags da descrição sem as que repetem o pedido."""
+    return [t for t in description.tags if not is_prompt_tag(t)]
+
+
 def similar(a: PhotoDescription, b: PhotoDescription) -> bool:
     """Mesmo lugar (quando os dois dizem) e tags suficientes em comum."""
     if a.place and b.place and _plain(a.place) != _plain(b.place):
         return False
-    tags_a, tags_b = {_plain(t) for t in a.tags}, {_plain(t) for t in b.tags}
+    tags_a, tags_b = {_plain(t) for t in content_tags(a)}, {_plain(t) for t in content_tags(b)}
     needed = min(MOMENT_MIN_COMMON_TAGS, len(tags_a), len(tags_b))
     return len(tags_a & tags_b) >= needed
 
@@ -43,12 +71,16 @@ def similar(a: PhotoDescription, b: PhotoDescription) -> bool:
 def _issues(descriptions: list[PhotoDescription], measures: Optional[ShotMeasures]) -> list[str]:
     issues: list[str] = []
     for description in descriptions:
-        if description.issue != "nenhum" and description.issue not in issues:
-            issues.append(description.issue)
+        issue = description.issue
+        if issue != "nenhum" and issue not in AI_IGNORED_ISSUES and issue not in issues:
+            issues.append(issue)
     if measures is not None:
+        dark, bright = measures.dark, measures.bright
+        if dark and bright:  # nunca as duas: vale o lado da luma média do momento
+            dark, bright = measures.brightness < 0.5, measures.brightness >= 0.5
         for flag, label in (
             (measures.blurry, "borrão alto"), (measures.shaky, "movimento alto"), (measures.uniform, "tela uniforme"),
-            (measures.dark, "escura"), (measures.bright, "clara"),
+            (dark, "escura"), (bright, "clara"),
         ):
             if flag and label not in issues:
                 issues.append(label)
@@ -60,14 +92,14 @@ def _representative(descriptions: list[PhotoDescription], tags: list[str]) -> Op
     if not descriptions:
         return None
     wanted = {_plain(t) for t in tags}
-    return max(descriptions, key=lambda d: (len({_plain(t) for t in d.tags} & wanted), -descriptions.index(d)))
+    return max(descriptions, key=lambda d: (len({_plain(t) for t in content_tags(d)} & wanted), -descriptions.index(d)))
 
 
 def _summed_tags(descriptions: list[PhotoDescription]) -> list[str]:
     counts: Counter[str] = Counter()
     first: dict[str, int] = {}
     for description in descriptions:
-        for tag in description.tags:
+        for tag in content_tags(description):
             counts[tag] += 1
             first.setdefault(tag, len(first))
     return sorted(counts, key=lambda t: (-counts[t], first[t]))[:MOMENT_MAX_TAGS]

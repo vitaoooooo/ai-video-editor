@@ -376,7 +376,7 @@ def test_visual_describer_uses_the_ollama_timeout():
 
 
 def _check_server(missing=(), broken_schema=False):
-    models = [m for m in ("qwen2.5:7b", "qwen2.5vl:3b") if m not in missing]
+    models = [m for m in ("qwen2.5:7b", "gemma3:4b") if m not in missing]
 
     def respond(method, path, body):
         if path == "/api/version":
@@ -407,12 +407,12 @@ def test_ollama_check_reports_both_calls_with_time():
     assert schema_step.input_tokens == 900 and "certas" in schema_step.detail and text_step.ok
     assert image.ok and image.detail == "schema, texto"
     chat_bodies = [body for _, path, body, _ in transport.calls if path == "/api/chat"]
-    assert [b["model"] for b in chat_bodies] == ["qwen2.5:7b", "qwen2.5vl:3b", "qwen2.5vl:3b"]
+    assert [b["model"] for b in chat_bodies] == ["qwen2.5:7b", "gemma3:4b", "gemma3:4b"]
     assert chat_bodies[1]["messages"][1]["content"] == "Imagem TESTE.F1:"
     assert "format" in chat_bodies[1] and "format" not in chat_bodies[2]
-    assert any("Chamada com imagem (qwen2.5vl:3b), JSON schema em format: JSON válido" in line
+    assert any("Chamada com imagem (gemma3:4b), JSON schema em format: JSON válido" in line
                and "carga do modelo 3,0 s" in line for line in lines)
-    assert any("Formato com imagem (qwen2.5vl:3b): os dois funcionaram" in line for line in lines)
+    assert any("Formato com imagem (gemma3:4b): os dois funcionaram" in line for line in lines)
 
 
 def test_ollama_check_says_only_text_format_worked():
@@ -434,9 +434,9 @@ def test_ollama_check_server_down_and_missing_model():
     assert not report.ok and "Ollama não está rodando" in lines[-1]
 
     lines = []
-    report = run_ollama_check(on_line=lines.append, client=_client(_check_server(missing=("qwen2.5vl:3b",))))
+    report = run_ollama_check(on_line=lines.append, client=_client(_check_server(missing=("gemma3:4b",))))
     assert not report.ok
-    assert any("rode `ollama pull qwen2.5vl:3b`" in line for line in lines)
+    assert any("rode `ollama pull gemma3:4b`" in line for line in lines)
     assert [s.name for s in report.steps if s.ok] == ["servidor", "modelo qwen2.5:7b", "texto"]
 
 
