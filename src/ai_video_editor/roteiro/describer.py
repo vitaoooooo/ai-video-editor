@@ -1,4 +1,4 @@
-"""Descrição de cada foto por uma IA de visão (padrão: Qwen2.5-VL-3B local, via Ollama).
+"""Descrição de cada foto por uma IA de visão (padrão: Gemma 3 4B local, via Ollama).
 
 Uma chamada por foto: a imagem, a fala daquele momento (palavras do Whisper até a próxima foto, ou
 "sem fala") e a descrição da foto mantida anterior do mesmo clipe (para manter os nomes coerentes).
@@ -39,11 +39,12 @@ MAX_SPEECH_WORDS = 60
 VISION_CACHE_DIR = Path("_cache") / "roteiro_fotos"
 
 # --- estimativa (`--so-estimar`; ordem de grandeza, a calibrar com a medição real) ---
-# Qwen2.5-VL: blocos de 28 px → ~190 tokens numa foto 512x288; texto do prompt ~350; resposta ~120.
-IMAGE_TOKENS_ESTIMATE = 190
+# Gemma 3: 256 tokens por imagem (fixo; o Qwen2.5-VL dá ~190 numa foto 512x288); texto do prompt ~350;
+# resposta ~120.
+IMAGE_TOKENS_ESTIMATE = 256
 PROMPT_TOKENS_ESTIMATE = 350
 OUTPUT_TOKENS_ESTIMATE = 120
-# Segundos por foto do Qwen2.5-VL-3B numa GPU de 6 GB (RTX 2060), sem medição ainda.
+# Segundos por foto: medido no gemma3:4b numa RTX 2060 6 GB (644 fotos em 32 min, 2026-10-27).
 SECONDS_PER_PHOTO_ESTIMATE = 3.0
 
 

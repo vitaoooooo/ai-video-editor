@@ -23,7 +23,8 @@ from ai_video_editor.llm.providers.ollama import (
 from ai_video_editor.llm.schema import ImageInput, LLMCallConfig, LLMCallMetrics
 
 DEFAULT_CHECK_TEXT_MODEL = DEFAULT_OLLAMA_MODEL
-DEFAULT_CHECK_IMAGE_MODEL = "qwen2.5vl:3b"
+# gemma3:4b: no material real (RTX 2060) descreveu 644/644 fotos; o qwen2.5vl:3b devolveu lixo na GPU.
+DEFAULT_CHECK_IMAGE_MODEL = "gemma3:4b"
 CHECK_IMAGE_LABEL = "TESTE.F1"
 # Formatos testados na chamada com imagem (nome no diagnóstico).
 IMAGE_FORMATS = (("schema", "JSON schema em format"), ("texto", "JSON pelo texto do pedido"))

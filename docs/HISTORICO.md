@@ -390,8 +390,6 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 📊 Testes: 691 → 700 (`tests/test_coverage.py`: janela que exige cobertura só com tomada grave, o que está na tela, prompt com tela/relacionadas/proximidade, resposta antiga com `shot_id`, item inválido descartado sem derrubar os outros (6 casos) e do clipe que fala, tomada inválida retirada da lista, trecho curto estendido ou descartado, nova tentativa só com janela que exige cobertura descoberta ou mais da metade descartada (com só os problemas e os itens aceitos), manter aceito com motivo e recusado onde a cobertura é exigida, fallback só com tomada relacionada e mantendo sem ela, tags em comum, sem repetir o clipe em pedaços seguidos, divisão do tempo entre as tomadas; material real: resposta do Gemini aceita com ajustes, 22,9 s completado na janela, 21,2 s encurtado fora, 1,1 s estendido, 22,9 s com 3 tomadas distribuído, fallback mantendo ônibus e hotel, prompt real). Suíte completa em 5min 35s (`-n auto`).
 - ❌ **Fora desta tarefa:** Diretor de cortes, render, regras de detecção das janelas e análise visual.
 
-<<<<<<< HEAD
-=======
 ## Provedor `ollama`: modelos locais na camada `llm/` (2026-10-23)
 
 - **Por quê:** a IA do projeto vai rodar localmente (RTX 2060, 6 GB) pelo Ollama: `qwen2.5vl:3b` para as imagens e `qwen2.5:7b` como Diretor. Sem chave, sem custo por chamada.
@@ -410,7 +408,6 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 📊 Testes: 700 → 724 (`tests/test_ollama_provider.py`, transporte HTTP falso: payload de texto com o schema no `format` e `num_ctx`, raciocínio ignorado, imagens em base64 depois de cada legenda com `detail` registrado, chamada sem imagem sem `images`, `num_ctx`/host/`keep_alive` por variável e por argumento, host normalizado, sem chave; truncamento da entrada (erro claro, uma chamada, sem troca na cadeia) e da resposta, entrada abaixo do limite; conexão recusada sem troca nem nova tentativa, modelo ausente, tempo esgotado repetido, queda do processo e 503 transitórios e falta de memória permanente, JSON inválido; `urllib` real com `urlopen` falso; registro e cadeias com `:`; CLI com `ollama` em todos os provedores, timeouts por provedor, `--ollama-*` gravando o ambiente, paralelismo 1 no `visual` e o timeout do descritor; `ollama-check` completo, servidor fora do ar e modelo faltando). `test_visual_parallel.py` passou a conferir o paralelismo resolvido (o padrão da opção virou `None`). Suíte completa em 3min 51s (`-n auto`).
 - ❌ **Fora desta tarefa:** roteiro, Diretor novo e mudanças nos prompts. **A medir:** `ollama-check` de novo com o Ollama recém-aberto (tempos com e sem carga), `--ollama-ctx 4096` × 8192 (`ollama ps`: quanto vai para a CPU), um `edit --director ollama` e um `visual --visual-provider ollama --visual-model qwen2.5vl:3b` de verdade (tokens por lote de 24 miniaturas contra o `num_ctx`).
 
->>>>>>> vitaoooooo/fix-ollama-gramatica
 ## Roteiro unificado (fala + imagem + ritmo) para o Editor de IA (2026-10-26)
 
 - 🧭 **Por quê:** nova direção aprovada (ARQUITETURA, seção 4): o editor tem de funcionar para **qualquer** vídeo, então o programa só mede, descreve, confere e executa, e a IA decide. O primeiro passo é dar à IA um texto único com tudo o que ela precisa citar por ID: o **roteiro unificado**. Nada aqui edita vídeo; o diretor em passadas (resumos, estrutura, detalhe, montagem) é a próxima tarefa.
@@ -440,8 +437,6 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
   ```
   Anotar: fotos antes/depois do descarte (e se o limite 6 descarta demais ou de menos), momentos, segundos por foto da visão (substituir `SECONDS_PER_PHOTO_ESTIMATE` = 3 s) e o total, tokens estimados do roteiro (total e por clipe), e conferir no `roteiro.json` os volumes/velocidades medidos para calibrar os limites do ritmo.
 - ❌ **Fora desta tarefa:** o diretor (resumos, passadas, montagem), render, mudar as receitas existentes e o provedor `ollama`.
-<<<<<<< HEAD
-=======
 
 ## Ollama: resposta zerada com o JSON schema e JSON pelo texto do pedido (2026-10-26)
 
@@ -456,7 +451,22 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - 📊 Testes: 743 → 757 (`tests/test_ollama_provider.py`, transporte falso: resposta zerada → erro certo e uma chamada só com `OLLAMA_FORMATO=schema`; resposta terminada e vazia continua "sem conteúdo"; resposta zerada → nova chamada sem `format` com o schema no fim do prompt, `people: "2"` aceito, o modelo fica em `texto` nas próximas e outro modelo continua no schema; zerada também sem `format` → erro; `OLLAMA_FORMATO=texto` já começa sem `format` (imagem na mensagem dela); texto sem JSON ou sem os obrigatórios → `AIResponseValidationError`; contexto conferido no `texto`; extração com cercas e texto em volta; schema compacto; opção inválida; CLI `--ollama-formato`; aviso uma vez só com 6 threads; describer sem correção gasta e fingerprint igual; `ollama-check` com só o texto funcionando). Suíte completa em 4min 06s (`-n auto`).
 - ❌ **Não medido aqui** (sem Ollama nesta execução). Para medir no vlog real: `ollama-check` (qual formato funciona com imagem) e `roteiro "%VLOG%" --language pt` (o aviso aparece na primeira foto; anotar fotos descritas × sem descrição, correções e segundos por foto; comparar com `--ollama-formato texto` desde o início).
 - ❌ **Fora desta tarefa:** trocar de modelo, mudar o prompt das fotos, temperatura e atualizar o Ollama.
->>>>>>> vitaoooooo/fix-ollama-gramatica
+
+## Roteiro: ajustes depois do primeiro teste com material real (2026-10-27)
+
+- 📊 **Medido no material real** (vlog, 41 clipes; Windows, RTX 2060 6 GB, Ollama 0.40.11):
+  - `qwen2.5vl:3b` na GPU devolve lixo (`@@@@`, `8888...`) de forma intermitente; a mesma foto na CPU sai certa (79 s). Descarregar o modelo pela API não recupera; nenhuma das 9 variações do pedido testadas mudou isso (provável relação com a GPU sem bf16; não medido em outras placas).
+  - `gemma3:4b`: **644/644 fotos descritas, 0 falhas, 3,0 s por foto, 32 min**; descrições coerentes com a fala.
+  - Ruído 1: o `issue` da IA vinha `clara` em quase toda foto (o modelo entende "clara" como foto nítida/de dia); somado às medidas, muitos momentos saíam `[clara, escura]`.
+  - Ruído 2: tags copiadas do prompt ou do contexto (`papel principal`, `papel`, `contexto`, `sem fala`, `silêncio`) e palavras soltas da fala (`inflamável`, `cafezinho`, `ranguinho`).
+- 🔁 **Modelo de visão padrão do ollama = `gemma3:4b`** (`roteiro`: `DEFAULT_VISION_MODELS` agora usa `DEFAULT_CHECK_IMAGE_MODEL`, uma constante só; `ollama-check --modelo-imagem`; ajuda da CLI; REFERENCIA, ARQUITETURA, CLAUDE.md). O `qwen2.5vl:3b` continua aceito por `--visao-model`; a falha medida ficou documentada na REFERENCIA (Opção L, "Modelo de visão") como medição numa RTX 2060, não como regra. `--so-estimar`: 3,0 s por foto agora é **medido** (gemma3:4b, RTX 2060) e o texto diz isso; tokens por imagem 190 → 256 (o Gemma 3 usa 256 fixos).
+- ✅ **Luz só pelas medidas** (`roteiro/moments.py`, `AI_IGNORED_ISSUES`): o `issue` `escura`/`clara` da IA é ignorado ao montar o momento; `borrada`, `tremida`, `obstruída` e `tela uniforme` da IA continuam. **Regra para escura + clara (decisão):** as medidas usam a luma média do momento (`escura` < 0,15, `clara` > 0,88), então as duas não podem vir ligadas ao mesmo tempo; mesmo assim, se viessem, vale o lado da luma média (< 0,5 = `escura`, senão `clara`). Nunca as duas. **Por quê luma média e não "a que cobre mais fotos":** as marcas já vêm da média do intervalo, e as fotos não têm medida de luz própria.
+- ✅ **Tags do pedido filtradas no código** (`PROMPT_TAGS` + `_ID_TAG`; `is_prompt_tag`/`content_tags`), na hora de montar o momento (antes de comparar fotos e de somar as tags; a representativa também): papéis do catálogo (`principal`, `drone`, `pov`, `broll`, `outro`, `b-roll`, `b roll`, `papel <papel>`), `papel`, `clipe`, `contexto`, `sem fala`, `com fala`, `silêncio`, `foto`, `imagem`, `foto anterior` e IDs de clipe/foto/momento (`P007`, `P007.F023`, `P007.M04`, pelos prefixos do catálogo); sem acentos e sem caixa. **Por quê no momento e não na descrição:** as descrições em cache continuam as mesmas. Palavras soltas da fala **não** são filtradas (decisão): a fala pode citar o que de fato aparece ("praia"), e cortar por coincidência com a fala tiraria tags boas.
+- 🔁 `VISION_PROMPT_VERSION` (1) e o fingerprint das descrições **sem mudança**: as 644 descrições em cache continuam valendo (o próximo `roteiro` na mesma pasta descreve 0 fotos); momentos, `roteiro.json` e `roteiro.md` são refeitos a cada execução. Prompt de visão sem mudança.
+- 🔁 **Marcadores de conflito** do merge anterior que ainda estavam em `CLAUDE.md`, `docs/HISTORICO.md` e `docs/REFERENCIA.md` resolvidos (o lado `fix-ollama-gramatica` já continha o outro).
+- ✅ `tests/test_reference_fala.py` passa sem regenerar.
+- 📊 Testes: 757 → 762 (`tests/test_roteiro.py`: `clara`/`escura` da IA ignorados e os outros problemas mantidos, luz das medidas mantida; nunca `escura` e `clara` juntas; filtro de tags (papéis, IDs, "sem fala"...; momentos não se juntam só por ruído; a descrição não muda); padrão `gemma3:4b` no `roteiro` e no `ollama-check` e fingerprint fixo `6859a494d42aad5e` = o do `--visao-model gemma3:4b`; com FFmpeg: descrições com ruído em cache reaproveitadas (0 chamadas) e limpas nos momentos). `tests/test_ollama_provider.py` com o modelo de imagem novo. Suíte completa em 4min 00s (`-n auto`).
+- ❌ **Pendente (fora desta tarefa):** Whisper alucinou uma frase em cirílico no B003 (transcrição em `--language pt`); a investigar. Prompt de visão (tirar `escura`/`clara` das opções de `issue` e pedir tags só do que aparece) fica como proposta, para quando valer refazer as descrições.
 
 ---
 
@@ -472,7 +482,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - **Provedor de transcrição Gemini** (alternativa para quem não tem GPU).
 - **Medir o NVENC no vlog completo** (comandos e campos na entrada de 2026-10-23) e, se o render continuar pesado, decodificação na GPU (hwaccel).
 - **Teste com vídeo em português** com mais enrolação.
-- **IA local (Ollama):** medir o `roteiro` com o formato `auto` (resposta zerada do schema; entrada de 2026-10-26), `ollama-check`, o contexto que cabe nos 6 GB e um `edit`/`visual` reais com `qwen2.5:7b`/`qwen2.5vl:3b` (comandos na entrada de 2026-10-23); se um lote de 24 miniaturas não couber no `num_ctx`, lotes menores para o provedor local.
+- **IA local (Ollama):** ~~medir o `roteiro`~~ (feito com `gemma3:4b`, 2026-10-27; o `qwen2.5vl:3b` falhou na GPU); `ollama-check`, o contexto que cabe nos 6 GB e um `edit`/`visual` reais com `qwen2.5:7b`/`qwen2.5vl:3b` (comandos na entrada de 2026-10-23); se um lote de 24 miniaturas não couber no `num_ctx`, lotes menores para o provedor local.
 - Pequenos ajustes: cópia de vídeo por versão ocupa o dobro de disco; motivo do Diretor às vezes truncado.
 
 ## 🔮 Projetos com clipes (próximas rodadas; ver [ARQUITETURA.md](ARQUITETURA.md))
@@ -481,7 +491,7 @@ Formato: cada entrada traz o que foi feito, o motivo e (quando houver) o resulta
 - **Calibrar os limites de perfil log** com os valores do `catalog.md` do material real.
 - ~~**Rodada 3:** Diretor de cobertura + render com cobertura~~ (feita: receita `vlog_cobertura`, 2026-10-23). Cobertura tolerante (validação por item, duração no código, tomadas relacionadas) feita em 2026-10-23. Em aberto: rodar o Diretor de cobertura Gemini com o prompt novo no material real e calibrar (quantas coberturas fora das janelas, janelas mantidas, tamanho dos respiros).
 - **Rodada 4:** `revise` multitrilha + relatórios.
-- **Editor de IA (nova direção):** ~~roteiro unificado~~ (feito: comando `roteiro`, 2026-10-26). Próximo: medir o roteiro com o Qwen local e calibrar descarte/ritmo; resumos por clipe, passada 1 (estrutura), passada 2 (detalhe por bloco), montagem por IDs e render.
+- **Editor de IA (nova direção):** ~~roteiro unificado~~ (feito: comando `roteiro`, 2026-10-26). ~~medir o roteiro com a visão local~~ (feito: `gemma3:4b`, 2026-10-27). Próximo: calibrar descarte/ritmo com o `roteiro.json` real; Whisper em cirílico no B003; resumos por clipe, passada 1 (estrutura), passada 2 (detalhe por bloco), montagem por IDs e render.
 - **Produtor saber da análise visual** (para escolher `vlog_cobertura`) e a **duração alvo forçada** no corte (hoje só informada ao Diretor).
 
 ## 🔮 V2 (futuro)

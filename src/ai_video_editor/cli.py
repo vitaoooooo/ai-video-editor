@@ -1237,11 +1237,11 @@ class RoteiroProgressPrinter:
 
 
 # Modelo padrão da IA de visão por provedor (os outros usam o padrão do provedor).
-DEFAULT_VISION_MODELS = {"ollama": "qwen2.5vl:3b"}
+DEFAULT_VISION_MODELS = {"ollama": DEFAULT_CHECK_IMAGE_MODEL}
 
 
 def _default_vision_provider() -> Optional[str]:
-    """`ollama` (Qwen2.5-VL-3B local) quando o provedor está registrado; senão é preciso escolher."""
+    """`ollama` (Gemma 3 4B local) quando o provedor está registrado; senão é preciso escolher."""
     return "ollama" if "ollama" in provider_names() else None
 
 
@@ -1338,7 +1338,7 @@ def handle_roteiro(args: argparse.Namespace) -> int:
         print(f"A descrever: {est.to_describe} fotos = {est.calls} chamadas (sem contar novas tentativas)")
         print(
             f"Tempo estimado: ~{format_duration(est.seconds)} ({SECONDS_PER_PHOTO_ESTIMATE:g}s por foto, "
-            f"{args.visao_paralelo} ao mesmo tempo; estimativa para o Qwen2.5-VL-3B local, a calibrar)"
+            f"{args.visao_paralelo} ao mesmo tempo; medido no gemma3:4b numa RTX 2060)"
         )
         print(
             f"Tokens estimados: ~{_thousands(est.input_tokens)} de entrada (~{IMAGE_TOKENS_ESTIMATE} por imagem) "
@@ -1908,10 +1908,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     roteiro_parser.add_argument(
         "--visao-provider", choices=["none", "mock", *_llm_providers()], default=None,
-        help="IA que descreve as fotos; none = sem descrição (padrão: ollama, Qwen2.5-VL-3B local, quando instalado)",
+        help="IA que descreve as fotos; none = sem descrição (padrão: ollama, Gemma 3 4B local, quando instalado)",
     )
     roteiro_parser.add_argument(
-        "--visao-model", default=None, help="Modelo da IA de visão (padrão: qwen2.5vl:3b no ollama; o do provedor nos outros)"
+        "--visao-model", default=None, help="Modelo da IA de visão (padrão: gemma3:4b no ollama; o do provedor nos outros)"
     )
     roteiro_parser.add_argument(
         "--visao-thinking", choices=["off", "low", "high"], default="off",
