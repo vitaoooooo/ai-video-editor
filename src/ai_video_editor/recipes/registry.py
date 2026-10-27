@@ -99,3 +99,27 @@ register_recipe(
         },
     )
 )
+
+
+# Editor de IA (qualquer material: pasta ou um vídeo = 1 clipe): o roteiro unificado (todos os clipes, de
+# qualquer papel) e a IA decidindo tudo por IDs em passadas (resumos, estrutura, detalhe por bloco); o código
+# só valida e converte em Timeline. Fora do Produtor até ser comparada com a `vlog_cobertura` no material real.
+register_recipe(
+    Recipe(
+        name="editor_ia",
+        description=(
+            "Editor de IA para qualquer material (pasta de clipes ou um vídeo): roteiro unificado e a IA decidindo "
+            "ordem, cortes, coberturas e respiros por IDs, em passadas"
+        ),
+        steps=["catalog", "roteiro", "editor", "timeline", "render", "subtitles", "report"],
+        multi_clip=True,
+        single_file=True,
+        producer=False,
+        requires={
+            "timeline": ["editor"],
+            "render": ["timeline"],
+            "subtitles": ["timeline"],
+            "report": ["editor", "subtitles"],
+        },
+    )
+)

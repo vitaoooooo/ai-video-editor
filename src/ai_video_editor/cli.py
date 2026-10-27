@@ -391,10 +391,12 @@ def _edit_briefing(args: argparse.Namespace, video_path: Path):
         return EditBriefing(None, "desligado", briefing_location(video_path, Path(args.projects_dir)))
     status = LiveStatus(live=False if args.no_live else None)
     printer = CatalogProgressPrinter(status)
+    # Receita fora do Produtor (`producer=False`, ex.: editor_ia) não é forçada nele: o briefing só dá o resto.
+    forced = args.receita if args.receita is None or get_recipe(args.receita).producer else None
     with status:
         return prepare_briefing(
             video_path, args.pedido, Path(args.projects_dir), lambda: _announce_producer(_build_producer(args)),
-            forced_recipe=args.receita, on_progress=printer, on_stage_progress=printer.progress,
+            forced_recipe=forced, on_progress=printer, on_stage_progress=printer.progress,
         )
 
 
@@ -406,7 +408,7 @@ def _announce_producer(producer):
 
 def _briefing_recipe_problem(recipe: Recipe, is_folder: bool, video_path: Path, projects_dir: Path) -> Optional[str]:
     """Por que a receita escolhida pelo briefing não serve para este material (None = serve)."""
-    if recipe.multi_clip != is_folder:
+    if not recipe.accepts(is_folder):
         kind = "uma pasta de clipes" if recipe.multi_clip else "um vídeo só"
         given = "uma pasta" if is_folder else "um vídeo"
         return f"edita {kind}, mas recebido {given} ({video_path})"
@@ -482,7 +484,7 @@ def handle_edit(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-    if recipe.multi_clip != is_folder:
+    if not recipe.accepts(is_folder):
         kind = "uma pasta de clipes" if recipe.multi_clip else "um vídeo só"
         print(f"Erro: a receita '{recipe.name}' edita {kind}; recebido {video_path}.", file=sys.stderr)
         return 1
@@ -534,6 +536,8 @@ def handle_edit(args: argparse.Namespace) -> int:
         print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
         return 1
 
+    if "editor" in recipe.steps:
+        return _run_editor(args, video_path, recipe, params, settings, edit_briefing)
     if settings.uses_briefing:
         _print_settings(settings, edit_briefing.path)
     elif is_folder and args.receita is None:
@@ -593,6 +597,95 @@ def handle_edit(args: argparse.Namespace) -> int:
         f"Duração: {result.original_duration_sec:.2f}s -> {result.final_duration_sec:.2f}s "
         f"({pct:.1f}% removido)"
     )
+    _print_run_summary(result.timings)
+    return 0
+
+
+def _editor_params(args: argparse.Namespace):
+    from ai_video_editor.pipeline.editor_ia import DEFAULT_EDITOR_PROVIDER, EditorParams
+
+    provider = args.editor_provider or DEFAULT_EDITOR_PROVIDER
+    editor = EditorParams(
+        provider=provider, model=args.editor_model, fallback=args.editor_fallback, thinking=args.editor_thinking,
+        timeout_sec=args.editor_timeout or default_timeout(provider, CLOUD_TIMEOUT_SEC), api_retries=args.api_retries,
+        context_tokens=args.editor_ctx, plan_only=args.so_plano, interval_sec=args.intervalo,
+    )
+    editor.chain()  # valida provedor e reservas
+    return editor
+
+
+def _editor_context(args: argparse.Namespace, settings, edit_briefing):
+    """Pedido, duração alvo e instruções do Editor de IA (CLI > briefing)."""
+    from ai_video_editor.editor import EditorContext
+
+    briefing = edit_briefing.briefing
+    request = (args.pedido or "").strip() or (briefing.request if briefing is not None else "")
+    director = args.instructions or (briefing.director_instructions if briefing is not None else "")
+    coverage = briefing.coverage_instructions if briefing is not None else ""
+    return EditorContext(
+        request=request, target_sec=settings.target_duration_sec.value, director_instructions=director or "",
+        coverage_instructions=coverage or "",
+    )
+
+
+def _run_editor(args: argparse.Namespace, video_path: Path, recipe: Recipe, params, settings, edit_briefing) -> int:
+    """Receita `editor_ia`: roteiro (com a IA de visão) e o Editor de IA em passadas; `--so-plano` para sem render."""
+    from ai_video_editor.intelligence.exceptions import AIProviderError
+    from ai_video_editor.pipeline.editor_ia import EditorPipeline
+
+    status = LiveStatus(live=False if args.no_live else None)
+    printer = EditProgressPrinter(status, recipe)
+    try:
+        editor = _editor_params(args)
+        describer = _build_photo_describer(args, lambda stage, event, detail: printer("roteiro", "notice", detail))
+    except ValueError as e:
+        print(f"Erro: parâmetros inválidos: {e}", file=sys.stderr)
+        return 1
+    context = _editor_context(args, settings, edit_briefing)
+    if settings.uses_briefing:
+        _print_settings(settings, edit_briefing.path)
+    print(f"Receita: {recipe.name}" + (" (só o plano, sem render)" if editor.plan_only else ""))
+    if describer is not None:
+        print(f"[visão] {' → '.join(describer.model_chain)}", flush=True)
+    print(f"[editor] {' → '.join(spec.label for spec in editor.chain())}", flush=True)
+    executor = TimelineRenderExecutor(encoder=args.encoder, gpu_workers=args.gpu_paralelo)
+    pipeline = EditorPipeline(
+        projects_root=Path(args.projects_dir), on_progress=printer, on_stage_progress=printer.progress, recipe=recipe,
+        render_executor=executor, describer=describer, vision_parallel=args.visao_paralelo,
+    )
+    try:
+        if not editor.plan_only:
+            executor.resolve_encoder()  # `--encoder nvenc` sem GPU falha aqui, antes das etapas
+        with status:
+            result = pipeline.run(video_path, params, editor, context, force=args.force, settings=settings)
+    except AIProviderError as e:
+        print(f"Erro da IA: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+    for warning in result.warnings:
+        print(f"Aviso: {warning}", file=sys.stderr)
+    print("\nPlano do Editor de IA pronto (sem render)." if result.plan_only else "\nEdição concluída!")
+    print(f"Projeto: {result.project_dir}")
+    print(f"Pasta do editor: {result.work_dir}")
+    print(f"Plano: {result.plan_md_path} (dados: {result.plan_path.name})")
+    print(f"Relatório: {result.report_path}")
+    if result.output_path is not None:
+        print(f"Vídeo final: {result.output_path}")
+    if result.subtitles_path is not None:
+        print(f"Legendas: {result.subtitles_path}")
+    print(
+        f"Estrutura: {result.blocks} bloco(s), {result.coverages} cobertura(s), {result.breaths} respiro(s)"
+        + (f"; FALLBACK em: {', '.join(result.fallbacks)}" if result.fallbacks else "")
+    )
+    tokens = ""
+    if result.input_tokens is not None:
+        tokens = f", {_thousands(result.input_tokens)} tokens de entrada e {_thousands(result.output_tokens)} de saída"
+    print(f"IA do editor: {result.calls} pedido(s) ({result.cached_calls} do cache){tokens}")
+    final = result.final_duration_sec if result.final_duration_sec is not None else result.plan_duration_sec
+    print(f"Duração: {result.material_sec:.1f}s de material -> {final:.1f}s")
     _print_run_summary(result.timings)
     return 0
 
@@ -1694,6 +1787,55 @@ def build_parser() -> argparse.ArgumentParser:
     )
     edit_parser.add_argument(
         "--force", action="store_true", help="Refaz todas as etapas, ignorando o cache"
+    )
+    editor_group = edit_parser.add_argument_group("Editor de IA (receita editor_ia)")
+    editor_group.add_argument(
+        "--editor-provider", choices=["mock", *_llm_providers()], default=None,
+        help="IA que decide a edição em passadas (resumos, estrutura, detalhe por bloco); mock = simulada, sem rede "
+        "(padrão: ollama)",
+    )
+    editor_group.add_argument(
+        "--editor-model", default=None, help="Modelo do editor (padrão: qwen2.5:7b no ollama; o do provedor nos outros)"
+    )
+    editor_group.add_argument(
+        "--editor-fallback", default=None, metavar="LISTA",
+        help="Reservas do editor, \"provedor:modelo,...\" ou \"none\" (padrão: as do provedor)",
+    )
+    editor_group.add_argument(
+        "--editor-thinking", choices=["off", "low", "high"], default="low",
+        help="Raciocínio do editor, se o modelo tiver (padrão: low; o ollama ignora)",
+    )
+    editor_group.add_argument(
+        "--editor-timeout", type=float, default=None, help=f"Tempo limite em segundos de cada pedido ao editor ({TIMEOUT_HELP})"
+    )
+    editor_group.add_argument(
+        "--editor-ctx", type=_ctx_tokens, default=None, metavar="TOKENS",
+        help="Contexto que o editor considera para dividir os pedidos (padrão: o num_ctx do ollama; 32768 na nuvem)",
+    )
+    editor_group.add_argument(
+        "--so-plano", action="store_true",
+        help="Para depois da montagem: plano (editor_plano.json/.md), Timeline e relatório, sem render nem legendas",
+    )
+    editor_group.add_argument(
+        "--intervalo", type=float, default=2.0, metavar="SEG",
+        help="Roteiro: uma foto a cada SEG segundos, além das extras (padrão: 2, o mesmo do comando roteiro)",
+    )
+    editor_group.add_argument(
+        "--visao-provider", choices=["none", "mock", *_llm_providers()], default=None,
+        help="Roteiro: IA que descreve as fotos; none = sem descrição (padrão: ollama, Qwen2.5-VL-3B local)",
+    )
+    editor_group.add_argument(
+        "--visao-model", default=None, help="Roteiro: modelo da IA de visão (padrão: qwen2.5vl:3b no ollama)"
+    )
+    editor_group.add_argument(
+        "--visao-thinking", choices=["off", "low", "high"], default="off", help="Roteiro: raciocínio da IA de visão"
+    )
+    editor_group.add_argument(
+        "--visao-timeout", type=float, default=120.0, help="Roteiro: tempo limite em segundos de cada foto (padrão: 120)"
+    )
+    editor_group.add_argument(
+        "--visao-paralelo", type=_positive_int, default=1, metavar="N",
+        help="Roteiro: clipes descritos ao mesmo tempo (padrão 1, GPU local)",
     )
     edit_parser.add_argument(
         "--projects-dir",

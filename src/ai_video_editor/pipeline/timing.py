@@ -16,6 +16,8 @@ STAGE_LABELS = {
     "timeline": "Timeline",
     "visual": "Análise visual",
     "coverage": "Cobertura",
+    "roteiro": "Roteiro",
+    "editor": "Editor de IA",
     "render": "Renderização",
     "subtitles": "Legendas",
     "report": "Relatório",

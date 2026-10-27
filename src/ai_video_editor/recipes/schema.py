@@ -16,6 +16,10 @@ class Piece(BaseModel):
     needs: list[str] = Field(
         default_factory=list, description="Etapas que esta peça sempre exige antes dela, em qualquer receita"
     )
+    provides: list[str] = Field(
+        default_factory=list,
+        description="Etapas que esta peça já faz por dentro (satisfazem as dependências de quem vem depois)",
+    )
 
 
 PIECES: dict[str, Piece] = {
@@ -42,6 +46,17 @@ PIECES: dict[str, Piece] = {
             description="Diretor de cobertura: B-roll/drone/POV por cima da fala e respiros, por IDs",
             needs=["visual", "timeline"],
         ),
+        Piece(
+            name="roteiro",
+            description="Roteiro unificado (fala + imagem + ritmo, com IDs) de todos os clipes, com os caches do comando `roteiro`",
+            needs=["catalog"],
+            provides=["silences", "transcription"],
+        ),
+        Piece(
+            name="editor",
+            description="Editor de IA: resumos por clipe, estrutura em blocos e detalhe por bloco, só por IDs",
+            needs=["roteiro"],
+        ),
         Piece(name="render", description="Renderização com FFmpeg (do EditPlan ou da Timeline)"),
         Piece(name="subtitles", description="Legendas .srt no tempo editado", needs=["transcription"]),
         Piece(name="report", description="Relatório, transcrição comparativa e linha do tempo", needs=["render"]),
@@ -61,6 +76,10 @@ class Recipe(BaseModel):
     steps: list[str] = Field(min_length=1)
     requires: dict[str, list[str]] = Field(default_factory=dict)
     multi_clip: bool = Field(default=False, description="receita que trabalha com vários clipes de uma pasta")
+    single_file: bool = Field(
+        default=False, description="receita multi_clip que também edita um vídeo só (projeto de 1 clipe)"
+    )
+    producer: bool = Field(default=True, description="oferecida ao Produtor (False = só com `--receita`)")
 
     @model_validator(mode="after")
     def _check(self) -> "Recipe":
@@ -72,6 +91,10 @@ class Recipe(BaseModel):
         merged = list(PIECES[step].needs) if step in PIECES else []
         merged += [d for d in self.requires.get(step, []) if d not in merged]
         return merged
+
+    def accepts(self, is_folder: bool) -> bool:
+        """Serve para o material: pasta (multi_clip) ou um vídeo (sem multi_clip, ou `single_file`)."""
+        return self.multi_clip == is_folder or (self.single_file and not is_folder)
 
     def position(self, step: str) -> int:
         """Número da etapa (a partir de 1), para `[4/8] Diretor`."""
@@ -96,6 +119,9 @@ def check_recipe(recipe: Recipe) -> None:
                 raise RecipeError(f"{prefix}: a etapa '{step}' depende de '{dep}', que não existe (etapas conhecidas: {known}).")
 
     order = {step: i for i, step in enumerate(recipe.steps)}
+    for i, step in enumerate(recipe.steps):  # o que uma peça faz por dentro conta como feito ali
+        for provided in PIECES[step].provides:
+            order.setdefault(provided, i)
     for step in recipe.steps:
         for dep in recipe.dependencies(step):
             if dep == step:
