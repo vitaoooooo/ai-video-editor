@@ -83,5 +83,6 @@ def recipe_info(recipe: Recipe) -> RecipeInfo:
 
 
 def registered_recipes() -> list[RecipeInfo]:
-    """Receitas registradas agora, em ordem alfabética."""
-    return [recipe_info(get_recipe(name)) for name in recipe_names()]
+    """Receitas registradas agora e oferecidas ao Produtor (`producer`), em ordem alfabética."""
+    recipes = [get_recipe(name) for name in recipe_names()]
+    return [recipe_info(recipe) for recipe in recipes if getattr(recipe, "producer", True)]

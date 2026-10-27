@@ -71,12 +71,27 @@ Fluxo do **Editor de IA**:
 
 ```text
 catálogo → silêncios → transcrição → frases + ritmo → fotos → descrições (IA de visão local) → momentos → ROTEIRO UNIFICADO
-        → [próximo: resumos por clipe → passada 1 (estrutura) → passada 2 (detalhe por bloco) → montagem por IDs → render]
+        → E9 resumos por clipe (IA, 1 pedido/clipe) → E10 estrutura (IA, 1 pedido: blocos, fora, acervo, alvos)
+        → E11 detalhe por bloco (IA, 1 pedido/bloco ou pedaço: manter, coberturas, respiros)
+        → E12 montagem por IDs (código: validação + IDs → tempos → Timeline) → E13 render, legendas, relatório
+```
+
+```mermaid
+flowchart LR
+    R[roteiro.json] --> S[E9 resumos]
+    S --> E[E10 estrutura]
+    E --> D[E11 detalhe por bloco]
+    D -->|IDs| V{validação item a item}
+    V -->|recusada| D
+    V -->|falhou de vez| N[fallback neutro + aviso]
+    V -->|aceita| M[E12 montagem]
+    N --> M
+    M --> T[Timeline] --> F[E13 render + legendas + relatório]
 ```
 
 - **Roteiro unificado (`roteiro <arquivo-ou-pasta>`, feito):** por clipe, os **momentos** (`P007.M04`: fotos seguidas com a mesma imagem, descritas por uma IA de visão local — Qwen2.5-VL-3B via Ollama, ou qualquer provedor da camada `llm/`), as **frases** (`S012`, com volume, velocidade e pausas medidos pelo programa) ligadas aos momentos que atravessam, problemas de imagem e medidas. Todo clipe entra, com ou sem fala. Tempos ficam no JSON; o texto (`roteiro.md`) mostra mm:ss só como contexto e traz o tamanho estimado em tokens, total e por clipe, para dimensionar o diretor.
-- **Diretor em passadas (próxima tarefa):** resumos por clipe, uma passada de estrutura sobre o roteiro inteiro, uma passada de detalhe por bloco e a montagem só por IDs (frases, momentos, fotos), validada e convertida em Timeline pelo código, como hoje.
-- **Até o editor novo provar que é melhor**, as receitas `vlog`/`vlog_cobertura` e o comando `visual` ficam como estão (o roteiro só reaproveita os caches e as funções deles).
+- **Editor de IA em passadas (`edit --receita editor_ia`, feito):** a IA lê o roteiro em três passadas e responde só com IDs; o código não tem regra editorial. **E9** resume cada clipe (resumo, destaques, problemas, tom). **E10** vê os resumos + uma linha por clipe e decide a estrutura: blocos em ordem (clipes, título, duração alvo), clipes fora (com motivo) e o resto como acervo de cobertura/respiros. **E11** recebe, por bloco, as seções do roteiro dos clipes do bloco, a continuidade do bloco anterior e o acervo pré-selecionado por tags em comum, e decide o que fica (faixas de frases ou momentos), as coberturas (com a palavra da fala e da imagem que as justificam) e os respiros. O código valida cada item (IDs existentes, do bloco, sem repetir nem sobrepor, evidência presente), pede de novo com a lista de erros e, se falhar de vez, usa um **fallback neutro** (um bloco por clipe com fala; no bloco, todas as frases) com aviso — nunca uma escolha "de bom gosto" do código. **Orçamento de contexto:** tudo é medido em tokens estimados contra o `num_ctx` do modelo local (8192 por padrão); bloco que não cabe é dividido em pedaços em ordem, nunca truncado. **E12** converte os IDs em tempos com o mesmo corte por palavra/silêncio do `edit` e monta a Timeline com trilhas; **E13** renderiza, legenda e escreve `editor_plano.md` e `editor_relatorio.md`. Cada resposta aceita fica em cache por passada (mudar o pedido de uma passada não refaz as outras).
+- **Até o editor novo provar que é melhor**, as receitas `vlog`/`vlog_cobertura` e o comando `visual` ficam como estão (o roteiro e o editor só reaproveitam os caches e as funções deles), e o Produtor não oferece a `editor_ia` (só com `--receita editor_ia`).
 
 ## 5. Plano de rodadas
 
@@ -86,4 +101,4 @@ Cada rodada tem tarefas em paralelo (um worktree por tarefa):
 2. **Produtor** ∥ **espinha falada multiclipe** ∥ **análise visual.** Briefing a partir do pedido + catálogo; a receita de fala sobre vários clipes principais em sequência (IDs de frase passam a incluir o clipe); análise visual dos clipes (tomadas, miniaturas, medidas e descrição por IA — feita: comando `visual`) para os Diretores visuais. ✅ Espinha pronta: `edit <pasta>` (receita `vlog`), com os principais sem fala listados como disponíveis para a cobertura.
 3. **Diretor de cobertura** + **render com cobertura.** B-roll/drone/POV cobrindo trechos da fala, por IDs de clipes e de frases. ✅ Feita: receita `vlog_cobertura` (peças `visual` e `coverage`), janelas obrigatórias pelo código, Diretor de cobertura (gemini/openai/mock) com validação, nova tentativa e fallback, coberturas em `video_overlay`, respiros na base e ambiente; legendas e relatórios na Timeline final.
 4. **`revise` multitrilha** + **relatórios.** Pedidos em linguagem natural sobre a Timeline inteira, e relatórios/linha do tempo por trilha.
-5. **Editor de IA (nova direção, seção 4).** ✅ Roteiro unificado (comando `roteiro`: fotos, descrição por IA de visão local, ritmo, momentos, IDs). Próximo: resumos por clipe, passadas de estrutura e de detalhe, montagem por IDs e render; depois, comparar com `vlog_cobertura` no material real antes de trocar o padrão.
+5. **Editor de IA (nova direção, seção 4).** ✅ Roteiro unificado (comando `roteiro`: fotos, descrição por IA de visão local, ritmo, momentos, IDs). ✅ Editor de IA em passadas (receita `editor_ia`: resumos, estrutura, detalhe por bloco com orçamento de contexto, montagem por IDs, render). Próximo: rodar com o Qwen local no vlog real (`--so-plano` primeiro), calibrar `TOKEN_FACTOR` e os pedidos, e comparar com `vlog_cobertura` antes de trocar o padrão.

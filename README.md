@@ -194,6 +194,7 @@ python -m ai_video_editor.cli visual D:\vlog --so-estimar   # tomadas e medidas;
 python -m ai_video_editor.cli visual D:\vlog                # descrição das tomadas por IA (visual/visual.md)
 python -m ai_video_editor.cli roteiro D:\vlog --so-estimar  # roteiro unificado: fotos, chamadas e tempo da IA de visão, sem chamá-la
 python -m ai_video_editor.cli roteiro D:\vlog               # fala + imagem (IA de visão local) + ritmo, com IDs (roteiro/roteiro.md)
+python -m ai_video_editor.cli edit D:\vlog --receita editor_ia --so-plano --pedido "vlog de 8 minutos"   # Editor de IA local (Qwen): resumos, estrutura e detalhe por bloco, só por IDs; plano sem render
 python -m ai_video_editor.cli edit D:\vlog --transcribe --director gemini --pedido "vlog de 8 minutos, ritmo rápido"   # o Produtor escreve (ou reaproveita) o briefing e o edit segue: receita, intensidade, ritmo, instruções
 python -m ai_video_editor.cli edit D:\vlog --transcribe --language pt --director gemini   # espinha falada (clipes principais com fala, em ordem, sem pausas nem tomadas repetidas) + cobertura de drone/b-roll/POV e respiros, se a pasta já passou pelo `visual`
 
@@ -230,6 +231,7 @@ src/ai_video_editor/
 ├── transcription/  interface de transcrição; faster-whisper (GPU/CPU) e mock
 ├── director/     frases a partir da transcrição, prompt, validação e Diretor (LLM e mock)
 ├── roteiro/     roteiro unificado: fotos, descrição por IA de visão, ritmo das frases e momentos, com IDs
+├── editor/       Editor de IA em passadas (resumos, estrutura, detalhe por bloco), orçamento de contexto, validação por item e montagem por IDs
 ├── coverage/     Diretor de cobertura: janelas com imagem ruim, b-roll relacionado por cima da fala e respiros, por IDs (LLM e mock)
 ├── revision/     revisor de pedidos em linguagem natural (LLM e mock)
 ├── llm/          StructuredLLMClient, provedores gemini/openai/ollama/mock, cadeia de modelos, chaves e erros
