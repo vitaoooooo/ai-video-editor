@@ -3,10 +3,13 @@ código: o código só confere segurança (IDs, sobreposição, evidência, comp
 
 Cada passada tem a sua versão: mudar o pedido de uma passada não invalida o cache das outras.
 
-Exemplos de formato nas passadas 1 e 2 usam só IDs impossíveis e visivelmente fictícios (`X01`, `X01.S900`,
-`X02.M90`): um modelo pequeno copia o exemplo, e um ID de exemplo no formato real (`S012`, `P007.M04`) passava
-por escolha de verdade. O pedido do resumo (E9) fica como está para não refazer os resumos em cache; os IDs
-que ele copia do exemplo são retirados pelo código (`EditorService._clean_summary`).
+Passadas 1 e 2 SEM nenhum ID de exemplo: o formato de cada código é descrito em palavras ("frase = o código
+S… que aparece antes do texto") e a IA copia os códigos da entrada, que já os mostra exatamente como devem
+voltar. Medido no vlog real: o exemplo `S012` (detalhe-v1) era copiado como escolha; o exemplo fictício
+`X01.S900` (detalhe-v2) ensinou o formato CLIPE.Sxxx (`P009.S025`, `X018.S078`), que os dois modelos
+(qwen2.5:7b e gemini) passaram a escrever. O código ainda normaliza o que vier fora do formato
+(`editor/ids.py`) e conta as trocas no relatório. O pedido do resumo (E9) fica como está para não refazer os
+resumos em cache; os IDs que ele copia do exemplo são retirados pelo código (`EditorService._clean_summary`).
 """
 
 from dataclasses import dataclass, field
@@ -17,8 +20,8 @@ from ai_video_editor.roteiro.report import clock
 
 # Sobem quando o pedido ou o schema da resposta da passada mudam (invalida só o cache daquela passada).
 SUMMARY_PROMPT_VERSION = "resumo-v1"
-STRUCTURE_PROMPT_VERSION = "estrutura-v2"
-DETAIL_PROMPT_VERSION = "detalhe-v2"
+STRUCTURE_PROMPT_VERSION = "estrutura-v3"
+DETAIL_PROMPT_VERSION = "detalhe-v3"
 
 # Resumo no modo compacto da estrutura (quando a lista completa não cabe).
 COMPACT_SUMMARY_CHARS = 180
@@ -38,6 +41,19 @@ class EditorContext:
     target_sec: Optional[float] = None
     director_instructions: str = ""
     coverage_instructions: str = ""
+
+
+# Como citar cada código (em palavras, sem ID de exemplo: um exemplo é copiado como se fosse escolha).
+CLIP_CODES = "clipe = o código que abre a linha do clipe (ou o título ## no roteiro)"
+SENTENCE_CODES = (
+    "frase = só o código S… que aparece antes do texto da frase, sem o clipe na frente (a frase já é única no "
+    "vídeo todo)"
+)
+MOMENT_CODES = "momento = o código completo que abre o título do momento (### …) ou a linha nas listas"
+
+
+def _codes_line(*rules: str) -> str:
+    return f"Códigos: responda copiando os códigos exatamente como aparecem na entrada; {'; '.join(rules)}."
 
 
 def _retry_lines(errors: list[str]) -> list[str]:
@@ -173,14 +189,14 @@ def build_structure_prompt(
             "cada pedaço é editado sem ver o resto do bloco."
         )
     lines += [
-        "- Use só IDs de clipes da lista abaixo (o formato do exemplo no fim é fictício).",
+        "- " + _codes_line(CLIP_CODES) + " Use só clipes da lista abaixo.",
         "",
-        "Clipes (ID · papel · duração · fala · idioma · data de gravação · ordem do catálogo · tamanho) e resumos:",
+        "Clipes (código · papel · duração · fala · idioma · data de gravação · ordem do catálogo · tamanho) e resumos:",
         *(clip_entry(c, compact) for c in clips),
         "",
-        'Formato (IDs fictícios): {"blocos": [{"id": "B01", "titulo": "...", "assunto": "...", "clipes": ["X01", '
-        '"X02"], "duracao_alvo_sec": 60}], "fora": [{"clipe": "X09", "motivo": "..."}], "duracao_total_alvo_sec": '
-        '300, "notas": "..."}',
+        'Formato: {"blocos": [{"titulo": "...", "assunto": "...", "clipes": ["código do clipe", "código do clipe"], '
+        '"duracao_alvo_sec": 60}], "fora": [{"clipe": "código do clipe", "motivo": "..."}], '
+        '"duracao_total_alvo_sec": 300, "notas": "..."}',
     ]
     lines += _retry_lines(errors or [])
     return "\n".join(lines)
@@ -223,8 +239,8 @@ def build_detail_prompt(data: DetailPromptInput, errors: Optional[list[str]] = N
     title = f' ("{data.title}")' if data.title else ""
     lines = [
         f"Você é o editor de um vídeo e agora monta em detalhe o bloco {data.block_id}{title}. "
-        "Responda só com o JSON pedido, em português, usando só IDs que aparecem no roteiro e nas listas abaixo "
-        "(os IDs dos exemplos são fictícios).",
+        "Responda só com o JSON pedido, em português, usando só códigos que aparecem no roteiro e nas listas abaixo.",
+        _codes_line(SENTENCE_CODES, MOMENT_CODES, CLIP_CODES),
         "",
         *_request_lines(data.context),
     ]
@@ -256,15 +272,16 @@ def build_detail_prompt(data: DetailPromptInput, errors: Optional[list[str]] = N
         "que entra a mais.",
         "",
         "O que responder:",
-        '- cortar: frases que saem, cada item {"de": "X01.S900", "ate": "X01.S903", "motivo": "curto"} (frases '
-        "seguidas do mesmo clipe; uma frase só: de = ate). O que não estiver em cortar fica no vídeo.",
+        '- cortar: frases que saem, cada item {"de": "código da 1ª frase", "ate": "código da última frase", '
+        '"motivo": "curto"} (frases seguidas do mesmo clipe; uma frase só: de = ate). O que não estiver em cortar '
+        "fica no vídeo.",
         '- incluir: momentos SEM fala (só os da lista "Momentos sem fala") que entram na faixa principal com o som '
-        'deles: {"momento": "X02.M90", "depois_de": "X01.S903" (frase que ficou, ou outro momento incluído; vazio '
-        '= no começo do bloco), "duracao_sec": 4 (opcional; sem ela, o momento inteiro)}.',
-        '- ordem: opcional, os IDs dos clipes do bloco na ordem em que entram (ex.: ["X02", "X01"]); sem ela, a '
-        "ordem da estrutura.",
-        '- coberturas: imagem de outro clipe POR CIMA de frases que ficaram (a fala continua): {"de": "X01.S900", '
-        f'"ate": "X01.S901", "momentos": ["X02.M90"], "tipo": "{COVERAGE_SAYS}" ou "{COVERAGE_PLACE}", '
+        'deles: {"momento": "código do momento", "depois_de": "código da frase que ficou, ou de outro momento '
+        'incluído; vazio = no começo do bloco", "duracao_sec": 4 (opcional; sem ela, o momento inteiro)}.',
+        '- ordem: opcional, os códigos dos clipes do bloco na ordem em que entram; sem ela, a ordem da estrutura.',
+        '- coberturas: imagem de outro clipe POR CIMA de frases que ficaram (a fala continua): {"de": "código da '
+        '1ª frase", "ate": "código da última frase", "momentos": ["código do momento"], '
+        f'"tipo": "{COVERAGE_SAYS}" ou "{COVERAGE_PLACE}", '
         '"evidencia_fala": "até 6 palavras", "evidencia_imagem": "até 6 palavras", "motivo": "..."}. '
         "evidencia_fala: até 6 palavras COPIADAS das frases cobertas. evidencia_imagem: até 6 palavras COPIADAS da "
         "descrição, do lugar ou das tags do momento usado (não de outro momento). "
@@ -272,8 +289,8 @@ def build_detail_prompt(data: DetailPromptInput, errors: Optional[list[str]] = N
         f'fala "o ônibus chegou", imagem "ônibus na estrada"). "{COVERAGE_PLACE}": a imagem mostra o lugar onde a '
         "fala acontece (o lugar do momento usado é o mesmo do momento da fala). Vários momentos dividem o tempo "
         "na ordem dada.",
-        '- respiros: um momento inserido entre as falas, com o som dele: {"depois_de": "X01.S903" (frase que '
-        'ficou ou momento incluído), "momento": "X02.M91", "duracao_sec": 3, "motivo": "..."}.',
+        '- respiros: um momento inserido entre as falas, com o som dele: {"depois_de": "código da frase que ficou '
+        'ou do momento incluído", "momento": "código do momento", "duracao_sec": 3, "motivo": "..."}.',
         "- notas: curto, o que você cortou e por quê.",
         "",
         "Regras de estilo:",
@@ -292,13 +309,13 @@ def build_detail_prompt(data: DetailPromptInput, errors: Optional[list[str]] = N
         "Roteiro dos clipes do bloco:",
         "",
         *(s.strip() + "\n" for s in data.sections),
-        "Momentos sem fala deste bloco (os únicos que incluir aceita: ID · duração · lugar · tags — descrição):",
+        "Momentos sem fala deste bloco (os únicos que incluir aceita: código · duração · lugar · tags — descrição):",
         *(data.silent_lines or ["(nenhum)"]),
         "",
-        "Acervo (momentos de outros clipes para cobertura e respiro: ID · duração · lugar · tags — descrição):",
+        "Acervo (momentos de outros clipes para cobertura e respiro: código · duração · lugar · tags — descrição):",
         *(data.library_lines or ["(nenhum)"]),
         "",
-        'Formato (IDs fictícios): {"cortar": [{"de": "X01.S900", "ate": "X01.S901", "motivo": "recomeço"}], '
+        'Formato: {"cortar": [{"de": "código da frase", "ate": "código da frase", "motivo": "recomeço"}], '
         '"incluir": [], "ordem": [], "coberturas": [], "respiros": [], "notas": "..."}',
     ]
     lines += _retry_lines(errors or [])

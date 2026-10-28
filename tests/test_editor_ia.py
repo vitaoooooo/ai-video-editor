@@ -21,6 +21,7 @@ from ai_video_editor.editor.material import library_ranking, matched_words
 from ai_video_editor.editor.prompt import DetailPromptInput, build_detail_prompt, build_structure_prompt, build_summary_prompt
 from ai_video_editor.editor.providers.llm import LLMEditorAI
 from ai_video_editor.editor.providers.mock import MockEditorAI
+from ai_video_editor.editor.report import build_editor_report
 from ai_video_editor.editor.provider import SummaryRequest
 from ai_video_editor.editor.schema import (
     Block,
@@ -29,6 +30,7 @@ from ai_video_editor.editor.schema import (
     ClipSummaryAnswer,
     CoverageChoice,
     DetailRun,
+    EditorPlan,
     EditorRun,
     CutAnswer,
     IncludeAnswer,
@@ -479,22 +481,143 @@ def test_forgotten_clip_goes_after_the_block_with_the_previous_clip_in_the_catal
     assert [b.clip_ids for b in place_forgotten([Block(id="B01", clip_ids=["B001"])], ["P002"], material)] == [["P002"], ["B001"]]
 
 
-# Formato dos IDs reais do roteiro: clipe (P/D/B/V/X + 3 dígitos), momento (P007.M04) e frase (S + 3 dígitos).
-REAL_ID = re.compile(r"(?<![A-Za-z0-9.])(?:[PDBVX]\d{3}(?:\.M\d{2,})?|S\d{3,})(?![A-Za-z0-9])")
+# Qualquer coisa com cara de ID (letras + dígitos, com ou sem ".M…"/".S…"): S012, P007.M04, X01.S900, B01.
+ANY_ID = re.compile(r"(?<![A-Za-z0-9])[A-Z]{1,2}\d+(?:\.[A-Z]\d+)?(?![A-Za-z0-9])")
 
 
-def test_prompt_examples_never_use_ids_in_the_real_format():
+def test_prompts_of_passes_1_and_2_have_no_example_ids():
     context = EditorContext(request="vlog", target_sec=300)
     structure = build_structure_prompt(context, [], block_tokens=4000)
     detail = build_detail_prompt(DetailPromptInput(
         unit_id="B01", block_id="B01", title="t", subject="s", context=context, target_total_sec=300,
         block_target_sec=60, used_before_sec=0.0, part=1, parts=2, available_sec=90, unit_target_sec=30,
     ))
-    for prompt in (structure, detail):
-        assert not REAL_ID.findall(prompt), REAL_ID.findall(prompt)
-    assert "X01.S900" in detail and "X02.M90" in detail and '"X01"' in structure
-    # O padrão pega os IDs que vazaram no plano real.
-    assert REAL_ID.findall("S012–S015, D002.M05, B004.M01, P007") == ["S012", "S015", "D002.M05", "B004.M01", "P007"]
+    assert ANY_ID.findall(structure) == []
+    assert set(ANY_ID.findall(detail)) == {"B01"}  # só o bloco que está sendo detalhado (código do programa)
+    # O formato vem descrito em palavras.
+    assert "frase = só o código S… que aparece antes do texto da frase, sem o clipe na frente" in detail
+    assert "momento = o código completo que abre o título do momento" in detail
+    assert "copiando os códigos exatamente como aparecem na entrada" in structure
+    # O padrão pega os IDs que vazaram nos planos reais.
+    assert ANY_ID.findall("S012–S015, D002.M05, X01.S900, P009.S025, P007") == [
+        "S012", "S015", "D002.M05", "X01.S900", "P009.S025", "P007",
+    ]
+
+
+def test_prompts_with_real_material_only_show_ids_of_the_input(material, tmp_path):
+    ai = MockEditorAI()
+    _service(material, tmp_path, ai).run()
+    known = set(material.clips) | set(material.sentences) | set(material.moments)
+    prompts = [r.prompt for r in ai.calls["structure"] + ai.calls["detail"]]
+    for prompt in prompts:
+        found = set(ANY_ID.findall(prompt))
+        assert found - known <= {"B01", "B02"}, found - known
+        assert not re.search(r"[A-Z]\d+\.S\d+", prompt)  # nenhuma frase com o clipe na frente
+
+
+# --- IDs como a IA escreve (editor/ids.py) ---
+
+
+def test_sentence_with_the_prefix_of_its_own_clip_is_accepted(material):
+    answer = BlockAnswer.model_validate({
+        "cortar": ["P001.S002", {"de": "p001 . s1", "ate": "p001.s001"}],
+        "respiros": [{"depois_de": "P001.S003", "momento": "b1.m1"}],
+    })
+    check = validate_detail(answer, _unit("P001"), material, ["B001.M01"], Usage())
+    assert not check.discarded
+    assert [c.sentence_ids for c in check.cuts] == [["S002"], ["S001"]]
+    assert [(b.after, b.moment_id) for b in check.breaths] == [("S003", "B001.M01")]
+    assert check.normalized == [
+        "P001.S002 → S002", "P001 . S1 → S001", "P001.S001 → S001", "P001.S003 → S003",
+        "B1.M1 → B001.M01",
+    ]
+
+
+def test_short_number_is_padded_to_the_roteiro_format(material):
+    check = validate_detail(BlockAnswer.model_validate({"cortar": ["S2", "s0003"]}), _unit("P001"), material, [], Usage())
+    assert [c.sentence_ids for c in check.cuts] == [["S002"], ["S003"]]
+    assert check.normalized == ["S2 → S002", "S0003 → S003"]
+
+
+def test_prefix_of_another_clip_or_unknown_clip_is_refused_with_the_right_format(material):
+    answer = BlockAnswer.model_validate({"cortar": ["P002.S002", "X018.S003", "S999"], "incluir": [{"momento": "M01"}]})
+    check = validate_detail(answer, _unit("P001", "D001"), material, [], Usage())
+    reasons = [d.reason for d in check.discarded]
+    assert reasons[0] == "frase P002.S002 não existe (use S002, não P002.S002: S002 é do clipe P001)"
+    assert reasons[1] == "frase X018.S003 não existe (use S003, não X018.S003: S003 é do clipe P001)"
+    assert "frase S999 não existe (frase = só o código S…" in reasons[2]
+    assert reasons[3].startswith("momento M01 não existe (momento = o código completo")
+    assert not check.cuts and check.normalized == []
+
+
+def test_moments_are_only_accepted_if_they_exist(material):
+    answer = BlockAnswer.model_validate({"incluir": [
+        {"momento": "D001.M09"}, {"momento": "Z001.M01"}, {"momento": "S001"}, {"momento": "d001.m2"},
+    ]})
+    check = validate_detail(answer, _unit("D001"), material, [], Usage())
+    reasons = [d.reason for d in check.discarded]
+    assert reasons[0].startswith("momento D001.M09 não existe (momento = o código completo")
+    assert reasons[1].startswith("momento Z001.M01 não existe (o clipe Z001 não existe; momento = o código completo")
+    assert reasons[2].startswith("momento S001 não existe (S001 é uma frase, não um momento; momento =")
+    assert [k.moment_id for k in check.keep] == ["D001.M02"] and check.normalized == ["D001.M2 → D001.M02"]
+
+
+def test_range_with_one_side_prefixed_or_in_a_single_field(material):
+    answer = BlockAnswer.model_validate({
+        "cortar": [{"de": "P001.S002", "ate": "S003"}],
+        "coberturas": [{"de": "P001.S000–P001.S001", "momentos": ["D001.M01"], "tipo": "mostra o que é dito",
+                        "evidencia_fala": "mar", "evidencia_imagem": "mar"}],
+    })
+    check = validate_detail(answer, _unit("P001"), material, ["D001.M01"], Usage())
+    assert not check.discarded
+    assert [c.sentence_ids for c in check.cuts] == [["S002", "S003"]]
+    assert [(c.from_sentence, c.to_sentence) for c in check.coverages] == [("S000", "S001")]
+    assert check.normalized == ["P001.S002 → S002", "P001.S000–P001.S001 → S000–S001"]
+    # Um lado de outro clipe: recusado como hoje, com o formato certo.
+    bad = BlockAnswer.model_validate({"cortar": [{"de": "P002.S002", "ate": "S003"}]})
+    assert "use S002, não P002.S002" in validate_detail(bad, _unit("P001"), material, [], Usage()).discarded[0].reason
+
+
+def test_structure_clips_are_normalized_and_unknown_get_the_format(material):
+    answer = StructureAnswer.model_validate({
+        "blocos": [{"clipes": ["p1", "P002", "Q7"]}], "fora": [{"clipe": "d 1", "motivo": "x"}],
+    })
+    check = validate_structure(answer, material)
+    assert check.blocks[0].clip_ids == ["P001", "P002"] and check.out[0].clipe == "D001"
+    assert check.normalized == ["P1 → P001", "D 1 → D001"]
+    assert "clipe Q7 não existe (clipe = o código que abre a linha do clipe" in check.errors[0]
+
+
+def test_retry_shows_the_right_format_of_each_refused_id(material, tmp_path):
+    ai = MockEditorAI({
+        "structure": [{"blocos": [{"clipes": ["P001"]}, {"clipes": ["P002"]}]}],
+        "detail": [{"cortar": ["X018.S002", "P002.S003"]}, {"cortar": ["S002"]}],
+    })
+    run = _service(material, tmp_path, ai).run()
+    retry = ai.calls["detail"][1].prompt
+    assert "use S002, não X018.S002" in retry and "use S003, não P002.S003" in retry
+    assert [c.sentence_ids for c in run.details[0].cuts] == [["S002"]]
+
+
+def test_report_counts_normalized_ids_per_pass(material, tmp_path):
+    ai = MockEditorAI({
+        "summary": [{"resumo": "praia", "destaques": [{"ids": ["P001.S000", "p001.m1"], "motivo": "bom"}]}],
+        "structure": [{"blocos": [{"clipes": ["p1"]}, {"clipes": ["P002"]}]}],
+        "detail": [{"cortar": [{"de": "P001.S002", "ate": "P001.S003"}]}, {"cortar": ["P002.S005"]}],
+    })
+    run = _service(material, tmp_path, ai).run()
+    assert run.summaries[0].normalized_ids == ["P001.S000 → S000", "P001.M1 → P001.M01"]
+    assert run.summaries[0].answer.destaques[0].ids == ["S000", "P001.M01"]
+    assert run.structure.normalized_ids == ["P1 → P001"]
+    assert [len(d.normalized_ids) for d in run.details] == [2, 1]
+    plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
+    report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
+    rows = {
+        line.split(" | ")[0]: line.rstrip(" |").rsplit(" | ", 1)[-1]
+        for line in report.splitlines() if line.startswith("| ") and "(E" in line
+    }
+    assert rows == {"| Resumos (E9)": "2", "| Estrutura (E10)": "1", "| Detalhe (E11)": "3"}
+    assert "IDs normalizados: 2 (P001.S002 → S002; P001.S003 → S003)" in report
 
 
 def test_stops_calling_after_consecutive_api_errors_and_auth_error_stops_everything(material, tmp_path):

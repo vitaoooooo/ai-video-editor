@@ -27,6 +27,10 @@ a resposta diz o que sai e o que entra a mais. Cada item sozinho (o inválido é
   com lugar diferente sai da cobertura). Palavras comparadas sem acento e sem caixa, com o radical simples
   de `material.same_word` (plural/singular; ônibus/ómnibus).
 
+Antes de tudo, os IDs da resposta passam por `editor/ids.py` (`P009.S025` → `S025` só se P009 é o clipe da
+frase; caixa, espaços e zeros à esquerda; faixa num campo só); as trocas ficam em `normalized`. ID recusado
+leva na mensagem o formato certo (vai para a nova tentativa).
+
 Em todos: o mesmo trecho de um arquivo não entra duas vezes no vídeo (intervalos por clipe, tolerância
 `OVERLAP_TOLERANCE_SEC`). A resposta é recusada (nova tentativa com a lista de erros) quando nada fica no
 pedaço ou metade ou mais dos itens é inválida; é inutilizável (fallback neutro) quando nada fica ou quando
@@ -37,6 +41,14 @@ import copy
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ai_video_editor.editor.ids import (
+    anchor_hint,
+    clip_hint,
+    moment_hint,
+    normalize_detail,
+    normalize_structure,
+    sentence_hint,
+)
 from ai_video_editor.editor.material import EditorMaterial, common_words, content_words, matched_words, moment_text
 from ai_video_editor.editor.schema import (
     COVERAGE_PLACE,
@@ -85,6 +97,7 @@ class StructureCheck:
     out: list[OutClip]
     discarded: list[Discarded]
     forgotten: list[str] = field(default_factory=list)  # clipes com fala nem em bloco nem em "fora"
+    normalized: list[str] = field(default_factory=list)  # IDs trocados pelo formato do roteiro ("bruto → ID")
 
     @property
     def errors(self) -> list[str]:
@@ -104,6 +117,7 @@ class StructureCheck:
 
 
 def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> StructureCheck:
+    answer, normalized = normalize_structure(answer, material)
     known = set(material.clip_ids)
     seen: set[str] = set()
     blocks: list[Block] = []
@@ -113,7 +127,7 @@ def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> Str
         clips: list[str] = []
         for clip_id in raw.clipes:
             if clip_id not in known:
-                discarded.append(Discarded(kind="bloco", item=f"{raw.id or '?'}: {clip_id}", reason=f"clipe {clip_id} não existe"))
+                discarded.append(Discarded(kind="bloco", item=f"{raw.id or '?'}: {clip_id}", reason=f"clipe {clip_id} não existe ({clip_hint(clip_id, material)})"))
             elif clip_id in seen:
                 discarded.append(Discarded(kind="bloco", item=f"{raw.id or '?'}: {clip_id}", reason=f"clipe {clip_id} já usado"))
             else:
@@ -128,7 +142,7 @@ def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> Str
         ))
     for raw in answer.fora:
         if raw.clipe not in known:
-            discarded.append(Discarded(kind="fora", item=_short(raw), reason=f"clipe {raw.clipe or '(vazio)'} não existe"))
+            discarded.append(Discarded(kind="fora", item=_short(raw), reason=f"clipe {raw.clipe or '(vazio)'} não existe ({clip_hint(raw.clipe, material)})"))
         elif raw.clipe in seen:
             discarded.append(Discarded(kind="fora", item=_short(raw), reason=f"clipe {raw.clipe} já está num bloco ou em fora"))
         elif not raw.motivo:
@@ -139,7 +153,7 @@ def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> Str
     forgotten = [c for c in material.clip_ids if material.has_speech(c) and c not in seen]
     for clip_id in forgotten:
         discarded.append(Discarded(kind="faltando", item=clip_id, reason=f"clipe {clip_id} tem fala e não está em bloco nem em fora"))
-    return StructureCheck(blocks=blocks, out=out, discarded=discarded, forgotten=forgotten)
+    return StructureCheck(blocks=blocks, out=out, discarded=discarded, forgotten=forgotten, normalized=normalized)
 
 
 def place_forgotten(blocks: list[Block], forgotten: list[str], material: EditorMaterial) -> list[Block]:
@@ -227,6 +241,7 @@ class DetailCheck:
     items: int = 0
     result_sec: float = 0.0  # frases que ficaram + incluídos + respiros
     usage: Optional[Usage] = None
+    normalized: list[str] = field(default_factory=list)  # IDs trocados pelo formato do roteiro ("bruto → ID")
 
     @property
     def errors(self) -> list[str]:
@@ -274,8 +289,10 @@ def validate_detail(
     answer: BlockAnswer, unit: Unit, material: EditorMaterial, library_ids: list[str], usage: Usage
 ) -> DetailCheck:
     """Confere a resposta do pedaço contra uma CÓPIA do uso; `check.usage` é o uso com os itens aceitos."""
+    answer, normalized = normalize_detail(answer, material)
     state = usage.copy()
     check = DetailCheck(
+        normalized=normalized,
         items=len(answer.cortar) + len(answer.incluir) + len(answer.coberturas) + len(answer.respiros)
         + (1 if answer.ordem else 0),
         usage=state,
@@ -293,7 +310,9 @@ def validate_detail(
     order: list[str] = []
     bad = [c for c in answer.ordem if c not in unit_clips]
     if bad:
-        drop("ordem", ", ".join(answer.ordem), f"clipes fora deste bloco: {', '.join(bad[:3])}")
+        unknown = [c for c in bad if c not in material.clips]
+        hint = f" ({clip_hint(unknown[0], material)}: {', '.join(unit.clip_ids)})" if unknown else ""
+        drop("ordem", ", ".join(answer.ordem), f"clipes fora deste bloco: {', '.join(bad[:3])}{hint}")
     else:
         order = list(dict.fromkeys(answer.ordem))
     check.clip_order = order + [c for c in unit.clip_ids if c not in order]
@@ -411,7 +430,7 @@ def _cut_problem(raw: CutAnswer, material, unit_clips, free: set[str]) -> Option
     raw.de, raw.ate = de, ate
     for sid in (de, ate):
         if sid not in material.sentences:
-            return f"frase {sid} não existe"
+            return f"frase {sid} não existe ({sentence_hint(sid, material)})"
     first, last = material.sentences[de], material.sentences[ate]
     if first.clip_id != last.clip_id:
         return f"{de} e {ate} são de clipes diferentes"
@@ -430,7 +449,7 @@ def _include_problem(raw: IncludeAnswer, material, unit_clips, unit_moments, kep
         return "incluir sem momento"
     moment = material.moments.get(raw.momento)
     if moment is None:
-        return f"momento {raw.momento} não existe"
+        return f"momento {raw.momento} não existe ({moment_hint(raw.momento, material)})"
     if moment.clip_id not in unit_clips or raw.momento not in unit_moments:
         return f"momento {raw.momento} não é deste bloco"
     if moment.sentence_ids:
@@ -438,7 +457,7 @@ def _include_problem(raw: IncludeAnswer, material, unit_clips, unit_moments, kep
     if raw.momento in state.moments:
         return f"momento {raw.momento} já usado no vídeo"
     if raw.depois_de is not None and raw.depois_de not in kept and raw.depois_de not in included:
-        return f"depois_de {raw.depois_de} não é uma frase que ficou nem um momento incluído antes"
+        return f"depois_de {raw.depois_de} não é uma frase que ficou nem um momento incluído antes{_hint(raw.depois_de, material)}"
     problem = _duration_problem(moment, raw.duracao_sec)
     if problem:
         return problem
@@ -451,12 +470,15 @@ def _include_problem(raw: IncludeAnswer, material, unit_clips, unit_moments, kep
 
 def _breath_problem(raw: BreathAnswer, material, keys: dict[str, int], allowed, state: Usage) -> Optional[str]:
     if not raw.depois_de or raw.depois_de not in keys:
-        return f"depois_de {raw.depois_de or '(vazio)'} não é uma frase que ficou nem um momento incluído neste bloco"
+        return (
+            f"depois_de {raw.depois_de or '(vazio)'} não é uma frase que ficou nem um momento incluído neste bloco"
+            + (_hint(raw.depois_de, material) if raw.depois_de else "")
+        )
     if not raw.momento:
         return "respiro sem momento"
     moment = material.moments.get(raw.momento)
     if moment is None:
-        return f"momento {raw.momento} não existe"
+        return f"momento {raw.momento} não existe ({moment_hint(raw.momento, material)})"
     if raw.momento not in allowed:
         return f"momento {raw.momento} não está no acervo oferecido nem no bloco"
     if raw.momento in state.moments:
@@ -469,6 +491,11 @@ def _breath_problem(raw: BreathAnswer, material, keys: dict[str, int], allowed, 
     return f"o trecho de {raw.momento} já está no vídeo ({clash})" if clash else None
 
 
+def _hint(raw: str, material) -> str:
+    hint = anchor_hint(raw, material)
+    return f" ({hint})" if hint else ""
+
+
 def _missing(evidence: str, text: str) -> list[str]:
     """Palavras de conteúdo da evidência que NÃO estão no texto."""
     found = set(matched_words(evidence, text))
@@ -478,6 +505,9 @@ def _missing(evidence: str, text: str) -> list[str]:
 def _coverage(raw: CoverageAnswer, material, position, breath_after: set[int], allowed, state: Usage, check: DetailCheck):
     if not raw.de or not raw.ate:
         return "cobertura sem de/ate"
+    for sid in (raw.de, raw.ate):
+        if sid not in material.sentences:
+            return f"frase {sid} não existe ({sentence_hint(sid, material)})"
     sentences = material.sentence_range(raw.de, raw.ate)
     if not sentences:
         return f"{raw.de}–{raw.ate} não é uma faixa de frases do mesmo clipe, em ordem"
@@ -524,7 +554,7 @@ def _coverage(raw: CoverageAnswer, material, position, breath_after: set[int], a
         moment = material.moments.get(moment_id)
         reason = None
         if moment is None:
-            reason = "não existe"
+            reason = f"não existe; {moment_hint(moment_id, material)}"
         elif moment.clip_id == speaker:
             reason = "é do clipe que está falando"
         elif moment_id not in allowed:
