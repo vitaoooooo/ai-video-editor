@@ -154,9 +154,11 @@ def make_roteiro(tmp_path: Path) -> ProjectRoteiro:
 
 @pytest.fixture(autouse=True)
 def _cuts_on_short_clips(monkeypatch):
-    """Os clipes do material de teste são curtos (≤ 12 s): sem isto, nenhum chegaria à pergunta de cortes.
-    Os testes de `CUT_MIN_SPEECH_SEC` voltam o valor de produção."""
+    """Os clipes do material de teste são curtos (≤ 12 s) e as metas dos testes cabem na fala: sem isto, nenhum
+    chegaria à pergunta de cortes. Os testes de `CUT_MIN_SPEECH_SEC` e `CUT_EXCESS_RATIO` voltam os valores de
+    produção."""
     monkeypatch.setattr(editor_service, "CUT_MIN_SPEECH_SEC", 0.0)
+    monkeypatch.setattr(editor_service, "CUT_EXCESS_RATIO", 0.0)
 
 
 @pytest.fixture
@@ -469,8 +471,7 @@ def test_cuts_target_is_split_by_the_speech_of_each_clip_and_retried_by_duration
     first, second = detail.cut_runs
     # Meta do clipe = alvo do bloco × fala do clipe / fala do bloco: 6,5 × 9/13 e 6,5 × 4/13.
     assert (first.unit_id, first.target_sec, second.target_sec) == ("B01.P001", 4.5, 2.0)
-    assert "Meta: ficar com cerca de 0:04 (4 s) de frases" in ai.calls["cuts"][0].prompt
-    assert "corte cerca de 4 s de frases" in ai.calls["cuts"][0].prompt
+    assert "Este clipe tem 9 s de fala; a meta é 4 s; corte cerca de 4 s de frases" in ai.calls["cuts"][0].prompt
     retry = ai.calls["cuts"][1].prompt
     assert "ficou 9 s, a meta deste clipe é 4 s (aceito de 3 a 6 s): corte cerca de 4 s" in retry
     assert "frases que ficaram (escolha quais cortar):" in retry and "- mantida S003 (2 s): Agora vamos" in retry
@@ -1250,7 +1251,7 @@ def test_every_sentence_cut_twice_without_out_keeps_the_clip_whole_and_explicit_
     plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
     report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
     assert "**IA cortou tudo sem dizer fora; mantido inteiro**" in report and "IA tirou do bloco: P002" in report
-    assert "tentativas: 1: 0,0s (cortou tudo) · 2: 0,0s (cortou tudo) → usada a 2" in report
+    assert "tentativas: 1: 0,0s (cortou tudo) · 2: 0,0s (cortou tudo) → usado o clipe inteiro (sem cortes)" in report
 
 
 def test_the_request_opens_every_question_with_the_respect_rule(material, tmp_path):
@@ -1480,6 +1481,69 @@ def test_cuts_prompt_has_no_list_of_example_reasons(material, tmp_path):
     assert '"motivo": "por que esta frase sai"' in prompt
     long_reason = CutItem.model_validate({"frase": "S000", "motivo": "x " * 200}).motivo
     assert len(long_reason) == 120 and long_reason.endswith("…")
+
+
+def test_clip_or_block_whose_speech_fits_the_target_has_no_cuts_question(material, tmp_path, monkeypatch):
+    monkeypatch.setattr(editor_service, "CUT_EXCESS_RATIO", 1.15)  # o valor de produção
+    ai = MockEditorAI({"structure": [_structure((("P001",), 8))]})  # 9 s de fala ≤ 8 × 1,15
+    run = _service(material, tmp_path, ai).run()
+    assert not ai.calls["cuts"]
+    [cut_run] = run.details[0].cut_runs
+    assert (cut_run.no_question, cut_run.result_sec, cut_run.target_sec) == ("cabe na meta", 9.0, 8.0)
+    plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
+    report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
+    assert "- B01.P001: sem pergunta de cortes (cabe na meta): entra inteiro" in report
+
+    ai = MockEditorAI({"structure": [_structure((("P001", "P002"), 12))]})  # 13 s de fala ≤ 12 × 1,15
+    run = _service(material, tmp_path / "b", ai).run()
+    assert not ai.calls["cuts"]
+    assert [r.no_question for r in run.details[0].cut_runs] == ["o bloco cabe na meta"] * 2
+
+    ai = MockEditorAI({"structure": [_structure((("P001",), 7))]})  # 9 s > 7 × 1,15: perguntado
+    _service(material, tmp_path / "c", ai).run()
+    assert "Este clipe tem 9 s de fala; a meta é 7 s; corte cerca de 2 s de frases" in ai.calls["cuts"][0].prompt
+
+
+def test_whole_clip_competes_when_the_answers_are_out_of_the_target(material, tmp_path, monkeypatch):
+    monkeypatch.setattr(editor_service, "CUT_EXCESS_RATIO", 1.15)
+    almost_all = {"cortar": ["S000", "S001", "S002"]}  # fica 2 s para a meta 7,5 s (como 0,9 s para 27 s)
+    ai = MockEditorAI({"structure": [_structure((("P001",), 7.5))], "cuts": [almost_all, almost_all]})
+    run = _service(material, tmp_path, ai).run()
+    cut_run = run.details[0].cut_runs[0]
+    assert [t.result_sec for t in cut_run.tries] == [2.0, 2.0]
+    assert cut_run.chosen_attempt == 0 and cut_run.cuts == [] and cut_run.result_sec == 9.0  # 9 s: mais perto
+    assert any("clipe inteiro (9,0s) mais perto da meta" in w for w in run.warnings)
+    plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
+    report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
+    assert "tentativas: 1: 2,0s · 2: 2,0s → usado o clipe inteiro (sem cortes)" in report
+
+
+def test_cached_structure_below_85_percent_gets_the_retry_once(material, tmp_path):
+    only_p002 = _structure((("P002",), 20))
+    context = EditorContext(request="vlog", target_sec=20)
+    ai = MockEditorAI({"structure": [only_p002, AIProviderError("caiu")]})  # a nova tentativa falha
+    run = _service(material, tmp_path, ai, context=context).run()
+    assert len(ai.calls["structure"]) == 2 and run.structure.origin == "ia"
+    # Do cache, ainda sem a nova tentativa: ela é feita agora (e vai para o cache).
+    ai = MockEditorAI({"structure": [_structure((("P001", "P002"), 20))]})
+    run = _service(material, tmp_path, ai, context=context).run()
+    assert len(ai.calls["structure"]) == 1 and "faltam 16 s" in ai.calls["structure"][0].prompt
+    assert run.structure.origin == "ia" and run.structure.added_clip_ids == ["P001"]
+    ai = MockEditorAI()
+    run = _service(material, tmp_path, ai, context=context).run()
+    assert not ai.calls["structure"] and run.structure.origin == "cache"
+    assert (run.structure.speech_sec_first, run.structure.added_clip_ids) == (4.0, ["P001"])
+
+
+def test_another_target_invalidates_the_cached_structure(material, tmp_path):
+    both = _structure((("P001", "P002"), 13))
+    _service(material, tmp_path, MockEditorAI({"structure": [both]}), context=EditorContext(request="vlog", target_sec=14)).run()
+    same = MockEditorAI()
+    _service(material, tmp_path, same, context=EditorContext(request="vlog", target_sec=14)).run()
+    assert not same.calls["structure"]
+    other = MockEditorAI({"structure": [both]})
+    _service(material, tmp_path, other, context=EditorContext(request="vlog", target_sec=15)).run()
+    assert len(other.calls["structure"]) == 1
 
 
 def test_structure_shortfall_list_fits_the_retry_room_with_41_clips(tmp_path):

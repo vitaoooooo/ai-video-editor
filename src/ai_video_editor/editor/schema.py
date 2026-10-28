@@ -560,7 +560,9 @@ class CutRun(BaseModel):
     )
     no_question: str = Field(default="", description="Por que não houve pergunta (1 frase / fala curta): entra inteiro")
     tries: list[CutAttempt] = Field(default_factory=list, description="Resultado de cada resposta aproveitável")
-    chosen_attempt: Optional[int] = Field(default=None, description="A tentativa usada (a mais perto da meta)")
+    chosen_attempt: Optional[int] = Field(
+        default=None, description="A tentativa usada (a mais perto da meta); 0 = o clipe inteiro, sem cortes"
+    )
     kept_whole: bool = Field(default=False, description="A IA cortou tudo sem fora: true; o clipe entrou inteiro")
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)

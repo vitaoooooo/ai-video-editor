@@ -74,8 +74,9 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         if cut.normalized_ids:
             lines.append(f"  - {_cell(_normalized(cut.normalized_ids))}")
         lines += [f"  - tentativa recusada: {_cell(_short(a, 300))}" for a in cut.attempts]
-        if len(cut.tries) > 1:
-            lines.append("  - tentativas: " + " · ".join(_try_text(t) for t in cut.tries) + f" → usada a {cut.chosen_attempt}")
+        if len(cut.tries) > 1 or cut.chosen_attempt == 0:
+            used = "usado o clipe inteiro (sem cortes)" if cut.chosen_attempt == 0 else f"usada a {cut.chosen_attempt}"
+            lines.append("  - tentativas: " + " · ".join(_try_text(t) for t in cut.tries) + f" → {used}")
         if cut.kept_whole:
             lines.append("  - **IA cortou tudo sem dizer fora; mantido inteiro**")
         lines += [f"  - {_cell(j)}" for j in cut.joined]

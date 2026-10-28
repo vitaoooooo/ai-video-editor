@@ -33,8 +33,8 @@ from ai_video_editor.roteiro.report import clock
 
 # Sobem quando o pedido ou o schema da resposta da passada mudam (invalida só o cache daquela passada).
 SUMMARY_PROMPT_VERSION = "resumo-v1"
-STRUCTURE_PROMPT_VERSION = "estrutura-v6"
-CUTS_PROMPT_VERSION = "cortes-v4"
+STRUCTURE_PROMPT_VERSION = "estrutura-v7"
+CUTS_PROMPT_VERSION = "cortes-v5"
 INSERTS_PROMPT_VERSION = "insercoes-v2"
 COVERAGE_PROMPT_VERSION = "coberturas-v2"
 
@@ -349,13 +349,12 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
     if data.block_clips > 1:
         lines.append(f"O bloco tem {data.block_clips} clipes com fala; cada um é decidido numa pergunta como esta.")
     if data.target_sec is not None:
+        what = "Esta parte do clipe" if data.parts > 1 else "Este clipe"
         meta = (
-            f"Frases deste clipe{' (desta parte)' if data.parts > 1 else ''}: {_sec(data.available_sec)} no total. "
-            f"Meta: ficar com cerca de {_sec(data.target_sec)} de frases (a meta do bloco repartida entre os clipes "
-            "pela fala de cada um)."
+            f"{what} tem {round(data.available_sec)} s de fala; a meta é {round(data.target_sec)} s; corte cerca de "
+            f"{max(0, round(data.available_sec - data.target_sec))} s de frases (a meta do bloco repartida entre os "
+            "clipes pela fala de cada um; o resto fica)."
         )
-        if data.available_sec > data.target_sec:
-            meta += f" Para chegar perto, corte cerca de {round(data.available_sec - data.target_sec)} s de frases."
     else:
         meta = f"Frases deste clipe: {_sec(data.available_sec)} no total. Sem meta de duração: corte só o que não serve."
     lines += [
