@@ -1255,6 +1255,119 @@ def test_the_request_opens_every_question_with_the_respect_rule(material, tmp_pa
     assert "TODO clipe" not in prompts[0] and "Não precisa usar todos" in prompts[0]
 
 
+# --- equilíbrio: falta de duração na estrutura e na 2a, pares contínuos ---
+
+
+def _texts(tmp_path: Path, **texts: str) -> EditorMaterial:
+    """O roteiro de teste com o texto de algumas frases trocado (S000="...")."""
+    roteiro = make_roteiro(tmp_path)
+    for sentence in roteiro.sentences:
+        sentence.text = texts.get(sentence.id, sentence.text)
+    return EditorMaterial.from_roteiro(roteiro)
+
+
+def test_structure_below_85_percent_retries_listing_unused_clips_and_the_same_answer_is_accepted(material, tmp_path):
+    only_p002 = _structure((("P002",), 20))
+    ai = MockEditorAI({"structure": [only_p002, only_p002]})
+    context = EditorContext(request="vlog, uns 20 segundos", target_sec=20)
+    run = _service(material, tmp_path, ai, context=context).run()
+    first, retry = (r.prompt for r in ai.calls["structure"])
+    assert "faltam" not in first
+    assert "Duração: o pedido é de 20 s; os clipes escolhidos têm 4 s de fala; faltam 16 s." in retry
+    assert "- P001 · 9 s de fala — Clipe P001" in retry  # clipe com fala não usado: ID, fala, resumo curto
+    assert "Acervo (clipes sem fala" in retry and "- D001 · 0:08 — " in retry and "- B001 · 0:03 — " in retry
+    assert "responder de novo a mesma estrutura também vale" in retry and "foi recusada" not in retry
+    structure = run.structure
+    assert [b.clip_ids for b in structure.blocks] == [["P002"]] and not structure.attempts  # igual: aceita
+    assert (structure.speech_sec_first, structure.speech_sec, structure.added_clip_ids) == (4.0, 4.0, [])
+    plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
+    report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
+    assert "Fala dos clipes escolhidos: 0:04 (4s) (20% do alvo) → nova tentativa (faltam 16 s" in report
+    assert "Clipes incluídos pela nova tentativa: nenhum (a IA manteve a resposta)" in report
+
+    ai = MockEditorAI({"structure": [only_p002, _structure((("P001", "P002"), 20))]})
+    run = _service(material, tmp_path / "b", ai, context=context).run()
+    assert run.structure.added_clip_ids == ["P001"] and run.structure.speech_sec == 13.0
+    report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
+    assert "→ 0:13 (13s) (65% do alvo)" in report and "Clipes incluídos pela nova tentativa: P001" in report
+
+
+def test_structure_at_85_percent_or_without_requested_duration_has_no_retry(material, tmp_path):
+    both = _structure((("P001", "P002"), 14))
+    ai = MockEditorAI({"structure": [both]})
+    run = _service(material, tmp_path, ai, context=EditorContext(request="vlog", target_sec=15)).run()
+    assert len(ai.calls["structure"]) == 1 and run.structure.speech_sec_first is None  # 13 s ≥ 85% de 15 s
+    ai = MockEditorAI({"structure": [{**_structure((("P002",), 4)), "duracao_total_alvo_sec": 60}]})
+    run = _service(material, tmp_path / "b", ai).run()  # a duração escolhida pela IA não pede nova tentativa
+    assert len(ai.calls["structure"]) == 1 and run.structure.speech_sec == 4.0
+
+
+def test_whole_library_out_is_reported(material, tmp_path):
+    ai = MockEditorAI({"structure": [_structure((("P001", "P002"), 13), fora=("D001", "B001"))]})
+    run = _service(material, tmp_path, ai).run()
+    assert run.structure.library_clip_ids == []
+    assert any("todo o acervo foi para \"fora\" (D001, B001)" in w for w in run.warnings)
+
+
+@pytest.mark.parametrize("texts, cut, expected_cuts, joined", [
+    # S000 sem pontuação final: S000+S001 é uma unidade; cortou só S000 (2 s < 2,5 s) → mantém as duas.
+    ({"S000": "Chegamos na praia hoje"}, ["S000"], [], "par contínuo S000+S001 mantido junto"),
+    # S000 com reticências: cortou só S001 (2,5 s > 2 s) → corta as duas.
+    ({"S000": "Chegamos na praia hoje..."}, ["S001"], ["S000", "S001"], "par contínuo S000+S001 cortado junto"),
+    # S003 começa com minúscula: continua S002; cortou só S002 (2,5 s > 2 s) → corta as duas.
+    ({"S003": "agora vamos pela trilha da mata."}, ["S002"], ["S002", "S003"], "par contínuo S002+S003 cortado junto"),
+])
+def test_continuous_pair_cut_in_half_is_cut_or_kept_together_by_the_bigger_part(tmp_path, texts, cut, expected_cuts, joined):
+    material = _texts(tmp_path, **texts)
+    check = validate_cuts(CutsAnswer.model_validate({"cortar": cut}), ["S000", "S001", "S002", "S003"], material)
+    assert [c.sentence_id for c in check.cuts] == expected_cuts and check.joined == [joined]
+    assert not check.discarded and check.refused is None
+    whole = validate_cuts(CutsAnswer.model_validate({"cortar": ["S000", "S001"]}), ["S000", "S001", "S002", "S003"],
+                          _texts(tmp_path, S000="Chegamos na praia hoje"))
+    assert not whole.joined  # o par inteiro cortado: nada a ajustar
+
+
+def test_cuts_prompt_marks_continuous_pairs_and_the_report_lists_the_adjustment(tmp_path):
+    material = _texts(tmp_path, S000="Chegamos na praia hoje", S003="agora vamos pela trilha da mata.")
+    ai = MockEditorAI({"structure": [_structure((("P001",), 9))], "cuts": [{"cortar": ["S000"]}]})
+    run = _service(material, tmp_path, ai).run()
+    prompt = ai.calls["cuts"][0].prompt
+    assert "- S000 — Chegamos na praia hoje (continua na próxima)" in prompt
+    assert "- S002 — Agora vamos pela trilha. (continua na próxima)" in prompt  # S003 começa com minúscula
+    assert "- S001 — O mar está muito azul.\n" in prompt and "S003 — agora vamos pela trilha da mata.\n" in prompt
+    assert "corte as duas ou mantenha as duas" in prompt
+    cut_run = run.details[0].cut_runs[0]
+    assert cut_run.cuts == [] and cut_run.joined == ["par contínuo S000+S001 mantido junto"]
+    assert run.details[0].trechos[0].sentence_ids[0] == "S000"  # o bloco não começa pela metade da fala
+    plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
+    assert "  - par contínuo S000+S001 mantido junto" in build_editor_report("t", run, plan, material, "editor_ia", None, None)
+
+
+def test_cuts_below_the_target_retry_listing_the_cut_sentences_even_when_skipped(material, tmp_path):
+    ai = MockEditorAI({
+        "structure": [_structure((("P001",), 9))],
+        "cuts": [{"cortar": ["S000", "S002"]}, {"cortar": ["S002"]}],  # salteado: 4,5 s × meta 9 s (aceito de 6 a 12)
+    })
+    run = _service(material, tmp_path, ai).run()
+    first, retry = (r.prompt for r in ai.calls["cuts"])
+    assert "cortada" not in first
+    assert "ficou 4 s, a meta deste clipe é 9 s (aceito de 6 a 12 s); corte menos frases" in retry
+    assert "frases que você cortou (para devolver uma, tire-a da lista cortar):" in retry
+    assert "- cortada S000 (2 s): Chegamos na praia hoje." in retry and "- cortada S002 (" in retry
+    cut_run = run.details[0].cut_runs[0]
+    assert [c.sentence_id for c in cut_run.cuts] == ["S002"] and cut_run.result_sec == pytest.approx(6.5)
+    assert cut_run.attempts == ["duração: ficou 4 s, a meta deste clipe é 9 s (aceito de 6 a 12 s); corte menos frases"]
+
+
+def test_structure_shortfall_list_fits_the_retry_room_with_41_clips(tmp_path):
+    vlog = make_vlog_material(tmp_path)
+    ai = MockEditorAI({"structure": [_structure((("P001",), 480))] * 2})
+    _service(vlog, tmp_path, ai, num_ctx=8192, context=EditorContext(request="vlog", target_sec=480)).run()
+    retry = ai.calls["structure"][1].prompt
+    assert "- P002 · 10 s de fala" in retry and "(mais " in retry  # a lista para no espaço reservado
+    assert tokens(retry) <= Budget(8192, "t").structure_available + editor_budget.RETRY_TOKENS
+
+
 # --- ponta a ponta (FFmpeg) ---
 
 SCRIPTS = {

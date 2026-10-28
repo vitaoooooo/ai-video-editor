@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from ai_video_editor.editor.material import EditorMaterial
-from ai_video_editor.editor.schema import CallStats, DetailRun, EditorPlan, EditorRun
+from ai_video_editor.editor.schema import CallStats, DetailRun, EditorPlan, EditorRun, StructureRun
 from ai_video_editor.pipeline.schema import RunTimings
 from ai_video_editor.pipeline.timing import build_timings_section, format_duration
 from ai_video_editor.roteiro.report import clock
@@ -68,6 +68,7 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         if cut.normalized_ids:
             lines.append(f"  - {_cell(_normalized(cut.normalized_ids))}")
         lines += [f"  - tentativa recusada: {_cell(_short(a, 300))}" for a in cut.attempts]
+        lines += [f"  - {_cell(j)}" for j in cut.joined]
         if cut.removed:
             lines.append(f"  - **IA tirou o clipe {cut.clip_id}**" + (f" (parte {cut.unit_id})" if cut.moment_ids else ""))
     if detail.removed_clip_ids:
@@ -121,6 +122,25 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         lines += ["", "Avisos:", *(f"- {_cell(_short(w, 300))}" for w in detail.warnings)]
     lines.append("")
     return lines
+
+
+def _share(speech: float, target: Optional[float]) -> str:
+    return f"{_sec(speech)}" + (f" ({100 * speech / target:.0f}% do alvo)" if target else "")
+
+
+def _structure_speech_lines(structure: StructureRun) -> list[str]:
+    """Fala dos clipes escolhidos × alvo (antes e depois da nova tentativa por falta de duração)."""
+    if structure.speech_sec is None:
+        return []
+    target = structure.target_total_sec
+    if structure.speech_sec_first is None:
+        return [f"Fala dos clipes escolhidos: {_share(structure.speech_sec, target)}"]
+    added = ", ".join(structure.added_clip_ids) or "nenhum (a IA manteve a resposta)"
+    return [
+        f"Fala dos clipes escolhidos: {_share(structure.speech_sec_first, target)} → nova tentativa "
+        f"({_cell(structure.shortfall)}) → {_share(structure.speech_sec, target)}",
+        f"Clipes incluídos pela nova tentativa: {added}",
+    ]
 
 
 def breath_total_line(plan: EditorPlan) -> str:
@@ -249,6 +269,7 @@ def build_editor_report(
         lines.append(f"Notas da IA: {_cell(structure.notes)}")
     if structure.normalized_ids:
         lines.append(_cell(_normalized(structure.normalized_ids)))
+    lines += _structure_speech_lines(structure)
     lines += ["", "| Bloco | Título | Clipes | Alvo | No plano | Origem |", "| --- | --- | --- | --- | --- | --- |"]
     by_id = {b.id: b for b in plan.blocks}
     for block in structure.blocks:

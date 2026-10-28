@@ -33,8 +33,8 @@ from ai_video_editor.roteiro.report import clock
 
 # Sobem quando o pedido ou o schema da resposta da passada mudam (invalida só o cache daquela passada).
 SUMMARY_PROMPT_VERSION = "resumo-v1"
-STRUCTURE_PROMPT_VERSION = "estrutura-v5"
-CUTS_PROMPT_VERSION = "cortes-v2"
+STRUCTURE_PROMPT_VERSION = "estrutura-v6"
+CUTS_PROMPT_VERSION = "cortes-v3"
 INSERTS_PROMPT_VERSION = "insercoes-v2"
 COVERAGE_PROMPT_VERSION = "coberturas-v2"
 
@@ -45,6 +45,10 @@ RESPECT_REQUEST = "Faça o que o pedido pede; não acrescente nada que ele não 
 STRUCTURE_SUMMARY_WORDS = 25
 # Texto de um trecho nas listas da 2b e da 2c: até tantas palavras.
 TRECHO_WORDS = 30
+# Resumo de cada clipe não usado na nova tentativa da estrutura por falta de duração: até tantas palavras.
+SHORTFALL_SUMMARY_WORDS = 8
+# Marca, no roteiro da 2a, da frase que continua na seguinte (par contínuo: corta ou fica junto).
+CONTINUES_MARK = "(continua na próxima)"
 
 
 def _sec(seconds: Optional[float]) -> str:
@@ -153,8 +157,62 @@ def _request_lines(context: EditorContext) -> list[str]:
     return lines
 
 
-def build_structure_prompt(context: EditorContext, clip_lines: list[str], errors: Optional[list[str]] = None) -> str:
-    """`clip_lines`: uma linha por clipe (`EditorMaterial.structure_line`), sempre todos os clipes."""
+@dataclass
+class StructureShortfall:
+    """Falta de duração da estrutura (informação para a nova tentativa; a IA pode manter a resposta)."""
+
+    target_sec: float
+    speech_sec: float  # fala disponível dos clipes escolhidos (nos blocos)
+    unused_lines: list[str] = field(default_factory=list)  # clipes com fala fora dos blocos
+    library_lines: list[str] = field(default_factory=list)  # clipes sem fala fora dos blocos
+
+    @property
+    def missing_sec(self) -> float:
+        return max(0.0, self.target_sec - self.speech_sec)
+
+
+def _capped(lines: list[str], limit: int, what: str) -> list[str]:
+    """As linhas que cabem em `limit` caracteres (o resto vira "(mais N …)")."""
+    result, used = [], 0
+    for n, line in enumerate(lines):
+        if used + len(line) > limit:
+            result.append(f"- (mais {len(lines) - n} {what})")
+            break
+        result.append(line)
+        used += len(line) + 1
+    return result
+
+
+def _shortfall_lines(shortfall: StructureShortfall) -> list[str]:
+    lines = [
+        "",
+        f"Sua resposta anterior foi lida. Duração: o pedido é de {round(shortfall.target_sec)} s; os clipes escolhidos "
+        f"têm {round(shortfall.speech_sec)} s de fala; faltam {round(shortfall.missing_sec)} s.",
+    ]
+    budget = RETRY_MAX_CHARS
+    if shortfall.unused_lines:
+        lines.append("Clipes com fala que não estão em nenhum bloco (código · segundos de fala — resumo):")
+        shown = _capped(shortfall.unused_lines, budget, "clipe(s) com fala")
+        lines += shown
+        budget -= sum(len(line) + 1 for line in shown)
+    if shortfall.library_lines:
+        lines.append("Acervo (clipes sem fala que não estão em nenhum bloco):")
+        lines += _capped(shortfall.library_lines, max(budget, 200), "clipe(s) do acervo")
+    lines.append(
+        "Você pode incluir alguns desses clipes nos blocos (na ordem certa) ou manter a estrutura: responder de "
+        "novo a mesma estrutura também vale. Responda com o JSON completo."
+    )
+    return lines
+
+
+def build_structure_prompt(
+    context: EditorContext,
+    clip_lines: list[str],
+    errors: Optional[list[str]] = None,
+    shortfall: Optional[StructureShortfall] = None,
+) -> str:
+    """`clip_lines`: uma linha por clipe (`EditorMaterial.structure_line`), sempre todos os clipes.
+    `shortfall`: a nova tentativa por falta de duração (os números e o que não foi usado)."""
     if context.target_sec is not None:
         target = f"Duração alvo do vídeo final: {_sec(context.target_sec)}. Use esse valor em duracao_total_alvo_sec."
     else:
@@ -192,6 +250,8 @@ def build_structure_prompt(context: EditorContext, clip_lines: list[str], errors
         '"duracao_total_alvo_sec": <segundos>, "notas": "..."}',
     ]
     lines += _retry_lines(errors or [])
+    if shortfall is not None:
+        lines += _shortfall_lines(shortfall)
     return "\n".join(lines)
 
 
@@ -238,6 +298,22 @@ class CutsPromptInput:
     part: int = 1
     parts: int = 1
     block_clips: int = 1  # clipes com fala no bloco
+    continues: list[str] = field(default_factory=list)  # frases que continuam na seguinte (pares contínuos)
+
+
+def mark_continuous(section: str, continues: list[str]) -> str:
+    """Marca `CONTINUES_MARK` no fim da linha de cada frase de `continues` (`- S012 — texto`)."""
+    if not continues:
+        return section
+    wanted = set(continues)
+    lines = []
+    for line in section.splitlines():
+        if line.startswith("- S"):
+            code = line[2:].split(" ", 1)[0]
+            if code in wanted:
+                line = f"{line} {CONTINUES_MARK}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def duration_retry_line(result_sec: float, target_sec: float, low: float, high: float) -> str:
@@ -247,6 +323,15 @@ def duration_retry_line(result_sec: float, target_sec: float, low: float, high: 
         f"duração: ficou {round(result_sec)} s, a meta deste clipe é {round(target_sec)} s (aceito de {round(low)} a "
         f"{round(high)} s); {hint}"
     )
+
+
+def cut_sentence_retry_lines(items: list[tuple[str, float, str]]) -> list[str]:
+    """Abaixo da meta: as frases cortadas (código, segundos, texto) que a IA pode devolver."""
+    if not items:
+        return []
+    lines = ["frases que você cortou (para devolver uma, tire-a da lista cortar):"]
+    lines += [f"cortada {sid} ({round(sec)} s): {short_text(text, 10)}" for sid, sec, text in items]
+    return lines
 
 
 def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None) -> str:
@@ -275,6 +360,9 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
         "- Conforto auditivo: não corte no meio de um raciocínio; não deixe uma pergunta sem a resposta.",
         "- Imagem ruim (problemas entre colchetes nos momentos) NÃO é motivo para cortar a fala: a imagem pode "
         "ser coberta depois.",
+        f"- Frase marcada {CONTINUES_MARK} termina no meio da fala e segue na frase seguinte: corte as duas ou "
+        "mantenha as duas (cortar só uma deixa a fala começando ou acabando pela metade; o programa junta pela "
+        "maior parte).",
         f"- Se {'esta parte do clipe' if data.parts > 1 else 'o clipe'} inteiro não serve para o pedido, responda "
         "fora: true (sai do bloco) em vez de cortar frase por frase.",
         "",
@@ -283,7 +371,7 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
         "",
         f"Roteiro do clipe {data.clip_id} (momentos com a descrição da imagem; frases com o código, o texto e o ritmo):",
         "",
-        data.section.strip(),
+        mark_continuous(data.section.strip(), data.continues),
         "",
         'Formato: {"cortar": [{"frase": "código da frase", "motivo": "curto"}], "fora": false, "notas": "curto"}',
         "Nada a cortar: {\"cortar\": [], \"fora\": false, \"notas\": \"...\"}",

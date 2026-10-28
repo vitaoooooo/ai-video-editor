@@ -11,6 +11,10 @@ Passada 2, três perguntas por bloco; cada item sozinho (o inválido é descarta
   e ainda livre; faixa ou várias frases num item são recusadas (uma frase por item); repetida, descartada.
   Todas as frases cortadas sem `fora: true` pede a nova tentativa dizendo isso (`ALL_CUT`); se persistir (ou
   com `fora: true`), o clipe sai do bloco (decisão da IA, registrada).
+  Par contínuo (`continuous_groups`): uma frase continua a anterior do mesmo clipe quando a anterior termina
+  sem pontuação final ou com reticências, ou quando ela começa com letra minúscula; frases ligadas assim são
+  uma unidade. Cortar só parte da unidade → o código corta todas ou mantém todas, pelo que a IA fez com a
+  maior parte em segundos (empate = mantém), e registra em `joined`.
 - 2b inclusões (`validate_inserts`): `depois_do_trecho` numa das posições oferecidas (`breath_positions`
   para respiro, `own_positions` para imagem do bloco, medidas por `insert_positions`); letra da lista, no
   máximo uma vez; `duracao_sec` maior que o momento vira o momento inteiro (com aviso); o trecho do arquivo
@@ -247,6 +251,54 @@ def letters(count: int) -> list[str]:
 ALL_CUT = "você cortou todas as frases; mantenha as que contam o assunto ou responda fora: true"
 
 
+def open_ending(text: str) -> Optional[str]:
+    """Por que a frase não termina (None = termina): sem pontuação final ou com reticências."""
+    text = text.strip().rstrip(_CLOSERS).rstrip()
+    if text.endswith(("...", "…")):
+        return "termina em reticências"
+    if not text.endswith(_FINAL_PUNCTUATION):
+        return "sem pontuação final"
+    return None
+
+
+def starts_lowercase(text: str) -> bool:
+    """A primeira letra da frase é minúscula (a frase continua a anterior)."""
+    first = next((ch for ch in text if ch.isalpha()), "")
+    return first.islower()
+
+
+def continuous_groups(ids: list[str], material: EditorMaterial) -> list[list[str]]:
+    """Unidades de frases ligadas (≥ 2), em ordem: B continua A quando B vem logo depois de A no mesmo clipe e
+    A termina em aberto (`open_ending`) ou B começa com minúscula. Só entre frases de `ids`."""
+    wanted = set(ids)
+    groups: list[list[str]] = []
+    current: list[str] = []
+    for clip_id in dict.fromkeys(material.sentences[s].clip_id for s in ids):
+        previous = None
+        for sentence in material.clip_sentences.get(clip_id, []):
+            linked = (
+                previous is not None and previous.id in wanted and sentence.id in wanted
+                and (open_ending(previous.text) is not None or starts_lowercase(sentence.text))
+            )
+            if linked:
+                current = current or [previous.id]
+                current.append(sentence.id)
+            else:
+                if len(current) > 1:
+                    groups.append(current)
+                current = []
+            previous = sentence
+        if len(current) > 1:
+            groups.append(current)
+        current = []
+    return groups
+
+
+def continuing_sentences(ids: list[str], material: EditorMaterial) -> list[str]:
+    """Frases que continuam na seguinte (todas as de cada unidade, menos a última): a marca do pedido da 2a."""
+    return [s for group in continuous_groups(ids, material) for s in group[:-1]]
+
+
 @dataclass
 class CutsCheck(_Check):
     cuts: list[CutChoice] = field(default_factory=list)
@@ -254,6 +306,7 @@ class CutsCheck(_Check):
     result_sec: float = 0.0
     normalized: list[str] = field(default_factory=list)
     out: bool = False  # a IA respondeu fora: true (o clipe ou a parte sai do bloco)
+    joined: list[str] = field(default_factory=list)  # "par contínuo S000+S001 mantido junto" (ajustes do código)
 
     @property
     def removed(self) -> bool:
@@ -292,6 +345,19 @@ def validate_cuts(answer: CutsAnswer, free: list[str], material: EditorMaterial)
             check.drop("cortar", raw, f"frase {sid} repetida")
         else:
             cut[sid] = CutChoice(sentence_id=sid, reason=raw.motivo)
+    for group in continuous_groups(free, material):
+        removed = [s for s in group if s in cut]
+        if not removed or len(removed) == len(group):
+            continue
+        label = "+".join(group)
+        if sentences_sec(material, removed) > sentences_sec(material, [s for s in group if s not in cut]):
+            for sid in group:
+                cut.setdefault(sid, CutChoice(sentence_id=sid, reason=f"par contínuo {label} (cortado junto)"))
+            check.joined.append(f"par contínuo {label} cortado junto")
+        else:
+            for sid in removed:
+                del cut[sid]
+            check.joined.append(f"par contínuo {label} mantido junto")
     check.cuts = [cut[s] for s in free if s in cut]
     check.kept = [s for s in free if s not in cut]
     check.result_sec = round(sentences_sec(material, check.kept), 3)
@@ -325,11 +391,9 @@ def speech_continues(trecho: Trecho, material: EditorMaterial) -> Optional[str]:
     reticências, ou o trecho acaba a menos de `CLIP_END_SPEECH_SEC` do fim do clipe (a gravação parou no meio
     da fala; o Whisper põe ponto final mesmo assim)."""
     last = material.sentences[trecho.sentence_ids[-1]]
-    text = last.text.strip().rstrip(_CLOSERS).rstrip()
-    if text.endswith(("...", "…")):
-        return "fala continua (termina em reticências)"
-    if not text.endswith(_FINAL_PUNCTUATION):
-        return "fala continua (sem pontuação final)"
+    ending = open_ending(last.text)
+    if ending:
+        return f"fala continua ({ending})"
     clip = material.clips.get(trecho.clip_id)
     if clip is not None and clip.duration_sec - last.end_sec < CLIP_END_SPEECH_SEC:
         return "fala continua (o clipe acaba no meio da fala)"

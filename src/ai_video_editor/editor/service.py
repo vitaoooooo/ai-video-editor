@@ -13,7 +13,10 @@ proporção da fala livre de cada um (`meta do clipe = meta do bloco × fala do 
 clipe dividido em partes reparte a sua meta do mesmo jeito.
 
 A estrutura não precisa usar todos os clipes: um clipe com fala que a IA não pôs em bloco nem em "fora"
-conta como fora ("não escolhido pela IA"), sem nova tentativa e sem bloco extra.
+conta como fora ("não escolhido pela IA"), sem bloco extra. Falta de duração (medida, sem decisão): se a fala
+dos clipes nos blocos fica abaixo de `STRUCTURE_MIN_RATIO` da duração do pedido (a que a IA escolhe sozinha
+não conta: os dois números seriam dela) e há clipes fora dos blocos, UMA nova tentativa informa os números e lista os clipes com fala não
+usados e o acervo; a IA pode incluir clipes ou manter a resposta (a resposta igual é aceita).
 
 2b (medida, sem decisão): sobra do bloco = alvo do bloco − fala mantida depois da 2a. Bloco com fala sem
 sobra (ou sem alvo) não tem pergunta 2b. Com sobra, o pedido informa a sobra, as posições medidas
@@ -26,7 +29,10 @@ Nova tentativa (uma, com a lista de erros): estrutura sem bloco válido; qualque
 metade ou mais dos itens inválida; 2a com todas as frases cortadas sem `fora: true` (`validate.ALL_CUT`) ou
 com a duração fora da meta ± `DURATION_TOLERANCE` (a nova tentativa mostra os números); 2b de bloco sem fala
 que não escolhe nada. Depois dela, a última resposta aproveitável é aceita com os itens válidos (duração
-fora da meta é registrada; tudo cortado de novo = a IA tirou o clipe do bloco, registrado). Fallback neutro
+fora da meta é registrada; tudo cortado de novo = a IA tirou o clipe do bloco, registrado). Abaixo da meta, a
+nova tentativa da 2a lista as frases cortadas (com os segundos) para a IA poder devolver algumas. Na 2a, os
+pares contínuos (`validate.continuous_groups`) vão marcados no roteiro, e um par cortado pela metade é
+ajustado pela validação (corta ou fica junto). Fallback neutro
 (com aviso) só sem resposta aproveitável: 2a = nada cortado;
 2b = nada a mais (bloco sem fala: todas as imagens dele, em ordem); 2c = sem cobertura. Depois de
 `MAX_CONSECUTIVE_FAILURES` erros seguidos da API (não de validação), a IA não é mais chamada nesta execução
@@ -56,6 +62,7 @@ from ai_video_editor.editor.prompt import (
     COVERAGE_PROMPT_VERSION,
     CUTS_PROMPT_VERSION,
     INSERTS_PROMPT_VERSION,
+    SHORTFALL_SUMMARY_WORDS,
     STRUCTURE_PROMPT_VERSION,
     STRUCTURE_SUMMARY_WORDS,
     SUMMARY_PROMPT_VERSION,
@@ -66,11 +73,13 @@ from ai_video_editor.editor.prompt import (
     CutsPromptInput,
     EditorContext,
     InsertsPromptInput,
+    StructureShortfall,
     build_coverage_prompt,
     build_cuts_prompt,
     build_inserts_prompt,
     build_structure_prompt,
     build_summary_prompt,
+    cut_sentence_retry_lines,
     duration_retry_line,
     short_text,
 )
@@ -110,6 +119,7 @@ from ai_video_editor.editor.validate import (
     RESPIRO_MAX_SEC,
     Usage,
     build_trechos,
+    continuing_sentences,
     insert_positions,
     letters,
     neutral_inserts,
@@ -142,6 +152,9 @@ MAX_CONSECUTIVE_FAILURES = 3
 # Faixa aceita da duração resultante de um clipe na 2a: meta ± 35%. Fora dela, UMA nova tentativa com os
 # números; se ainda ficar fora, aceita e registra (a duração é informação para a IA, não decisão do código).
 DURATION_TOLERANCE = 0.35
+# Estrutura com a fala dos clipes escolhidos abaixo desta fração da meta: UMA nova tentativa informa quanto
+# falta e o que não foi usado (a IA pode manter a resposta).
+STRUCTURE_MIN_RATIO = 0.85
 # Candidatos de cobertura listados por trecho na 2c.
 COVERAGE_CANDIDATES = 4
 # Candidatos com letra na 2b de um bloco com fala (imagens do bloco primeiro, depois o acervo). Num bloco sem
@@ -299,9 +312,11 @@ class EditorService:
         check_of: Callable[[BaseModel], object],
         stats: CallStats,
         extra_problem: Optional[Callable[[object], Optional[str]]] = None,
+        retry_details: Optional[Callable[[object], list[str]]] = None,
     ) -> Decision:
         """Uma pergunta: cache → IA → (recusada) nova tentativa com os erros. `check.unusable` decide se a
-        resposta serve; `check.refused` e `extra_problem` pedem a nova tentativa."""
+        resposta serve; `check.refused` e `extra_problem` pedem a nova tentativa; `retry_details` (com o
+        `extra_problem`) acrescenta linhas de informação à lista da nova tentativa."""
         prompt = build([])
         decision = Decision(estimated=tokens(prompt))
         key = self.key(kind, version, prompt)
@@ -315,6 +330,7 @@ class EditorService:
                 self._cached(kind, unit, decision.estimated)
                 return decision
         errors: list[str] = []
+        details: list[str] = []
         for attempt in range(1, MAX_ATTEMPTS + 1):
             raw, error = self._ask(call, make_request(build(errors)), stats, kind, unit, attempt)
             if raw is not None:
@@ -326,7 +342,11 @@ class EditorService:
                 if not problems:
                     break
                 error = "; ".join(problems) + (": " + "; ".join(trial.errors[:12]) if trial.errors else "")
+                if problem and retry_details is not None:
+                    details = retry_details(trial)
             errors.append(error)
+            errors += details
+            details = []
             decision.attempts.append(error)
             if self.gave_up:
                 break
@@ -475,8 +495,8 @@ class EditorService:
         lines = self.structure_lines(summaries)
         result = StructureRun(origin="ia")
 
-        def prompt_for(errors: Optional[list[str]] = None) -> str:
-            return build_structure_prompt(context, lines, errors)
+        def prompt_for(errors: Optional[list[str]] = None, shortfall: Optional[StructureShortfall] = None) -> str:
+            return build_structure_prompt(context, lines, errors, shortfall)
 
         prompt = prompt_for()
         result.estimated_tokens = tokens(prompt)
@@ -498,20 +518,38 @@ class EditorService:
                     result.stats.cached += 1
                     self._cached("estrutura", "estrutura", result.estimated_tokens)
             errors: list[str] = []
+            shortfall: Optional[StructureShortfall] = None
+            first_blocks: list[Block] = []
             for attempt in range(1, 1 + (0 if answer is not None else MAX_ATTEMPTS)):
-                request = StructureRequest(prompt=prompt_for(errors), material=material, context=context, summaries=summaries)
+                request = StructureRequest(
+                    prompt=prompt_for(errors, shortfall), material=material, context=context, summaries=summaries,
+                )
                 raw, error = self._ask(self.ai.structure, request, result.stats, "estrutura", "estrutura", attempt)
                 if raw is not None:
                     trial = validate_structure(raw, material)
                     if trial.blocks:  # aproveitável: a última aproveitável vale se a nova tentativa não resolver
                         answer, check = raw, trial
                     if trial.refused is None:
+                        if shortfall is None and attempt < MAX_ATTEMPTS:
+                            shortfall = self._shortfall(trial, summaries)
+                            if shortfall is not None:  # informação, não recusa: a resposta já vale
+                                result.speech_sec_first = round(shortfall.speech_sec, 3)
+                                result.shortfall = (
+                                    f"faltam {round(shortfall.missing_sec)} s: meta {round(shortfall.target_sec)} s, "
+                                    f"fala dos clipes escolhidos {round(shortfall.speech_sec)} s"
+                                )
+                                first_blocks = trial.blocks
+                                self._notice(f"estrutura: {result.shortfall}; nova tentativa com os clipes não usados")
+                                continue
                         break
                     error = f"{trial.refused}: " + "; ".join(trial.errors[:12])
                 errors.append(error)
                 result.attempts.append(error)
                 if self.gave_up:
                     break
+            if first_blocks and check is not None:
+                before = {c for b in first_blocks for c in b.clip_ids}
+                result.added_clip_ids = [c for b in check.blocks for c in b.clip_ids if c not in before]
             if answer is not None and result.origin != "cache":
                 self.cache.save("estrutura", key, answer)
         self.calls_done += 1
@@ -535,11 +573,56 @@ class EditorService:
             result.warnings.append(f"estrutura: {len(check.discarded)} item(ns) descartado(s) na validação")
         placed = {c for b in result.blocks for c in b.clip_ids} | {o.clipe for o in result.out}
         result.library_clip_ids = [c for c in material.clip_ids if c not in placed]
+        in_blocks = {c for b in result.blocks for c in b.clip_ids}
+        silent_out = [o.clipe for o in result.out if not material.has_speech(o.clipe)]
+        if silent_out and not result.library_clip_ids:
+            result.warnings.append(
+                f"estrutura: todo o acervo foi para \"fora\" ({', '.join(silent_out)}): a 2b não tem imagens do "
+                "acervo para oferecer como respiro"
+            )
+        result.speech_sec = round(sum(material.speech_sec(c) for c in in_blocks), 3)
         if context.target_sec is not None:
             result.target_total_sec, result.target_origin = context.target_sec, "pedido"
         elif answer.duracao_total_alvo_sec and answer.duracao_total_alvo_sec > 0:
             result.target_total_sec, result.target_origin = answer.duracao_total_alvo_sec, "ia"
         return result
+
+    def _shortfall(self, check, summaries: dict[str, ClipSummary]) -> Optional[StructureShortfall]:
+        """Falta de duração da estrutura (None = sem duração no pedido, sem fala no material, fala ≥
+        `STRUCTURE_MIN_RATIO` da duração pedida ou nada fora dos blocos para oferecer). Só medida: o que
+        fazer é da IA."""
+        material = self.material
+        target = self.context.target_sec
+        if target is None or target <= 0 or not any(material.has_speech(c) for c in material.clip_ids):
+            return None
+        in_blocks = {c for b in check.blocks for c in b.clip_ids}
+        speech = sum(material.speech_sec(c) for c in in_blocks)
+        if speech >= STRUCTURE_MIN_RATIO * target:
+            return None
+        out_reason = {o.clipe: o.motivo for o in check.out if o.motivo != NOT_CHOSEN}
+
+        def summary(clip_id: str) -> str:
+            found = summaries.get(clip_id)
+            text = found.answer.resumo if found is not None and found.answer is not None else "(sem resumo)"
+            return short_text(text, SHORTFALL_SUMMARY_WORDS)
+
+        def where(clip_id: str) -> str:
+            return f" (em fora: {short_text(out_reason[clip_id], 6)})" if clip_id in out_reason else ""
+
+        unused = [
+            f"- {c} · {round(material.speech_sec(c))} s de fala{where(c)} — {summary(c)}"
+            for c in material.clip_ids if material.has_speech(c) and c not in in_blocks
+        ]
+        library = [
+            f"- {c} · {clock(material.clips[c].duration_sec)}{where(c)} — {summary(c)}"
+            for c in material.clip_ids if not material.has_speech(c) and c not in in_blocks
+        ]
+        if not unused and not library:
+            return None
+        return StructureShortfall(
+            target_sec=target, speech_sec=speech, unused_lines=unused,
+            library_lines=library,
+        )
 
     # --- E11: passada 2 de um bloco ---
 
@@ -653,7 +736,7 @@ class EditorService:
             return build_cuts_prompt(CutsPromptInput(
                 header=header, clip_id=clip_id, section=material.section(clip_id, moment_ids),
                 available_sec=sentences_sec(material, part_ids), target_sec=target, part=1, parts=parts,
-                block_clips=block_clips,
+                block_clips=block_clips, continues=continuing_sentences(part_ids, material),
             ))
 
         if tokens(prompt(None, ids, 1)) <= available:
@@ -698,6 +781,17 @@ class EditorService:
             return None
         return duration_retry_line(check.result_sec, target, low, high)
 
+    def _cut_list(self, check, target: Optional[float]) -> list[str]:
+        """Abaixo da meta: as frases cortadas, com os segundos, para a nova tentativa (a IA pode devolver)."""
+        if target is None or check.result_sec >= target * (1 - DURATION_TOLERANCE):
+            return []
+        material = self.material
+        items = [
+            (c.sentence_id, sentences_sec(material, [c.sentence_id]), material.sentences[c.sentence_id].text)
+            for c in check.cuts
+        ]
+        return cut_sentence_retry_lines(items)
+
     def _cuts(
         self, header: BlockHeader, unit_id: str, clip_id: str, moment_ids: Optional[list[str]], ids: list[str],
         target: Optional[float], part: int, parts: int, block_clips: int,
@@ -707,7 +801,7 @@ class EditorService:
         data = CutsPromptInput(
             header=header, clip_id=clip_id, section=material.section(clip_id, moment_ids),
             available_sec=round(sentences_sec(material, ids), 3), target_sec=target, part=part, parts=parts,
-            block_clips=block_clips,
+            block_clips=block_clips, continues=continuing_sentences(ids, material),
         )
         run = CutRun(
             unit_id=unit_id, clip_id=clip_id, moment_ids=moment_ids, origin="ia", available_sec=data.available_sec,
@@ -722,6 +816,7 @@ class EditorService:
             ),
             call=self.ai.cuts, check_of=lambda answer: validate_cuts(answer, ids, material), stats=run.stats,
             extra_problem=lambda check: None if check.removed else self._duration_problem(check, target),
+            retry_details=lambda check: self._cut_list(check, target),
         )
         self.calls_done += 1
         run.estimated_tokens, run.attempts = decision.estimated, decision.attempts
@@ -757,6 +852,7 @@ class EditorService:
             check.kept, check.result_sec = [], 0.0
         run.cuts, run.kept_ids, run.result_sec = check.cuts, check.kept, check.result_sec
         run.discarded = check.discarded
+        run.joined = list(check.joined)
         run.warnings += [f"cortar descartado ({d.item}): {d.reason}" for d in check.discarded]
         return run
 

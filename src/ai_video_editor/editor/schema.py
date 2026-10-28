@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator, model_serializer, model_
 from ai_video_editor.llm.schema import ModelSwitch
 
 # Sobe quando o formato do editor_run.json / editor_plano.json muda.
-EDITOR_SCHEMA_VERSION = 5
+EDITOR_SCHEMA_VERSION = 6
 
 MAX_HIGHLIGHTS = 3
 MAX_PROBLEMS = 3
@@ -422,6 +422,12 @@ class StructureRun(BaseModel):
     normalized_ids: list[str] = Field(
         default_factory=list, description="IDs da resposta aceita trocados pelo formato do roteiro (\"bruto → ID\")"
     )
+    speech_sec: Optional[float] = Field(default=None, description="Fala disponível dos clipes nos blocos (aceita)")
+    speech_sec_first: Optional[float] = Field(
+        default=None, description="A mesma soma na 1ª resposta, quando houve nova tentativa por falta de duração"
+    )
+    shortfall: str = Field(default="", description="O aviso de falta de duração dado à IA na nova tentativa")
+    added_clip_ids: list[str] = Field(default_factory=list, description="Clipes incluídos em blocos pela nova tentativa")
 
 
 class KeepRange(BaseModel):
@@ -528,6 +534,9 @@ class CutRun(BaseModel):
     result_sec: float = 0.0
     duration_off: bool = Field(default=False, description="Fora da meta ± DURATION_TOLERANCE depois da nova tentativa")
     removed: bool = Field(default=False, description="A IA tirou o clipe (ou a parte) do bloco: fora: true ou tudo cortado")
+    joined: list[str] = Field(
+        default_factory=list, description="Pares contínuos que a IA cortou pela metade, ajustados pelo código"
+    )
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)
     attempts: list[str] = Field(default_factory=list)
