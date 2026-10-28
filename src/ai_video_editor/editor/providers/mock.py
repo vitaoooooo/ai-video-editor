@@ -6,8 +6,8 @@
   clipe com fala: um bloco só, com todos).
 - 2a cortes: nada cortado (todas as frases livres ficam).
 - 2b inclusões: bloco sem fala = todas as imagens do bloco, em ordem; com fala, as imagens do bloco no fim
-  e um respiro de até 2 s depois do 1º trecho com a 1ª imagem do acervo que NÃO divide palavra com a fala
-  (as que dividem ficam para a cobertura).
+  e um respiro de até 2 s (e do que sobra da sobra do bloco) na 1ª posição de respiro oferecida, com a 1ª
+  imagem do acervo que NÃO divide palavra com a fala (as que dividem ficam para a cobertura).
 - 2c coberturas: o 1º trecho perguntado com candidato "mostra o que é dito" ganha esse candidato (a 1ª
   palavra em comum); os outros, "nenhuma".
 
@@ -18,7 +18,7 @@ função do pedido. Acabada a lista daquela passada, volta à resposta determin�
 
 from typing import Any, Callable, Optional, Union
 
-from ai_video_editor.editor.material import common_words, moment_text
+from ai_video_editor.editor.material import common_words, moment_visible_text
 from ai_video_editor.editor.provider import (
     CoverageRequest,
     CutsRequest,
@@ -125,12 +125,15 @@ class MockEditorAI(EditorAI):
         last = len(request.trechos)
         items = [{"depois_do_trecho": last, "letra": c.letter} for c in own]
         speech = " ".join(material.sentences[s].text for t in request.trechos for s in t.sentence_ids)
+        room = (request.spare_sec or 0.0) - sum(c.duration_sec for c in own)
         for candidate in request.candidates:
+            if not request.breath_positions or room <= 0:
+                break
             moment = material.moments[candidate.moment_id]
-            if candidate.source != "bloco" and not common_words(speech, moment_text(moment)):
+            if candidate.source != "bloco" and not common_words(speech, moment_visible_text(moment)):
                 items.append({
-                    "depois_do_trecho": 1, "letra": candidate.letter,
-                    "duracao_sec": round(min(MOCK_BREATH_SEC, candidate.duration_sec), 2),
+                    "depois_do_trecho": request.breath_positions[0], "letra": candidate.letter,
+                    "duracao_sec": round(min(MOCK_BREATH_SEC, candidate.duration_sec, room), 2),
                 })
                 break
         return InsertsAnswer.model_validate({"inserir": items, "notas": "inclusões simuladas"})

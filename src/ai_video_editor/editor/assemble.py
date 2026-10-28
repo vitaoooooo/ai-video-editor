@@ -3,11 +3,15 @@
 - Faixa de frases (`de`/`ate`): o mesmo corte do `edit` (`pipeline.cutting.plan_keep_ranges`: silêncios do
   clipe + todas as outras frases do clipe removidas, cortes levados para dentro dos silêncios, sem pedaço de
   palavra), limitado à janela da faixa (no máximo `EDGE_SEC` antes da 1ª e depois da última frase, nunca
-  dentro das frases vizinhas). Cada trecho vira um item de `video_main` com o som do clipe; os micro fades
-  são os da Timeline (`audio_fade_sec`).
+  dentro das frases vizinhas). Sem picote: dentro da faixa, só as pausas de pelo menos
+  `INTERNAL_PAUSE_MIN_SEC` são cortadas (as menores ficam) e um pedaço com menos de `MIN_PIECE_SEC` é unido
+  ao vizinho (`merge_pieces`; o `plan_keep_ranges` compartilhado com o `edit` não muda). Cada pedaço vira um
+  item de `video_main` com o som do clipe, rotulado só com as frases que caem nele; os micro fades são os da
+  Timeline (`audio_fade_sec`).
 - Momento incluído (2b, só momento sem fala, candidato do próprio bloco): um item da base com o som da
   própria imagem; a duração pedida, limitada ao momento (sem pedido, o momento inteiro).
-- Respiro (2b, candidato do acervo): o mesmo, entre os trechos, com o som mais baixo (rótulo `respiro ...`).
+- Respiro (2b, candidato do acervo): o mesmo, entre os trechos, com o som mais baixo (rótulo `respiro ...`),
+  a partir de `KeepRange.start_sec` (o trecho centrado no momento, já limitado pela validação).
 - Cobertura (2c): `video_overlay` do início da 1ª frase coberta ao fim da última, na Timeline final (a
   fala continua); vários momentos dividem o tempo na ordem dada, o mais igual possível sem passar da duração de
   cada um (`coverage.assemble.distribute`); se não bastam, o fim fica sem cobertura (aviso) — nunca estica
@@ -50,6 +54,13 @@ from ai_video_editor.transcription.schema import Transcript
 EDGE_SEC = 0.5
 # Sobra máxima entre a cobertura e a borda do item da base que vira cobertura (evita pedaço de poucos frames).
 COVERAGE_SNAP_SEC = 0.5
+# Dentro de uma faixa de frases mantidas, só pausas (o que o corte tiraria entre dois pedaços) de pelo menos
+# isto são cortadas; as menores ficam (medido no vlog real: pedaços de 0,1 a 0,6 s, frase picotada em 22).
+INTERNAL_PAUSE_MIN_SEC = 1.0
+# Pedaço de faixa mais curto que isto é unido ao vizinho (o da pausa menor).
+MIN_PIECE_SEC = 0.6
+# Uma frase "cai" num pedaço quando a sobreposição passa disto (o rótulo do pedaço lista só essas frases).
+SENTENCE_OVERLAP_SEC = 0.05
 
 
 @dataclass
@@ -128,7 +139,32 @@ def faixa_ranges(
         a, b = max(r.start_sec, lo), min(r.end_sec, hi)
         if b - a > 0.001:
             result.append(TimeRange(start_sec=round(a, 3), end_sec=round(b, 3)))
-    return result
+    return merge_pieces(result, cut.padding_before_sec + cut.padding_after_sec)
+
+
+def merge_pieces(ranges: list[TimeRange], padding_sec: float = 0.0) -> list[TimeRange]:
+    """Pedaços de UMA faixa (frases seguidas do mesmo clipe, sem frase removida no meio): pausa entre dois
+    pedaços menor que `INTERNAL_PAUSE_MIN_SEC` fica (os pedaços se juntam); depois, cada pedaço com menos de
+    `MIN_PIECE_SEC` é unido ao vizinho mais perto (a pausa entre eles volta).
+
+    A pausa é o silêncio entre as falas: o intervalo entre os pedaços mais as folgas que o corte manteve em
+    volta da fala (`padding_sec` = folga antes + depois)."""
+    merged: list[TimeRange] = []
+    for r in sorted(ranges, key=lambda r: r.start_sec):
+        if merged and r.start_sec - merged[-1].end_sec + padding_sec < INTERNAL_PAUSE_MIN_SEC - 1e-6:
+            merged[-1] = TimeRange(start_sec=merged[-1].start_sec, end_sec=max(merged[-1].end_sec, r.end_sec))
+        else:
+            merged.append(r)
+    while len(merged) > 1:
+        short = next((k for k, r in enumerate(merged) if r.end_sec - r.start_sec < MIN_PIECE_SEC), None)
+        if short is None:
+            break
+        gap_before = merged[short].start_sec - merged[short - 1].end_sec if short > 0 else None
+        gap_after = merged[short + 1].start_sec - merged[short].end_sec if short + 1 < len(merged) else None
+        other = short - 1 if gap_after is None or (gap_before is not None and gap_before <= gap_after) else short + 1
+        a, b = sorted((short, other))
+        merged[a:b + 1] = [TimeRange(start_sec=merged[a].start_sec, end_sec=merged[b].end_sec)]
+    return merged
 
 
 def assemble_plan(
@@ -157,11 +193,12 @@ def assemble_plan(
         for keep in detail.keep:
             if keep.kind == "momento":
                 moment = material.moments[keep.moment_id]
-                length = moment.duration if keep.duration_sec is None else min(keep.duration_sec, moment.duration)
+                start = moment.start_sec if keep.start_sec is None else min(max(keep.start_sec, moment.start_sec), moment.end_sec)
+                length = moment.end_sec - start if keep.duration_sec is None else min(keep.duration_sec, moment.end_sec - start)
                 has_audio = sources[moment.clip_id].has_audio
                 entries.append(_Entry(
                     kind="respiro" if keep.breath else "momento", clip_id=moment.clip_id, ids=[moment.id],
-                    source_in=moment.start_sec, source_out=round(moment.start_sec + length, 3), unit_id=detail.unit_id,
+                    source_in=start, source_out=round(start + length, 3), unit_id=detail.unit_id,
                     block_id=detail.block_id,
                     label=f"{BREATH_LABEL_PREFIX}{moment.id}" if keep.breath else f"momento {moment.id}",
                     use_audio=has_audio, volume=BREATH_VOLUME if keep.breath else 1.0,
@@ -230,15 +267,22 @@ def assemble_plan(
     return Assembled(timeline=timeline, plan=plan, warnings=warnings)
 
 
+def piece_sentences(keep: KeepRange, r: TimeRange, material: EditorMaterial) -> list[str]:
+    """Frases da faixa que caem no pedaço (sobreposição > `SENTENCE_OVERLAP_SEC`); nenhuma = a mais perto."""
+    def overlap(sid: str) -> float:
+        sentence = material.sentences[sid]
+        return min(r.end_sec, sentence.end_sec) - max(r.start_sec, sentence.start_sec)
+
+    inside = [sid for sid in keep.sentence_ids if overlap(sid) > SENTENCE_OVERLAP_SEC]
+    return inside or [max(keep.sentence_ids, key=overlap)]
+
+
 def _faixa_entry(keep: KeepRange, r: TimeRange, unit_id: str, block_id: str, material: EditorMaterial) -> _Entry:
-    """Trecho de uma faixa; `ids` = as frases da faixa que tocam o trecho (a 1ª e a última, para o plano)."""
-    inside = [
-        sid for sid in keep.sentence_ids
-        if min(r.end_sec, material.sentences[sid].end_sec) > max(r.start_sec, material.sentences[sid].start_sec)
-    ] or [keep.from_sentence, keep.to_sentence]
+    """Pedaço de uma faixa; `ids` e o rótulo = a 1ª e a última frase que caem NESTE pedaço."""
+    inside = piece_sentences(keep, r, material)
     return _Entry(
         kind="frases", clip_id=keep.clip_id, ids=[inside[0], inside[-1]], source_in=r.start_sec,
-        source_out=r.end_sec, unit_id=unit_id, block_id=block_id, label=f"{keep.clip_id} {keep.from_sentence}–{keep.to_sentence}",
+        source_out=r.end_sec, unit_id=unit_id, block_id=block_id, label=f"{keep.clip_id} {inside[0]}–{inside[-1]}",
     )
 
 

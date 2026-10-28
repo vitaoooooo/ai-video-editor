@@ -46,7 +46,7 @@ def _normalized(ids: list[str], limit: int = 4) -> str:
 
 def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
     """Um bloco no relatório: 2a por clipe, 2b (letras → IDs), 2c (trecho → letra → momento + palavra)."""
-    lines = [f"### {detail.unit_id} — {', '.join(detail.clip_ids)} ({_ORIGIN[detail.origin]})", ""]
+    lines = [f"### {detail.unit_id} — {', '.join(detail.clip_ids) or '(nenhum clipe)'} ({_ORIGIN[detail.origin]})", ""]
     lines.append(
         f"Duração: fala livre {_sec(detail.available_sec)} → fala que ficou {_sec(detail.speech_sec)} → com as "
         f"inclusões {_sec(detail.result_sec)} → alvo {_sec(detail.target_sec)}"
@@ -68,6 +68,10 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         if cut.normalized_ids:
             lines.append(f"  - {_cell(_normalized(cut.normalized_ids))}")
         lines += [f"  - tentativa recusada: {_cell(_short(a, 300))}" for a in cut.attempts]
+        if cut.removed:
+            lines.append(f"  - **IA tirou o clipe {cut.clip_id}**" + (f" (parte {cut.unit_id})" if cut.moment_ids else ""))
+    if detail.removed_clip_ids:
+        lines += ["", f"IA tirou do bloco: {', '.join(detail.removed_clip_ids)}"]
     if detail.trechos:
         lines += ["", "Trechos de fala: " + "; ".join(
             f"{t.number}: {t.sentence_ids[0]}–{t.sentence_ids[-1]} ({t.clip_id}, {t.seconds:.0f}s)" for t in detail.trechos
@@ -75,6 +79,15 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
     sub = detail.inserts
     lines += ["", f"**2b inclusões e respiros** ({_ORIGIN[sub.origin] if sub and sub.requests else 'sem pergunta'})", ""]
     if sub is not None:
+        spare = "sem alvo do bloco" if sub.spare_sec is None else f"{sub.spare_sec:.1f}s".replace(".", ",")
+        lines.append(f"- sobra (alvo do bloco − fala que ficou): {spare}")
+        if sub.no_question:
+            lines.append(f"- sem pergunta: {sub.no_question}")
+        if sub.requests or sub.breath_positions or sub.skipped:
+            offered = ", ".join(str(n) for n in sub.breath_positions) or "nenhuma"
+            lines.append(f"- posições de respiro oferecidas: {offered}")
+        if sub.skipped:
+            lines.append("- posições de respiro recusadas: " + "; ".join(f"{k.number} ({k.reason})" for k in sub.skipped))
         if sub.requests:
             lines.append(f"- {len(sub.candidates)} candidato(s) com letra · ~{_tokens(sub.estimated_tokens)} tokens")
         for choice in sub.inserts:
@@ -85,8 +98,12 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
             lines.append("- nenhuma imagem escolhida")
         lines += [f"- tentativa recusada: {_cell(_short(a, 300))}" for a in sub.attempts]
     sub = detail.coverage
-    lines += ["", f"**2c coberturas** ({_ORIGIN[sub.origin] if sub and sub.requests else 'sem candidato: sem pergunta'})", ""]
+    lines += ["", f"**2c coberturas** ({_ORIGIN[sub.origin] if sub and sub.requests else 'sem pergunta'})", ""]
     if sub is not None:
+        if sub.skipped:
+            lines.append("- trechos sem pergunta: " + "; ".join(f"{k.number} ({k.reason})" for k in sub.skipped))
+        if not sub.requests:
+            lines.append(f"- sem pergunta: {sub.no_question or 'nenhum candidato medido'}")
         if sub.requests:
             lines.append(
                 f"- {len(sub.candidates)} candidato(s) medido(s), {sub.requests} pedido(s) · "
@@ -104,6 +121,13 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         lines += ["", "Avisos:", *(f"- {_cell(_short(w, 300))}" for w in detail.warnings)]
     lines.append("")
     return lines
+
+
+def breath_total_line(plan: EditorPlan) -> str:
+    """Total de respiro no plano, em segundos e % da duração."""
+    total = sum(p.timeline_end - p.timeline_start for b in plan.blocks for p in b.pieces if p.kind == "respiro")
+    share = 100 * total / plan.duration_sec if plan.duration_sec > 0 else 0.0
+    return f"{total:.1f}s ({share:.0f}% do vídeo)".replace(".", ",", 1)
 
 
 def _ratio(value: float) -> str:
@@ -142,7 +166,7 @@ def build_plan_markdown(plan: EditorPlan, material: EditorMaterial) -> str:
         f"# Plano do Editor de IA — {plan.project_name}",
         "",
         f"Duração: {_sec(plan.duration_sec)} · alvo: {_sec(plan.target_sec)} · {plan.fps} fps · "
-        f"{plan.resolution[0]}x{plan.resolution[1]}",
+        f"{plan.resolution[0]}x{plan.resolution[1]} · respiros: {breath_total_line(plan)}",
         "",
     ]
     for block in plan.blocks:
@@ -214,6 +238,7 @@ def build_editor_report(
         lines.append("| Vídeo | sem render (`--so-plano`) |")
     if subtitles_path is not None:
         lines.append(f"| Legendas | `{subtitles_path.name}` ({subtitle_blocks} blocos) |")
+    lines.append(f"| Respiros | {breath_total_line(plan)} |")
     lines.append("")
 
     lines += [

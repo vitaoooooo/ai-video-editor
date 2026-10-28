@@ -64,6 +64,9 @@ class InsertsRequest:
     candidates: list[Candidate]
     block_target_sec: Optional[float] = None
     current_sec: float = 0.0
+    spare_sec: Optional[float] = None  # meta do bloco − fala mantida (None = sem meta)
+    breath_positions: list[int] = field(default_factory=list)  # posições de respiro oferecidas
+    own_positions: list[int] = field(default_factory=list)  # posições para as imagens do bloco
 
 
 @dataclass

@@ -4,6 +4,10 @@ de cobertura medidos.
 Nada aqui decide edição: só organiza o que o roteiro já mediu e descreveu, para montar os pedidos e
 conferir as respostas. A pré-seleção do acervo é só para caber no contexto, e os candidatos de cobertura
 são uma medida (palavra em comum, mesmo lugar): a IA escolhe, e "nenhuma" é sempre uma opção.
+
+Palavra em comum (cobertura e afinidade dos respiros): só palavras de conteúdo (sem `STOPWORDS` nem
+`GENERIC_WORDS`) e só o que a imagem mostra de fato — a descrição e o lugar do momento (`moment_visible_text`);
+as tags ficam de fora porque têm erros (ex.: "rio" nas tags de uma praça).
 """
 
 import re
@@ -26,6 +30,15 @@ STOPWORDS = frozenset(
     del los las una unos unas por para con sin pero muy esto eso aqui alli es son esta estan hay
     the an and or of to in on at for with from by is are was were be been this that these those it its
     there here very just also so
+    """.split()
+)
+# Palavras genéricas (pt/es/en, sem acento) que não contam como palavra em comum: cabem em quase qualquer fala
+# e em quase qualquer imagem ("pessoas" ligava "dois casais" a uma praia com pessoas). Estende `STOPWORDS`.
+GENERIC_WORDS = frozenset(
+    """
+    pessoa pessoas gente coisa coisas lugar lugares dia dias vista vistas paisagem paisagens natureza aqui ali
+    ai la aca alli alla acola cosa cosas persona personas paisaje paisajes naturaleza
+    people person persons thing things place places day days view views landscape landscapes nature
     """.split()
 )
 # Uma palavra de conteúdo tem pelo menos isso de letras (a, o, de, em... ficam de fora).
@@ -54,7 +67,7 @@ def content_words(text: str) -> list[str]:
     """Palavras de conteúdo da evidência, sem repetição e em ordem."""
     seen: list[str] = []
     for word in words(text):
-        if len(word) >= MIN_CONTENT_CHARS and word not in STOPWORDS and word not in seen:
+        if len(word) >= MIN_CONTENT_CHARS and word not in STOPWORDS and word not in GENERIC_WORDS and word not in seen:
             seen.append(word)
     return seen
 
@@ -102,8 +115,30 @@ def common_words(a: str, b: str) -> list[str]:
 
 
 def moment_text(moment: Moment) -> str:
-    """O que a evidência da imagem pode citar: descrição, lugar e tags do momento."""
+    """Descrição, lugar e tags do momento (afinidade do acervo; NÃO vale como palavra em comum)."""
     return " ".join([moment.description, moment.place, *moment.tags])
+
+
+def moment_visible_text(moment: Moment) -> str:
+    """O que a palavra em comum pode citar da imagem: só a descrição e o lugar (as tags têm erros)."""
+    return " ".join([moment.description, moment.place])
+
+
+def same_place(a: str, b: str) -> bool:
+    """Mesmo lugar: iguais sem acento, caixa e espaços extras (vazio nunca é igual)."""
+    a, b = " ".join(plain(a).split()), " ".join(plain(b).split())
+    return bool(a) and a == b
+
+
+# Pedido que pede abertura com paisagem: uma palavra que começa com um radical de cada lista (sem acento).
+OPENING_STEMS = ("abert", "abrir", "abre", "abra", "abrindo", "comec", "inici", "intro", "apertura", "empez", "comienz")
+LANDSCAPE_STEMS = ("paisag", "paisaj", "drone", "aere", "panoram", "vista", "natureza", "naturaleza", "landscape")
+
+
+def asks_landscape_opening(request: str) -> bool:
+    """O pedido fala em abrir/começar o vídeo E em paisagem/drone/vista (medida no texto, sem decisão)."""
+    found = words(request)
+    return any(w.startswith(OPENING_STEMS) for w in found) and any(w.startswith(LANDSCAPE_STEMS) for w in found)
 
 
 def _fmt_sec(seconds: float) -> str:
@@ -255,12 +290,12 @@ def coverage_matches(
     speech: str, speech_places: list[str], candidates: Iterable[Moment], limit: int, says: str, place: str
 ) -> list[CoverageMatch]:
     """Até `limit` momentos com palavra de conteúdo em comum com a fala (`says`: as palavras da fala achadas
-    na descrição/lugar/tags, regra de `same_word`) ou com o mesmo lugar de um momento da fala (`place`:
+    na descrição/lugar, nunca só nas tags; regra de `same_word`, sem palavras genéricas) ou com o mesmo lugar de um momento da fala (`place`:
     palavras em comum entre os lugares). Ordem: mais palavras da fala, depois mais palavras de lugar;
     empate na ordem recebida. Uma medida, não uma escolha: a IA decide se a imagem mostra mesmo aquilo."""
     found: list[tuple[int, int, int, CoverageMatch]] = []
     for n, moment in enumerate(candidates):
-        said = common_words(speech, moment_text(moment))
+        said = common_words(speech, moment_visible_text(moment))
         places = []
         for where in speech_places:
             places += [w for w in common_words(moment.place, where) if w not in places]
@@ -270,3 +305,16 @@ def coverage_matches(
             found.append((0, -len(places), n, CoverageMatch(moment, place, places)))
     found.sort(key=lambda item: item[:3])
     return [item[3] for item in found[:limit]]
+
+
+def breath_affinity(moment: Moment, neighbor_text: str, neighbor_places: list[str]) -> list[str]:
+    """Afinidade medida de um momento do acervo com os trechos vizinhos de uma posição de respiro: o lugar
+    (igual a um lugar vizinho) e as palavras de conteúdo em comum com a fala/lugares vizinhos (descrição e
+    lugar do momento). Vazio = sem afinidade (vai para o fim da lista)."""
+    found: list[str] = []
+    if moment.place and any(same_place(moment.place, p) for p in neighbor_places):
+        found.append(plain(moment.place))
+    for word in common_words(neighbor_text, moment_visible_text(moment)):
+        if word not in found:
+            found.append(word)
+    return found

@@ -8,10 +8,15 @@ A passada 2 são três perguntas pequenas por bloco, cada uma de um só tipo (me
 
 - 2a CORTES, um pedido por clipe com fala: as frases do clipe e a meta do clipe; resposta = IDs de frases
   que saem, um por item.
-- 2b INCLUSÕES E RESPIROS, um pedido por bloco: os trechos mantidos numerados e os candidatos sem fala com
-  letra; resposta = número do trecho + letra (o código converte em IDs).
-- 2c COBERTURAS, um pedido por bloco: para cada trecho, até 4 candidatos medidos com letra; resposta =
-  trecho + letra (ou "nenhuma") + a palavra em comum copiada.
+- 2b INCLUSÕES E RESPIROS, um pedido por bloco: os trechos mantidos numerados, a sobra de tempo do bloco, as
+  posições medidas e até 6 candidatos sem fala com letra; resposta = número do trecho + letra (o código
+  converte em IDs). Sem sobra (bloco com fala), não há pergunta.
+- 2c COBERTURAS, um pedido por bloco: só os trechos ditos para a câmera, cada um com até 4 candidatos
+  medidos com letra; resposta = trecho + letra (ou "nenhuma") + a palavra em comum copiada.
+
+O pedido do usuário abre todas as perguntas (menos o resumo), com `RESPECT_REQUEST`. Na 2b e na 2c,
+"nenhum" é a primeira opção e a resposta vazia é válida; nenhum exemplo mostra um respiro ou uma cobertura
+escolhida (medido: os modelos copiam a quantidade dos exemplos).
 
 Pedidos SEM nenhum ID de exemplo: o formato de cada código é descrito em palavras e a IA copia os códigos
 da entrada (medido: um exemplo é copiado como se fosse escolha). O código ainda normaliza o que vier fora do
@@ -28,10 +33,13 @@ from ai_video_editor.roteiro.report import clock
 
 # Sobem quando o pedido ou o schema da resposta da passada mudam (invalida só o cache daquela passada).
 SUMMARY_PROMPT_VERSION = "resumo-v1"
-STRUCTURE_PROMPT_VERSION = "estrutura-v4"
-CUTS_PROMPT_VERSION = "cortes-v1"
-INSERTS_PROMPT_VERSION = "insercoes-v1"
-COVERAGE_PROMPT_VERSION = "coberturas-v1"
+STRUCTURE_PROMPT_VERSION = "estrutura-v5"
+CUTS_PROMPT_VERSION = "cortes-v2"
+INSERTS_PROMPT_VERSION = "insercoes-v2"
+COVERAGE_PROMPT_VERSION = "coberturas-v2"
+
+# Logo abaixo do pedido, em todas as perguntas (menos o resumo).
+RESPECT_REQUEST = "Faça o que o pedido pede; não acrescente nada que ele não peça; na dúvida, não acrescente."
 
 # Resumo de cada clipe na lista da estrutura: até tantas palavras (a lista inteira sempre cabe).
 STRUCTURE_SUMMARY_WORDS = 25
@@ -131,11 +139,13 @@ def build_summary_prompt(section: str, part: int = 1, parts: int = 1, errors: Op
 
 
 def _request_lines(context: EditorContext) -> list[str]:
+    """O pedido do usuário e a instrução de respeitá-lo (abrem o texto de toda pergunta)."""
     lines = []
     if context.request.strip():
         lines.append(f'Pedido do usuário: "{context.request.strip()}"')
     else:
         lines.append("Sem pedido do usuário: escolha você o que fazer com o material.")
+    lines.append(RESPECT_REQUEST)
     if context.director_instructions.strip():
         lines.append(f"Instruções para os cortes da fala: {context.director_instructions.strip()}")
     if context.coverage_instructions.strip():
@@ -150,11 +160,11 @@ def build_structure_prompt(context: EditorContext, clip_lines: list[str], errors
     else:
         target = "Sem duração alvo: escolha você a duração do vídeo final e diga qual em duracao_total_alvo_sec."
     lines = [
+        *_request_lines(context),
+        "",
         "Você é o editor de um vídeo. Monte a ESTRUTURA do vídeo final a partir dos clipes do material bruto: "
         "blocos na ordem em que vão aparecer, cada um com os clipes que contam aquela parte. "
         "Responda só com o JSON pedido, em português.",
-        "",
-        *_request_lines(context),
         target,
         "",
         "Regras de estilo:",
@@ -162,13 +172,12 @@ def build_structure_prompt(context: EditorContext, clip_lines: list[str], errors
         "dentro dele, os clipes na ordem em que devem aparecer.",
         "- Vlog ou viagem: a ordem dos blocos e dos clipes é a cronológica (a data de gravação quando houver; "
         "senão, a ordem da lista), a não ser que o pedido peça outra.",
-        "- TODO clipe com \"fala sim\" vai num bloco ou em \"fora\" (com o motivo). Nenhum clipe com fala pode "
-        "ficar esquecido.",
-        "- \"fora\": clipes que não devem entrar de jeito nenhum (repetidos, ruins, fora do assunto), sempre com "
-        "o motivo.",
-        "- Clipes com \"fala não\" podem ir num bloco (um drone pode abrir o vídeo; um vídeo sem fala pode ser só "
-        "de imagens) ou ficar de fora da lista: os que você não puser em nenhum bloco nem em \"fora\" ficam no "
-        "acervo, e os momentos deles podem aparecer por cima da fala (cobertura) ou entre as falas (respiro).",
+        "- Use só os clipes pertinentes ao pedido. Não precisa usar todos: um clipe com \"fala sim\" que você não "
+        "puser em nenhum bloco fica fora do vídeo.",
+        "- \"fora\": clipes que não devem entrar (repetidos, ruins, fora do assunto), com o motivo.",
+        "- Clipes com \"fala não\" vão num bloco só quando o pedido pede essas imagens ou o material não tem fala; "
+        "os que você não puser em nenhum bloco nem em \"fora\" ficam no acervo (o programa pode oferecê-los "
+        "depois, por cima da fala ou entre as falas).",
         "- Cada clipe aparece no máximo uma vez (num bloco ou em \"fora\").",
         "- duracao_alvo_sec de cada bloco: quanto do vídeo final ele deve ocupar; a soma perto da duração total. "
         "Um bloco não passa da fala que ele tem (os segundos de frases de cada clipe estão na lista), a não ser "
@@ -205,10 +214,10 @@ class BlockHeader:
 def _header_lines(header: BlockHeader, what: str) -> list[str]:
     title = f' ("{header.title}")' if header.title else ""
     lines = [
+        *_request_lines(header.context),
+        "",
         f"Você é o editor de um vídeo e está montando o bloco {header.block_id}{title}. Nesta pergunta, decida "
         f"só {what}. Responda só com o JSON pedido, em português.",
-        "",
-        *_request_lines(header.context),
     ]
     if header.subject:
         lines.append(f"Assunto do bloco: {header.subject}")
@@ -266,6 +275,8 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
         "- Conforto auditivo: não corte no meio de um raciocínio; não deixe uma pergunta sem a resposta.",
         "- Imagem ruim (problemas entre colchetes nos momentos) NÃO é motivo para cortar a fala: a imagem pode "
         "ser coberta depois.",
+        f"- Se {'esta parte do clipe' if data.parts > 1 else 'o clipe'} inteiro não serve para o pedido, responda "
+        "fora: true (sai do bloco) em vez de cortar frase por frase.",
         "",
         "- " + _codes_line(SENTENCE_CODES) + " Uma frase por item: para cortar várias frases seguidas, um item "
         "para cada uma.",
@@ -274,8 +285,8 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
         "",
         data.section.strip(),
         "",
-        'Formato: {"cortar": [{"frase": "código da frase", "motivo": "curto"}], "notas": "curto"}',
-        "Nada a cortar: {\"cortar\": [], \"notas\": \"...\"}",
+        'Formato: {"cortar": [{"frase": "código da frase", "motivo": "curto"}], "fora": false, "notas": "curto"}',
+        "Nada a cortar: {\"cortar\": [], \"fora\": false, \"notas\": \"...\"}",
     ]
     lines += _retry_lines(errors or [])
     return "\n".join(lines)
@@ -288,46 +299,61 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
 class InsertsPromptInput:
     header: BlockHeader
     trecho_lines: list[str]  # "1: S012–S015 (P006, 6 s): texto…"
-    candidate_lines: list[str]  # "A: descrição · lugar · 9 s · B004 (acervo)"
+    candidate_lines: list[str]  # "A: descrição · lugar: lago · 9,0s · B004 (acervo)"
     current_sec: float  # duração do bloco com os cortes da 2a (só a fala)
     library_left: int = 0  # candidatos do acervo que não couberam no pedido
+    spare_sec: Optional[float] = None  # meta do bloco − fala mantida (None = sem meta)
+    own_positions: list[int] = field(default_factory=list)  # onde pode entrar imagem do bloco
+    breath_position_lines: list[str] = field(default_factory=list)  # "2 (troca de lugar: quarto → rua)"
+    breath_max_sec: float = 6.0  # duração máxima de um respiro (`validate.RESPIRO_MAX_SEC`)
 
 
 def build_inserts_prompt(data: InsertsPromptInput, errors: Optional[list[str]] = None) -> str:
-    lines = _header_lines(data.header, "QUAIS IMAGENS SEM FALA ENTRAM ENTRE OS TRECHOS DE FALA")
+    lines = _header_lines(data.header, "SE ENTRA ALGUMA IMAGEM SEM FALA ENTRE OS TRECHOS DE FALA (em geral, nenhuma)")
+    lines.append(f"Duração atual do bloco (só a fala que ficou): {_sec(data.current_sec)}.")
+    if data.spare_sec is not None:
+        lines.append(
+            f"Sobram {round(data.spare_sec)} s neste bloco até o alvo: as imagens escolhidas somam no máximo isso "
+            "(o programa recusa as que passam)."
+        )
+    else:
+        lines.append("Sem alvo para este bloco.")
     lines += [
-        f"Duração atual do bloco (só a fala que ficou): {_sec(data.current_sec)}.",
         "",
-        "Como funciona: a fala do bloco já está decidida, em trechos numerados na ordem do vídeo. Você pode pôr "
-        "imagens sem fala (com o som delas) antes do 1º trecho, entre dois trechos ou no fim. Cada imagem tem uma "
-        "letra. Nenhuma imagem também é uma resposta válida.",
+        "Como funciona: a fala do bloco já está decidida, em trechos numerados na ordem do vídeo. Você PODE pôr "
+        "imagens sem fala (com o som delas) nas posições listadas abaixo; cada imagem tem uma letra. A primeira "
+        "opção é \"nenhum\": a resposta vazia é válida e esperada quando nada for necessário.",
         "",
         "Regras de estilo:",
-        "- Se o bloco está abaixo do alvo, imagens sem fala ajudam a chegar perto; se já passou, use poucas ou "
-        "nenhuma.",
-        "- Uma imagem de abertura antes do 1º trecho (trecho 0) apresenta o lugar; entre trechos, use em mudanças "
-        "de assunto ou de lugar (respiro).",
+        "- Na dúvida, nenhuma imagem.",
+        f"- Respiro (imagem do acervo) é uma pausa curta entre falas, de no máximo {data.breath_max_sec:g} s: só onde "
+        "o lugar muda (as posições listadas), nunca dois seguidos.",
         "- Bloco sem fala: as imagens SÃO o bloco; escolha as que contam aquela parte, na ordem.",
-        "- Imagens do acervo são de outros clipes; as \"do bloco\" são dos clipes deste bloco.",
         "",
         "Trechos de fala (número: frases · clipe · duração: texto):",
         *(data.trecho_lines or ["(nenhum: o bloco não tem fala; use depois_do_trecho = 0)"]),
         "",
-        "Imagens sem fala (letra: descrição · lugar · duração · clipe · de onde):",
-        *(data.candidate_lines or ["(nenhuma)"]),
+        "Opções (letra: descrição · lugar · duração · clipe · de onde):",
+        "- nenhum: não incluir nada (resposta com a lista inserir vazia)",
+        *data.candidate_lines,
     ]
     if data.library_left:
         lines.append(f"(mais {data.library_left} imagem(ns) do acervo não couberam nesta lista)")
+    lines += ["", "Onde cada imagem pode entrar (depois_do_trecho; 0 = antes do 1º trecho):"]
+    own = ", ".join(str(p) for p in data.own_positions) or "nenhuma"
+    lines.append(f"- imagens \"do bloco\": {own}")
+    if data.breath_position_lines:
+        lines.append(f"- respiros (\"acervo\"): {'; '.join(data.breath_position_lines)}")
+    else:
+        lines.append("- respiros (\"acervo\"): nenhuma posição")
     lines += [
         "",
-        "Responda a lista inserir: para cada imagem que entra, depois_do_trecho = o número do trecho depois do qual "
-        "ela entra (0 = antes do 1º trecho; o último número = no fim do bloco), letra = a letra da imagem e, "
-        "opcional, duracao_sec (menor que a da imagem; sem ela, a imagem inteira). Cada letra no máximo uma vez. "
-        "Várias imagens no mesmo lugar entram na ordem da lista.",
+        "Responda a lista inserir: um item por imagem que entra, com depois_do_trecho = uma posição da lista "
+        "acima para aquele tipo de imagem, letra = a letra da imagem e, opcional, duracao_sec (menor que a da "
+        "imagem). Cada letra no máximo uma vez. Várias imagens na mesma posição entram na ordem da lista.",
         "",
-        'Formato: {"inserir": [{"depois_do_trecho": <número>, "letra": "<letra>", "duracao_sec": <segundos ou '
-        'nada>}], "notas": "curto"}',
-        "Nenhuma imagem: {\"inserir\": [], \"notas\": \"...\"}",
+        'Formato: {"inserir": [], "notas": "curto"} (lista vazia = nenhuma imagem; cada item: {"depois_do_trecho": '
+        '<número>, "letra": "<letra>", "duracao_sec": <segundos ou nada>})',
     ]
     lines += _retry_lines(errors or [])
     return "\n".join(lines)
@@ -358,30 +384,31 @@ def build_coverage_prompt(data: CoveragePromptInput, errors: Optional[list[str]]
         lines.append(f"Parte {data.part} de {data.parts} dos trechos deste bloco.")
     lines += [
         "",
-        "Como funciona: a fala continua; a imagem de outro clipe aparece por cima dela, a partir da frase que "
-        "tem a palavra em comum. Para cada trecho abaixo, o programa achou até 4 imagens candidatas, com letra, "
-        f"e a palavra em comum: \"{COVERAGE_SAYS}\" = uma palavra da fala aparece na descrição da imagem; "
+        "Como funciona: os trechos abaixo são de alguém falando para a câmera. A fala continua; a imagem de outro "
+        "clipe pode aparecer por cima dela, a partir da frase que tem a palavra em comum. Para cada trecho, a "
+        "primeira opção é \"nenhuma\" (a imagem de quem fala continua); depois, até 4 imagens candidatas com "
+        f"letra e a palavra em comum: \"{COVERAGE_SAYS}\" = uma palavra da fala aparece na descrição da imagem; "
         f"\"{COVERAGE_PLACE}\" = a imagem é do mesmo lugar onde a fala acontece. A palavra em comum NÃO basta: "
-        "escolha a letra só se a imagem mostra mesmo o que é dito ou o lugar; senão, \"nenhuma\".",
+        "escolha a letra só se a imagem mostra mesmo o que é dito ou o lugar.",
         "",
         "Regras de estilo:",
-        "- Na dúvida, \"nenhuma\": a imagem de quem fala continua.",
-        "- Não tape quem fala para a câmera sem motivo forte; imagem ruim de quem fala (problemas entre "
-        "colchetes) é motivo para cobrir.",
+        "- \"nenhuma\" em todos os trechos é uma resposta válida e esperada quando nenhuma imagem mostra o que é "
+        "dito; na dúvida, \"nenhuma\".",
+        "- Imagem ruim de quem fala (problemas entre colchetes) é motivo para cobrir.",
         "- Cada letra no máximo uma vez.",
         "",
     ]
     for question in data.questions:
         lines.append(question.trecho_line)
+        lines.append("  nenhuma: a imagem de quem fala continua")
         lines += [f"  {c}" for c in question.candidate_lines]
         lines.append("")
     lines += [
-        "Responda a lista coberturas, um item por trecho acima: trecho = o número do trecho, letra = a letra "
-        "escolhida ou \"nenhuma\", palavra = a palavra em comum, copiada da linha da letra escolhida "
-        "(vazia com \"nenhuma\").",
+        "Responda a lista coberturas, um item por trecho acima: trecho = o número do trecho, letra = \"nenhuma\" "
+        "ou a letra escolhida, palavra = vazia com \"nenhuma\", ou a palavra em comum copiada da linha da letra "
+        "escolhida.",
         "",
-        'Formato: {"coberturas": [{"trecho": <número>, "letra": "<letra ou nenhuma>", "palavra": "<palavra>"}], '
-        '"notas": "curto"}',
+        'Formato: {"coberturas": [{"trecho": <número>, "letra": "nenhuma", "palavra": ""}], "notas": "curto"}',
     ]
     lines += _retry_lines(errors or [])
     return "\n".join(lines)
