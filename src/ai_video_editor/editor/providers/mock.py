@@ -9,7 +9,7 @@
   e um respiro de até 2 s (e do que sobra da sobra do bloco) na 1ª posição de respiro oferecida, com a 1ª
   imagem do acervo que NÃO divide palavra com a fala (as que dividem ficam para a cobertura).
 - 2c coberturas: o 1º trecho perguntado com candidato "mostra o que é dito" ganha esse candidato (a 1ª
-  palavra em comum); os outros, "nenhuma".
+  palavra em comum, e em mostra/porque a descrição da imagem e a palavra); os outros, "nenhuma".
 
 `responses` = respostas fixas por passada (`"summary"`, `"structure"`, `"cuts"`, `"inserts"`, `"coverages"`),
 uma por chamada, na ordem; um item pode ser a resposta (modelo ou dict), uma exceção (lançada) ou uma
@@ -146,7 +146,11 @@ class MockEditorAI(EditorAI):
         for number, candidates in request.questions.items():
             says = next((c for c in candidates if c.kind == COVERAGE_SAYS), None)
             if says is not None and not done:
-                items.append({"trecho": number, "letra": says.letter, "palavra": says.words[0]})
+                shows = request.material.moments[says.moment_id].description
+                items.append({
+                    "trecho": number, "letra": says.letter, "palavra": says.words[0], "mostra": shows,
+                    "porque": f"a fala cita {says.words[0]}",
+                })
                 done = True
             else:
                 items.append({"trecho": number, "letra": "nenhuma", "palavra": ""})

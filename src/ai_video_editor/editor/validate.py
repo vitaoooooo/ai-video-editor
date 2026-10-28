@@ -28,6 +28,10 @@ Passada 2, três perguntas por bloco; cada item sozinho (o inválido é descarta
   radical (`material.same_word`), sem palavras genéricas (`material.GENERIC_WORDS`). A cobertura começa na
   frase com a palavra (lugar: a 1ª frase daquele lugar), só entre as frases ditas para a câmera
   (`talking_sentences`), e segue pelas seguintes enquanto couberem na duração do momento (`coverage_span`).
+  Sem palavra em comum que valha, vale a **correspondência explicada**: `mostra` (o que a imagem mostra) tem
+  palavra de conteúdo na descrição/lugar do momento (a evidência visual continua obrigatória) e `porque` cita
+  palavra de conteúdo da fala do trecho (a cobertura começa na frase com essa palavra). Faltando uma das duas,
+  o item é descartado e o trecho fica sem cobertura.
 
 Antes de tudo, os IDs da 2a passam por `editor/ids.py` (`P009.S025` → `S025` só se P009 é o clipe da frase;
 caixa, espaços, zeros à esquerda e lixo de markdown); as trocas ficam em `normalized`. ID recusado leva na
@@ -307,6 +311,7 @@ class CutsCheck(_Check):
     normalized: list[str] = field(default_factory=list)
     out: bool = False  # a IA respondeu fora: true (o clipe ou a parte sai do bloco)
     joined: list[str] = field(default_factory=list)  # "par contínuo S000+S001 mantido junto" (ajustes do código)
+    limit: str = ""  # a IA disse que a meta não dá sem prejudicar a fala (`limite_meta`)
 
     @property
     def removed(self) -> bool:
@@ -323,7 +328,7 @@ class CutsCheck(_Check):
 def validate_cuts(answer: CutsAnswer, free: list[str], material: EditorMaterial) -> CutsCheck:
     """`free`: as frases livres do clipe (ou da parte), em ordem. O que não for cortado fica."""
     answer, normalized = normalize_cuts(answer, material)
-    check = CutsCheck(items=len(answer.cortar), normalized=normalized, out=answer.fora)
+    check = CutsCheck(items=len(answer.cortar), normalized=normalized, out=answer.fora, limit=answer.limite_meta)
     if answer.fora:  # o clipe (ou a parte) inteiro sai: os itens de corte não importam
         check.items = 0
         check.cuts = [CutChoice(sentence_id=s, reason="fora: true") for s in free]
@@ -729,29 +734,27 @@ def validate_coverages(
             continue
         trecho = by_number[number]
         moment = material.moments[candidate.moment_id]
-        word = first_words(raw.palavra)
-        if not content_words(word):
-            check.drop("cobertura", raw, f"sem a palavra em comum (copie uma de: {', '.join(candidate.words)})")
-            continue
         talking = talking_sentences(trecho, material) or trecho.sentence_ids
         speech = " ".join(material.sentences[s].text for s in talking)
-        if candidate.kind == COVERAGE_PLACE:
-            places = " ".join(speech_places(trecho, material))
-            missing = _missing(word, moment.place) or _missing(word, places)
-            if missing:
-                check.drop("cobertura", raw, f"palavra {word!r} não está no lugar da imagem ({moment.place!r}) e no "
-                                             f"da fala ({places!r}): {', '.join(missing)}")
+        word = first_words(raw.palavra)
+        literal = _literal_problem(word, candidate, moment, trecho, speech, raw.letra, number, material)
+        semantic = False
+        if literal is not None:
+            if not (raw.mostra or raw.porque):
+                check.drop("cobertura", raw, literal)
                 continue
-        else:
-            not_said = _missing(word, speech)
-            if not_said:
-                check.drop("cobertura", raw, f"palavra {word!r} não está na fala do trecho {number}: {', '.join(not_said)}")
+            # Correspondência explícita: o que a imagem mostra (na descrição dela) e o que a fala diz (no porquê).
+            shown = matched_words(raw.mostra, moment_visible_text(moment))
+            said = matched_words(raw.porque, speech)
+            if not shown:
+                check.drop("cobertura", raw, f"mostra {raw.mostra!r} não está na descrição/lugar da imagem {raw.letra} "
+                                             f"(\"{first_words(moment_visible_text(moment), 12)}\"): diga o que a imagem mostra")
                 continue
-            not_shown = _missing(word, moment_visible_text(moment))
-            if not_shown:
-                check.drop("cobertura", raw, f"palavra {word!r} não está na descrição/lugar da imagem "
-                                             f"{raw.letra}: {', '.join(not_shown)}")
+            if not said:
+                check.drop("cobertura", raw, f"porque {raw.porque!r} não cita nada da fala do trecho {number}: diga "
+                                             "que parte da fala a imagem ilustra")
                 continue
+            word, semantic = said[0], True
         if moment.id in state.moments or state.conflict(moment.clip_id, moment.start_sec, moment.end_sec):
             check.drop("cobertura", raw, f"a imagem {raw.letra} ({moment.id}) já está no vídeo")
             continue
@@ -767,9 +770,31 @@ def validate_coverages(
         check.coverages.append(CoverageChoice(
             trecho=number, letter=raw.letra, word=word, from_sentence=span[0], to_sentence=span[-1],
             sentence_ids=span, clip_id=trecho.clip_id, moment_ids=[moment.id], kind=candidate.kind or COVERAGE_SAYS,
-            common_words=list(candidate.words), speech_evidence=word, image_evidence=word,
+            common_words=list(candidate.words), speech_evidence=word, image_evidence=raw.mostra or word,
+            reason=raw.porque, semantic=semantic,
         ))
     return check
+
+
+def _literal_problem(word, candidate, moment, trecho, speech, letter, number, material) -> Optional[str]:
+    """Por que a palavra em comum não é evidência (None = é): conteúdo, e está na fala do trecho e na
+    descrição/lugar da imagem (ou, para "mostra o lugar", no lugar da imagem e no da fala)."""
+    if not content_words(word):
+        return f"sem a palavra em comum (copie uma de: {', '.join(candidate.words)})"
+    if candidate.kind == COVERAGE_PLACE:
+        places = " ".join(speech_places(trecho, material))
+        missing = _missing(word, moment.place) or _missing(word, places)
+        if missing:
+            return (f"palavra {word!r} não está no lugar da imagem ({moment.place!r}) e no da fala ({places!r}): "
+                    f"{', '.join(missing)}")
+        return None
+    not_said = _missing(word, speech)
+    if not_said:
+        return f"palavra {word!r} não está na fala do trecho {number}: {', '.join(not_said)}"
+    not_shown = _missing(word, moment_visible_text(moment))
+    if not_shown:
+        return f"palavra {word!r} não está na descrição/lugar da imagem {letter}: {', '.join(not_shown)}"
+    return None
 
 
 def neutral_structure(material: EditorMaterial) -> StructureAnswer:

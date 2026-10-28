@@ -12,7 +12,8 @@ A passada 2 são três perguntas pequenas por bloco, cada uma de um só tipo (me
   posições medidas e até 6 candidatos sem fala com letra; resposta = número do trecho + letra (o código
   converte em IDs). Sem sobra (bloco com fala), não há pergunta.
 - 2c COBERTURAS, um pedido por bloco: só os trechos ditos para a câmera, cada um com até 4 candidatos
-  medidos com letra; resposta = trecho + letra (ou "nenhuma") + a palavra em comum copiada.
+  medidos com letra; resposta = trecho + letra (ou "nenhuma") + a palavra em comum copiada e/ou a
+  correspondência explicada (o que a imagem mostra e por que ilustra a fala).
 
 O pedido do usuário abre todas as perguntas (menos o resumo), com `RESPECT_REQUEST`. Na 2b e na 2c,
 "nenhum" é a primeira opção e a resposta vazia é válida; nenhum exemplo mostra um respiro ou uma cobertura
@@ -28,15 +29,15 @@ refazer os resumos em cache; os IDs que ele copia do exemplo são retirados pelo
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ai_video_editor.editor.schema import COVERAGE_PLACE, COVERAGE_SAYS
+from ai_video_editor.editor.schema import COVERAGE_PLACE, COVERAGE_RELATED, COVERAGE_SAYS
 from ai_video_editor.roteiro.report import clock
 
 # Sobem quando o pedido ou o schema da resposta da passada mudam (invalida só o cache daquela passada).
 SUMMARY_PROMPT_VERSION = "resumo-v1"
-STRUCTURE_PROMPT_VERSION = "estrutura-v7"
-CUTS_PROMPT_VERSION = "cortes-v5"
+STRUCTURE_PROMPT_VERSION = "estrutura-v8"
+CUTS_PROMPT_VERSION = "cortes-v6"
 INSERTS_PROMPT_VERSION = "insercoes-v2"
-COVERAGE_PROMPT_VERSION = "coberturas-v2"
+COVERAGE_PROMPT_VERSION = "coberturas-v3"
 
 # Logo abaixo do pedido, em todas as perguntas (menos o resumo).
 RESPECT_REQUEST = "Faça o que o pedido pede; não acrescente nada que ele não peça; na dúvida, não acrescente."
@@ -47,6 +48,12 @@ STRUCTURE_SUMMARY_WORDS = 25
 TRECHO_WORDS = 30
 # Resumo de cada clipe não usado na nova tentativa da estrutura por falta de duração: até tantas palavras.
 SHORTFALL_SUMMARY_WORDS = 8
+# Contexto de um pedaço/parte de clipe grande (só nesses casos: a decisão depende do que veio antes): o resumo
+# do pedaço anterior e as frases vizinhas, cortados nestes tamanhos. `CONTEXT_MAX_CHARS` é o que o orçamento
+# reserva para esse contexto ao dividir o clipe.
+CONTEXT_SUMMARY_WORDS = 50
+NEIGHBOR_WORDS = 30
+CONTEXT_MAX_CHARS = 700
 # Marca, no roteiro da 2a, da frase que continua na seguinte (par contínuo: corta ou fica junto).
 CONTINUES_MARK = "(continua na próxima)"
 
@@ -113,7 +120,11 @@ def _retry_lines(errors: list[str]) -> list[str]:
 # --- E9: resumo de um clipe (sem mudança: os resumos em cache continuam valendo) ---
 
 
-def build_summary_prompt(section: str, part: int = 1, parts: int = 1, errors: Optional[list[str]] = None) -> str:
+def build_summary_prompt(
+    section: str, part: int = 1, parts: int = 1, errors: Optional[list[str]] = None, previous: str = "",
+) -> str:
+    """`previous` (só do 2º pedaço em diante de um clipe grande): o resumo do pedaço anterior e a última frase
+    dele, para o resumo deste pedaço continuar a história em vez de recomeçar do zero."""
     lines = [
         "Você ajuda um editor de vídeo. Resuma UM clipe do material bruto a partir do roteiro dele: momentos "
         "(trechos com a mesma imagem, descritos por uma IA de visão, com problemas entre colchetes) e frases "
@@ -121,6 +132,8 @@ def build_summary_prompt(section: str, part: int = 1, parts: int = 1, errors: Op
     ]
     if parts > 1:
         lines.append(f"Este é o pedaço {part} de {parts} do clipe (o clipe é grande): resuma só o que está aqui.")
+        if previous:
+            lines.append(f"Contexto do pedaço anterior (só para entender este; não resuma de novo): {previous}")
     lines += [
         "",
         "Campos:",
@@ -228,8 +241,13 @@ def build_structure_prompt(
         "Regras de estilo:",
         "- Um bloco = um trecho da história (ex.: chegada, hotel, trilha, praia, volta), não um tema abstrato; "
         "dentro dele, os clipes na ordem em que devem aparecer.",
-        "- Vlog ou viagem: a ordem dos blocos e dos clipes é a cronológica (a data de gravação quando houver; "
-        "senão, a ordem da lista), a não ser que o pedido peça outra.",
+        "- Cada bloco tem uma função na história: diga em \"assunto\" o que ele conta e o que ele acrescenta ao "
+        "vídeo. Um bloco sem função própria se junta a outro.",
+        "- Continuidade: cada bloco continua o anterior (o espectador entende por que passou de um ao outro); "
+        "evite repetir num bloco o que outro já contou, a não ser que o pedido peça.",
+        "- Ordem: a cronológica (a data de gravação quando houver; senão, a ordem da lista) quando ela ajuda a "
+        "contar a história, como num vlog ou numa viagem; se o pedido permitir uma montagem por tema, os clipes "
+        "podem ser agrupados por assunto.",
         "- Use só os clipes pertinentes ao pedido. Não precisa usar todos: um clipe com \"fala sim\" que você não "
         "puser em nenhum bloco fica fora do vídeo.",
         "- \"fora\": clipes que não devem entrar (repetidos, ruins, fora do assunto), com o motivo.",
@@ -299,6 +317,8 @@ class CutsPromptInput:
     parts: int = 1
     block_clips: int = 1  # clipes com fala no bloco
     continues: list[str] = field(default_factory=list)  # frases que continuam na seguinte (pares contínuos)
+    before: str = ""  # parte de clipe grande: a frase logo antes desta parte (só contexto, sem código)
+    after: str = ""  # e a frase logo depois
 
 
 def mark_continuous(section: str, continues: list[str]) -> str:
@@ -317,14 +337,17 @@ def mark_continuous(section: str, continues: list[str]) -> str:
 
 
 def duration_retry_line(result_sec: float, target_sec: float, low: float, high: float) -> str:
-    """O erro da nova tentativa por duração: os números e quantos segundos cortar ou devolver."""
+    """O erro da nova tentativa por duração: os números, quantos segundos cortar ou devolver e a saída de
+    quando a meta não dá sem prejudicar a fala (o sentido vem antes da duração)."""
     if result_sec > high:
         hint = f"corte cerca de {round(result_sec - target_sec)} s"
+        harm = "se cortar mais prejudica o sentido da fala"
     else:
         hint = f"devolva cerca de {round(target_sec - result_sec)} s (tire frases da lista cortar)"
+        harm = "se devolver frases prejudica a fala"
     return (
         f"duração: ficou {round(result_sec)} s, a meta deste clipe é {round(target_sec)} s (aceito de {round(low)} a "
-        f"{round(high)} s): {hint}"
+        f"{round(high)} s): {hint}; {harm}, ajuste só o que não prejudica e explique em limite_meta"
     )
 
 
@@ -346,6 +369,12 @@ def sentence_retry_lines(above: bool, items: list[tuple[str, float, str]]) -> li
 def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None) -> str:
     part = f" (parte {data.part} de {data.parts} do clipe: decida só sobre as frases desta parte)" if data.parts > 1 else ""
     lines = _header_lines(data.header, f"QUAIS FRASES DO CLIPE {data.clip_id} SAEM do vídeo{part}")
+    if data.before or data.after:
+        lines.append("Frases vizinhas desta parte, de outras partes do clipe (só contexto; não decida sobre elas):")
+        if data.before:
+            lines.append(f"- logo antes: \"{data.before}\"")
+        if data.after:
+            lines.append(f"- logo depois: \"{data.after}\"")
     if data.block_clips > 1:
         lines.append(f"O bloco tem {data.block_clips} clipes com fala; cada um é decidido numa pergunta como esta.")
     if data.target_sec is not None:
@@ -359,6 +388,9 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
         meta = f"Frases deste clipe: {_sec(data.available_sec)} no total. Sem meta de duração: corte só o que não serve."
     lines += [
         meta,
+        "A meta é uma restrição, mas o sentido da fala vem antes: chegue perto dela sem deixar a fala confusa, "
+        "incompleta ou sem a informação que importa. Se não der para chegar à meta sem prejudicar a fala, corte só "
+        "o que não prejudica e diga por quê em limite_meta (uma frase curta); dando, deixe limite_meta vazio.",
         "",
         "Como funciona: POR PADRÃO TODAS AS FRASES FICAM, na ordem do roteiro. Você lista só as que saem.",
         "",
@@ -385,8 +417,8 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
         "motivos para escolher).",
         "",
         'Formato: {"cortar": [{"frase": "código da frase", "motivo": "por que esta frase sai"}], "fora": false, '
-        '"notas": "..."}',
-        "Nada a cortar: {\"cortar\": [], \"fora\": false, \"notas\": \"...\"}",
+        '"limite_meta": "", "notas": "..."}',
+        "Nada a cortar: {\"cortar\": [], \"fora\": false, \"limite_meta\": \"\", \"notas\": \"...\"}",
     ]
     lines += _retry_lines(errors or [])
     return "\n".join(lines)
@@ -485,11 +517,19 @@ def build_coverage_prompt(data: CoveragePromptInput, errors: Optional[list[str]]
     lines += [
         "",
         "Como funciona: os trechos abaixo são de alguém falando para a câmera. A fala continua; a imagem de outro "
-        "clipe pode aparecer por cima dela, a partir da frase que tem a palavra em comum. Para cada trecho, a "
-        "primeira opção é \"nenhuma\" (a imagem de quem fala continua); depois, até 4 imagens candidatas com "
-        f"letra e a palavra em comum: \"{COVERAGE_SAYS}\" = uma palavra da fala aparece na descrição da imagem; "
-        f"\"{COVERAGE_PLACE}\" = a imagem é do mesmo lugar onde a fala acontece. A palavra em comum NÃO basta: "
-        "escolha a letra só se a imagem mostra mesmo o que é dito ou o lugar.",
+        "clipe pode aparecer por cima dela, a partir da frase que ela ilustra. Para cada trecho, a primeira opção é "
+        "\"nenhuma\" (a imagem de quem fala continua); depois, até 4 imagens candidatas com letra: "
+        f"\"{COVERAGE_SAYS}\" = uma palavra da fala aparece na descrição da imagem; \"{COVERAGE_PLACE}\" = a "
+        f"imagem é do mesmo lugar onde a fala acontece; \"{COVERAGE_RELATED}\" = só as tags da imagem lembram a "
+        "fala (as tags podem estar erradas: julgue pela descrição).",
+        "",
+        "Evidência (obrigatória para escolher uma letra): a imagem precisa mostrar de verdade o que é dito ou o lugar.",
+        "- Diga em mostra o que a imagem realmente mostra, com as palavras da descrição dela, e em porque, em "
+        "poucas palavras, que parte da fala ela ilustra (cite a palavra da fala) e por quê.",
+        "- Em palavra, copie a palavra em comum da linha da letra quando ela existir; quando a imagem ilustra a "
+        "fala com outras palavras (o mesmo objeto, ação ou lugar dito de outro jeito), deixe palavra vazia: mostra "
+        "e porque são a evidência.",
+        "- Sem evidência suficiente, \"nenhuma\". Uma palavra em comum sozinha não basta.",
         "",
         "Regras de estilo:",
         "- \"nenhuma\" em todos os trechos é uma resposta válida e esperada quando nenhuma imagem mostra o que é "
@@ -505,10 +545,10 @@ def build_coverage_prompt(data: CoveragePromptInput, errors: Optional[list[str]]
         lines.append("")
     lines += [
         "Responda a lista coberturas, um item por trecho acima: trecho = o número do trecho, letra = \"nenhuma\" "
-        "ou a letra escolhida, palavra = vazia com \"nenhuma\", ou a palavra em comum copiada da linha da letra "
-        "escolhida.",
+        "ou a letra escolhida; com \"nenhuma\", palavra, mostra e porque vazios.",
         "",
-        'Formato: {"coberturas": [{"trecho": <número>, "letra": "nenhuma", "palavra": ""}], "notas": "curto"}',
+        'Formato: {"coberturas": [{"trecho": <número>, "letra": "nenhuma", "palavra": "", "mostra": "", '
+        '"porque": ""}], "notas": "curto"}',
     ]
     lines += _retry_lines(errors or [])
     return "\n".join(lines)

@@ -77,6 +77,8 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         if len(cut.tries) > 1 or cut.chosen_attempt == 0:
             used = "usado o clipe inteiro (sem cortes)" if cut.chosen_attempt == 0 else f"usada a {cut.chosen_attempt}"
             lines.append("  - tentativas: " + " · ".join(_try_text(t) for t in cut.tries) + f" → {used}")
+        if cut.target_limit:
+            lines.append(f"  - IA: a meta não dá sem prejudicar a fala — {_cell(cut.target_limit)}")
         if cut.kept_whole:
             lines.append("  - **IA cortou tudo sem dizer fora; mantido inteiro**")
         lines += [f"  - {_cell(j)}" for j in cut.joined]
@@ -122,10 +124,16 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
                 f"~{_tokens(sub.estimated_tokens)} tokens"
             )
         for coverage in sub.coverages:
-            lines.append(
+            evidence = "correspondência explicada, fala" if coverage.semantic else "palavra"
+            line = (
                 f"- trecho {coverage.trecho} → {coverage.letter} → {', '.join(coverage.moment_ids)} · {coverage.kind} · "
-                f"palavra \"{_cell(coverage.word)}\" · cobre {coverage.from_sentence}–{coverage.to_sentence}"
+                f"{evidence} \"{_cell(coverage.word)}\" · cobre {coverage.from_sentence}–{coverage.to_sentence}"
             )
+            if coverage.image_evidence and coverage.image_evidence != coverage.word:
+                line += f" · mostra: {_cell(_short(coverage.image_evidence, 80))}"
+            if coverage.reason:
+                line += f" · porque: {_cell(_short(coverage.reason, 80))}"
+            lines.append(line)
         if sub.nones:
             lines.append(f"- \"nenhuma\" nos trechos {', '.join(str(n) for n in sub.nones)}")
         lines += [f"- tentativa recusada: {_cell(_short(a, 300))}" for a in sub.attempts]

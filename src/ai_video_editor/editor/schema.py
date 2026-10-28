@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator, model_serializer, model_
 from ai_video_editor.llm.schema import ModelSwitch
 
 # Sobe quando o formato do editor_run.json / editor_plano.json muda.
-EDITOR_SCHEMA_VERSION = 7
+EDITOR_SCHEMA_VERSION = 8
 
 MAX_HIGHLIGHTS = 3
 MAX_PROBLEMS = 3
@@ -253,11 +253,21 @@ class CutItem(BaseModel):
 
 class CutsAnswer(BaseModel):
     """Resposta da 2a para um clipe (ou parte): as frases que saem; o resto fica. `fora` = o clipe (ou a
-    parte) inteiro sai do bloco (decisão da IA)."""
+    parte) inteiro sai do bloco (decisão da IA). `limite_meta` = a IA diz por que não dá para chegar à meta
+    sem prejudicar a fala (vazio = não há limite)."""
 
     cortar: list[CutItem] = Field(default_factory=list)
     fora: bool = False
+    limite_meta: str = ""
     notas: str = ""
+
+    @field_validator("limite_meta", mode="before")
+    @classmethod
+    def _limit(cls, value):
+        text = _text(value)
+        if text.lower() in {"", "-", "nenhum", "nenhuma", "não", "nao", "none", "null"}:
+            return ""
+        return text if len(text) <= MAX_REASON_CHARS else text[: MAX_REASON_CHARS - 1].rstrip() + "…"
 
     @field_validator("fora", mode="before")
     @classmethod
@@ -308,11 +318,20 @@ class InsertsAnswer(BaseModel):
 
 
 class CoverageItem(BaseModel):
-    """Cobertura da 2c: o trecho, a letra escolhida (ou "nenhuma") e a palavra em comum copiada."""
+    """Cobertura da 2c: o trecho, a letra escolhida (ou "nenhuma"), a palavra em comum copiada e, para a
+    correspondência sem palavra em comum, o que a imagem mostra e por que ela ilustra a fala."""
 
     trecho: Optional[float] = None
     letra: Optional[str] = None
     palavra: str = ""
+    mostra: str = ""
+    porque: str = ""
+
+    @field_validator("mostra", "porque", mode="before")
+    @classmethod
+    def _explain(cls, value):
+        text = _text(value)
+        return text if len(text) <= MAX_REASON_CHARS else text[: MAX_REASON_CHARS - 1].rstrip() + "…"
 
     @field_validator("trecho", mode="before")
     @classmethod
@@ -346,10 +365,13 @@ class CoveragesAnswer(BaseModel):
         return _text(value)
 
 
-# Tipos de cobertura (do candidato medido pelo código; aparecem no pedido e no relatório).
+# Tipos de cobertura (do candidato medido pelo código; aparecem no pedido e no relatório). RELATED: as tags da
+# imagem dividem palavra com a fala, mas a descrição não (as tags só indicam a candidata; a evidência é a
+# correspondência explicada pela IA e conferida contra a descrição e a fala).
 COVERAGE_SAYS = "mostra o que é dito"
 COVERAGE_PLACE = "mostra o lugar"
-CoverageKind = Literal["mostra o que é dito", "mostra o lugar"]
+COVERAGE_RELATED = "relacionada pelas tags"
+CoverageKind = Literal["mostra o que é dito", "mostra o lugar", "relacionada pelas tags"]
 
 
 # --- o que o código registra ---
@@ -530,6 +552,9 @@ class CoverageChoice(BaseModel):
     speech_evidence: str = ""
     image_evidence: str = ""
     reason: str = ""
+    semantic: bool = Field(
+        default=False, description="Aceita pela correspondência explicada (mostra/porque), sem palavra em comum"
+    )
 
 
 class CutAttempt(BaseModel):
@@ -564,6 +589,9 @@ class CutRun(BaseModel):
         default=None, description="A tentativa usada (a mais perto da meta); 0 = o clipe inteiro, sem cortes"
     )
     kept_whole: bool = Field(default=False, description="A IA cortou tudo sem fora: true; o clipe entrou inteiro")
+    target_limit: str = Field(
+        default="", description="A IA disse que não dá para chegar à meta sem prejudicar a fala (o porquê)"
+    )
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)
     attempts: list[str] = Field(default_factory=list)

@@ -29,7 +29,9 @@ sobra (ou sem alvo) não tem pergunta 2b. Com sobra, o pedido informa a sobra, a
 (`validate.insert_positions`: respiro só no começo de um bloco que não é o 1º, ou numa troca de lugar, nunca
 onde a fala continua) e até `INSERT_CANDIDATES` imagens: primeiro as sem fala do próprio bloco, depois as do
 acervo com afinidade medida com os trechos vizinhos das posições de respiro (`material.breath_affinity`),
-depois o resto. 2c: só trechos ditos para a câmera (`validate.talking_sentences`) recebem candidatos.
+depois o resto. 2c: só trechos ditos para a câmera (`validate.talking_sentences`) recebem candidatos: os com
+palavra em comum ou mesmo lugar e, nas vagas que sobram, até `RELATED_CANDIDATES` relacionados só pelas tags
+(para a correspondência explicada; a evidência é conferida na descrição da imagem e na fala).
 
 Nova tentativa (uma, com a lista de erros): estrutura sem bloco válido; qualquer pergunta da passada 2 com
 metade ou mais dos itens inválida; 2a com todas as frases cortadas sem `fora: true` (`validate.ALL_CUT`) ou
@@ -68,6 +70,7 @@ from ai_video_editor.editor.material import (
     coverage_matches,
     library_ranking,
     request_duration,
+    tag_matches,
 )
 from ai_video_editor.editor.prompt import (
     COVERAGE_PROMPT_VERSION,
@@ -77,6 +80,9 @@ from ai_video_editor.editor.prompt import (
     STRUCTURE_PROMPT_VERSION,
     STRUCTURE_SUMMARY_WORDS,
     SUMMARY_PROMPT_VERSION,
+    CONTEXT_MAX_CHARS,
+    CONTEXT_SUMMARY_WORDS,
+    NEIGHBOR_WORDS,
     TRECHO_WORDS,
     BlockHeader,
     CoveragePromptInput,
@@ -104,6 +110,7 @@ from ai_video_editor.editor.provider import (
 )
 from ai_video_editor.editor.schema import (
     COVERAGE_PLACE,
+    COVERAGE_RELATED,
     COVERAGE_SAYS,
     Block,
     CallStats,
@@ -180,6 +187,9 @@ ALL_CUT_KEPT = "IA cortou tudo sem dizer fora; mantido inteiro"
 STRUCTURE_MIN_RATIO = 0.85
 # Candidatos de cobertura listados por trecho na 2c.
 COVERAGE_CANDIDATES = 4
+# Das vagas que sobram na 2c, no máximo tantas vão para imagens relacionadas só pelas tags (candidatas a uma
+# correspondência explicada pela IA; sem elas, uma imagem sem palavra em comum nunca seria oferecida).
+RELATED_CANDIDATES = 2
 # Candidatos com letra na 2b de um bloco com fala (imagens do bloco primeiro, depois o acervo). Num bloco sem
 # fala, as imagens do próprio bloco vão todas (elas são o bloco) e o acervo só preenche até este número.
 INSERT_CANDIDATES = 6
@@ -449,7 +459,8 @@ class EditorService:
         current: list[str] = []
         for moment in material.clip_moments.get(clip_id, []):
             trial = current + [moment.id]
-            if current and tokens(build_summary_prompt(material.section(clip_id, trial), 2, 2)) > available:
+            reserved = "x" * CONTEXT_MAX_CHARS  # o contexto do pedaço anterior também tem que caber
+            if current and tokens(build_summary_prompt(material.section(clip_id, trial), 2, 2, previous=reserved)) > available:
                 parts.append(current)
                 trial = [moment.id]
             current = trial
@@ -462,11 +473,12 @@ class EditorService:
         summary = ClipSummary(clip_id=clip_id, parts=len(parts))
         answers: list[ClipSummaryAnswer] = []
         errors_seen: list[str] = []
+        previous = ""
         for k, moment_ids in enumerate(parts, start=1):
             unit = clip_id + (f" ({k}/{len(parts)})" if len(parts) > 1 else "")
             self._progress(f"resumo {unit}")
             section = material.section(clip_id, moment_ids)
-            prompt = build_summary_prompt(section, k, len(parts))
+            prompt = build_summary_prompt(section, k, len(parts), previous=previous)
             key = self.key("resumos", SUMMARY_PROMPT_VERSION, prompt)
             answer = self.cache.load("resumos", key, ClipSummaryAnswer)
             if answer is not None:
@@ -477,7 +489,7 @@ class EditorService:
                 errors: list[str] = []
                 for attempt in range(1, MAX_ATTEMPTS + 1):
                     request = SummaryRequest(
-                        clip_id=clip_id, prompt=build_summary_prompt(section, k, len(parts), errors),
+                        clip_id=clip_id, prompt=build_summary_prompt(section, k, len(parts), errors, previous),
                         material=material, moment_ids=moment_ids, part=k, parts=len(parts),
                     )
                     answer, error = self._ask(self.ai.summarize, request, stats, "resumo", unit, attempt)
@@ -489,6 +501,7 @@ class EditorService:
                         break
                 errors_seen += errors if answer is None else []
             self.calls_done += 1
+            previous = self._part_context(answer, moment_ids) if len(parts) > 1 else ""
             if answer is not None:
                 answers.append(self._clean_summary(clip_id, answer, summary))
             elif len(parts) > 1:
@@ -499,6 +512,24 @@ class EditorService:
         summary.answer = _join_summaries(answers)
         summary.origin = "cache" if summary.cached_parts == len(parts) else "ia"
         return summary
+
+    def _part_context(self, answer: Optional[ClipSummaryAnswer], moment_ids: Optional[list[str]]) -> str:
+        """Contexto para o próximo pedaço: o resumo deste (se houve) e a última frase dele."""
+        parts = []
+        if answer is not None:
+            parts.append(f"resumo: {short_text(answer.resumo, CONTEXT_SUMMARY_WORDS)}")
+        sentences = self.material.moment_sentences(moment_ids or [])
+        if sentences:
+            parts.append(f"última frase: \"{short_text(sentences[-1].text, NEIGHBOR_WORDS)}\"")
+        return "; ".join(parts)
+
+    def _neighbors(self, part_ids: list[str], ids: list[str]) -> tuple[str, str]:
+        """Frases logo antes e logo depois de uma parte de clipe grande (texto curto, sem código)."""
+        if not part_ids or len(part_ids) == len(ids):
+            return "", ""
+        first, last = ids.index(part_ids[0]), ids.index(part_ids[-1])
+        text = lambda k: short_text(self.material.sentences[ids[k]].text, NEIGHBOR_WORDS)  # noqa: E731
+        return (text(first - 1) if first > 0 else ""), (text(last + 1) if last + 1 < len(ids) else "")
 
     def _clean_summary(self, clip_id: str, answer: ClipSummaryAnswer, summary: ClipSummary) -> ClipSummaryAnswer:
         """Normaliza os IDs dos destaques/problemas (`editor/ids.py`) e tira os que não são do clipe (só
@@ -762,7 +793,9 @@ class EditorService:
                 if target is not None and len(parts) > 1:
                     part_target = round(target * sentences_sec(material, ids) / clip_sec, 1) if clip_sec > 0 else None
                 unit_id = f"{block.id}.{clip_id}" + (_suffix(k - 1) if len(parts) > 1 else "")
-                cut_run = self._cuts(header, unit_id, clip_id, moment_ids, ids, part_target, k, len(parts), asked)
+                cut_run = self._cuts(
+                    header, unit_id, clip_id, moment_ids, ids, part_target, k, len(parts), asked, free[clip_id],
+                )
                 detail.cut_runs.append(cut_run)
                 kept += cut_run.kept_ids
             if all(r.removed for r in detail.cut_runs[runs_before:]):
@@ -834,10 +867,11 @@ class EditorService:
         available = self.budget.cuts_available
 
         def prompt(moment_ids: Optional[list[str]], part_ids: list[str], parts: int) -> str:
+            before, after = self._neighbors(part_ids, ids)
             return build_cuts_prompt(CutsPromptInput(
                 header=header, clip_id=clip_id, section=material.section(clip_id, moment_ids),
                 available_sec=sentences_sec(material, part_ids), target_sec=target, part=1, parts=parts,
-                block_clips=block_clips, continues=continuing_sentences(part_ids, material),
+                block_clips=block_clips, continues=continuing_sentences(part_ids, material), before=before, after=after,
             ))
 
         if tokens(prompt(None, ids, 1)) <= available:
@@ -903,14 +937,16 @@ class EditorService:
 
     def _cuts(
         self, header: BlockHeader, unit_id: str, clip_id: str, moment_ids: Optional[list[str]], ids: list[str],
-        target: Optional[float], part: int, parts: int, block_clips: int,
+        target: Optional[float], part: int, parts: int, block_clips: int, clip_ids: Optional[list[str]] = None,
     ) -> CutRun:
+        """`ids`: as frases desta parte; `clip_ids`: as do clipe inteiro (para as frases vizinhas da parte)."""
         material = self.material
         self._progress(f"cortes {unit_id}")
+        before, after = self._neighbors(ids, clip_ids or ids)
         data = CutsPromptInput(
             header=header, clip_id=clip_id, section=material.section(clip_id, moment_ids),
             available_sec=round(sentences_sec(material, ids), 3), target_sec=target, part=part, parts=parts,
-            block_clips=block_clips, continues=continuing_sentences(ids, material),
+            block_clips=block_clips, continues=continuing_sentences(ids, material), before=before, after=after,
         )
         run = CutRun(
             unit_id=unit_id, clip_id=clip_id, moment_ids=moment_ids, origin="ia", available_sec=data.available_sec,
@@ -924,7 +960,8 @@ class EditorService:
                 target_sec=target,
             ),
             call=self.ai.cuts, check_of=lambda answer: validate_cuts(answer, ids, material), stats=run.stats,
-            extra_problem=lambda check: None if check.removed else self._duration_problem(check, target),
+            # Meta fora com limite_meta: a IA já disse que não dá sem prejudicar a fala; sem nova tentativa.
+            extra_problem=lambda check: None if check.removed or check.limit else self._duration_problem(check, target),
             retry_details=lambda check: self._cut_list(check, target),
             choose=lambda checks: _closest_cut(checks, target),
         )
@@ -951,7 +988,8 @@ class EditorService:
             run.origin = decision.origin  # type: ignore[assignment]
             run.notes = decision.answer.notas
             run.normalized_ids = check.normalized
-            problem = decision.problem
+            run.target_limit = check.limit
+            problem = decision.problem or (self._duration_problem(check, target) if check.limit else None)
             # Resposta fora da meta ± tolerância (ou que corta tudo): "sem cortes" também concorre (empate: a IA).
             if not check.out and target is not None and (problem or not check.kept):
                 whole = validate_cuts(CutsAnswer(), ids, material)
@@ -970,7 +1008,10 @@ class EditorService:
                 run.warnings.append(f"aceitos os itens válidos; {len(check.discarded)} item(ns) inválido(s) descartado(s)")
             if problem:
                 run.duration_off = True
-                run.warnings.append(f"fora da meta depois da nova tentativa, aceito assim ({problem})")
+                if check.limit:
+                    run.warnings.append(f"fora da meta: a IA diz que não dá sem prejudicar a fala ({check.limit})")
+                else:
+                    run.warnings.append(f"fora da meta depois da nova tentativa, aceito assim ({problem})")
             if check.removed and not check.out:  # só listas que cortam tudo: tirar o clipe não é da 2a
                 check = validate_cuts(CutsAnswer(), ids, material)
                 run.kept_whole = True
@@ -1148,6 +1189,9 @@ class EditorService:
             matches = coverage_matches(
                 speech, speech_places(spoken, material), options, COVERAGE_CANDIDATES, COVERAGE_SAYS, COVERAGE_PLACE,
             )
+            room = min(RELATED_CANDIDATES, COVERAGE_CANDIDATES - len(matches))
+            if room > 0:
+                matches += tag_matches(speech, options, {m.moment.id for m in matches}, room, COVERAGE_RELATED)
             if not matches:
                 continue
             candidates = []
@@ -1343,16 +1387,18 @@ def _coverage_trecho_line(trecho: Trecho, material: EditorMaterial) -> str:
 
 
 def _coverage_line(candidate: Candidate, material: EditorMaterial) -> str:
-    """`C: descrição · lugar: lago · 9,0s · D001 [problemas] — mostra o que é dito; em comum: lago`"""
+    """`C: descrição · lugar: lago · 9,0s · D001 [problemas] — mostra o que é dito; em comum: lago` (relacionada
+    pelas tags: `— sem palavra em comum na descrição; tags em comum: lago`)."""
     moment = material.moments[candidate.moment_id]
     parts = [moment.description or "(sem descrição)"]
     if moment.place:
         parts.append(f"lugar: {moment.place}")
     parts += [_fmt_sec(moment.duration), moment.clip_id]
-    return (
-        f"{candidate.letter}: {' · '.join(parts)}{_issues(moment)} — {candidate.kind}; "
-        f"em comum: {', '.join(candidate.words)}"
-    )
+    if candidate.kind == COVERAGE_RELATED:
+        why = f"sem palavra em comum na descrição; tags em comum: {', '.join(candidate.words)}"
+    else:
+        why = f"{candidate.kind}; em comum: {', '.join(candidate.words)}"
+    return f"{candidate.letter}: {' · '.join(parts)}{_issues(moment)} — {why}"
 
 
 def _join_summaries(answers: list[ClipSummaryAnswer]) -> ClipSummaryAnswer:

@@ -352,6 +352,21 @@ def coverage_matches(
     return [item[3] for item in found[:limit]]
 
 
+def tag_matches(speech: str, candidates: Iterable[Moment], exclude: set[str], limit: int, kind: str) -> list[CoverageMatch]:
+    """Até `limit` momentos (fora de `exclude`) cujas TAGS dividem palavra de conteúdo com a fala: candidatas a
+    uma correspondência semântica. As tags têm erros, então não são evidência; só põem a imagem na lista para a
+    IA julgar o que ela mostra. Ordem: mais palavras em comum; empate na ordem recebida."""
+    found: list[tuple[int, int, CoverageMatch]] = []
+    for n, moment in enumerate(candidates):
+        if moment.id in exclude or not moment.tags:
+            continue
+        shared = common_words(speech, " ".join(moment.tags))
+        if shared:
+            found.append((-len(shared), n, CoverageMatch(moment, kind, shared)))
+    found.sort(key=lambda item: item[:2])
+    return [item[2] for item in found[:limit]]
+
+
 def breath_affinity(moment: Moment, neighbor_text: str, neighbor_places: list[str]) -> list[str]:
     """Afinidade medida de um momento do acervo com os trechos vizinhos de uma posição de respiro: o lugar
     (igual a um lugar vizinho) e as palavras de conteúdo em comum com a fala/lugares vizinhos (descrição e

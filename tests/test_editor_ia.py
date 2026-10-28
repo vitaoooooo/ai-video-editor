@@ -1266,7 +1266,7 @@ def test_the_request_opens_every_question_with_the_respect_rule(material, tmp_pa
     assert ai.calls["summary"][0].prompt.startswith("Você ajuda um editor")  # o resumo (E9) continua igual
     # Sem exemplo de respiro ou cobertura escolhida: o formato mostra a lista vazia / "nenhuma".
     assert '"inserir": [], "notas"' in prompts[2]
-    assert '{"trecho": <número>, "letra": "nenhuma", "palavra": ""}' in prompts[3]
+    assert '{"trecho": <número>, "letra": "nenhuma", "palavra": "", "mostra": "", "porque": ""}' in prompts[3]
     assert "TODO clipe" not in prompts[0] and "Não precisa usar todos" in prompts[0]
 
 
@@ -1373,7 +1373,8 @@ def test_cuts_below_the_target_retry_listing_the_cut_sentences_even_when_skipped
     cut_run = run.details[0].cut_runs[0]
     assert [c.sentence_id for c in cut_run.cuts] == ["S002"] and cut_run.result_sec == pytest.approx(6.5)
     assert cut_run.attempts == [
-        "duração: ficou 4 s, a meta deste clipe é 9 s (aceito de 6 a 12 s): devolva cerca de 4 s (tire frases da lista cortar)"
+        "duração: ficou 4 s, a meta deste clipe é 9 s (aceito de 6 a 12 s): devolva cerca de 4 s (tire frases da lista "
+        "cortar); se devolver frases prejudica a fala, ajuste só o que não prejudica e explique em limite_meta"
     ]
 
 
@@ -1544,6 +1545,112 @@ def test_another_target_invalidates_the_cached_structure(material, tmp_path):
     other = MockEditorAI({"structure": [both]})
     _service(material, tmp_path, other, context=EditorContext(request="vlog", target_sec=15)).run()
     assert len(other.calls["structure"]) == 1
+
+
+def test_structure_prompt_asks_for_narrative_function_continuity_and_flexible_order(material, tmp_path):
+    ai = MockEditorAI()
+    _service(material, tmp_path, ai).run()
+    prompt = ai.calls["structure"][0].prompt
+    assert "Cada bloco tem uma função na história" in prompt and "continua o anterior" in prompt
+    assert "evite repetir num bloco o que outro já contou" in prompt
+    assert "quando ela ajuda a contar a história" in prompt and "montagem por tema" in prompt
+
+
+def test_cuts_put_meaning_before_the_target_and_the_ai_can_report_the_limit(material, tmp_path, monkeypatch):
+    monkeypatch.setattr(editor_service, "CUT_EXCESS_RATIO", 1.15)
+    limit = {"cortar": ["S000"], "limite_meta": "cortar mais tira a explicação da trilha"}  # 7 s para meta 4,5 s
+    ai = MockEditorAI({"structure": [_structure((("P001",), 4.5))], "cuts": [limit]})
+    run = _service(material, tmp_path, ai).run()
+    prompt = ai.calls["cuts"][0].prompt
+    assert "A meta é uma restrição, mas o sentido da fala vem antes" in prompt
+    assert '"limite_meta": ""' in prompt
+    assert len(ai.calls["cuts"]) == 1  # a IA já disse que não dá: sem nova tentativa por duração
+    cut_run = run.details[0].cut_runs[0]
+    assert cut_run.result_sec == 7.0 and cut_run.duration_off and cut_run.chosen_attempt == 1
+    assert cut_run.target_limit == "cortar mais tira a explicação da trilha"
+    assert any("a IA diz que não dá sem prejudicar a fala" in w for w in run.warnings)
+    plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
+    report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
+    assert "IA: a meta não dá sem prejudicar a fala — cortar mais tira a explicação da trilha" in report
+    assert CutsAnswer.model_validate({"limite_meta": "nenhum"}).limite_meta == ""
+
+
+def test_context_of_the_previous_piece_only_for_split_clips(material, tmp_path):
+    whole = tokens(build_summary_prompt(material.section("P001")))
+    reserved = editor_budget.SUMMARY_OUTPUT_TOKENS + editor_budget.MARGIN_TOKENS + editor_budget.RETRY_TOKENS
+    ai = MockEditorAI()
+    _service(material, tmp_path, ai, num_ctx=whole + reserved - 10).run()
+    first, second = [r.prompt for r in ai.calls["summary"] if r.clip_id == "P001"]
+    assert "Contexto do pedaço anterior" not in first
+    assert "Contexto do pedaço anterior (só para entender este; não resuma de novo): resumo: Clipe P001" in second
+    assert 'última frase: "O mar está muito azul."' in second
+    p002 = next(r.prompt for r in ai.calls["summary"] if r.clip_id == "P002")
+    assert "Contexto do pedaço anterior" not in p002  # clipe inteiro: o pedido de sempre
+
+    big = make_big_material(tmp_path / "b", sentences=120)
+    ai = MockEditorAI({"structure": [_structure((("P001",), 200))]})
+    _service(big, tmp_path / "b", ai, num_ctx=8192).run()
+    by_unit = {}
+    for request in ai.calls["cuts"]:
+        by_unit.setdefault(request.unit_id, request.prompt)  # o 1º pedido de cada parte (sem a nova tentativa)
+    first_part, second_part = by_unit["B01.P001a"], by_unit["B01.P001b"]
+    assert "- logo depois:" in first_part and "- logo antes:" not in first_part
+    assert "- logo antes:" in second_part and "não decida sobre elas" in second_part
+    ai = MockEditorAI({"structure": [_structure((("P001",), 9))]})
+    _service(material, tmp_path / "c", ai).run()
+    assert "logo antes" not in ai.calls["cuts"][0].prompt  # clipe num pedido só: sem frases vizinhas
+
+
+def make_semantic_material(tmp_path: Path) -> EditorMaterial:
+    """P001 fala do almoço para a câmera; B001 mostra um prato de comida (a palavra "almoço" só nas tags)."""
+    clips = [_clip("P001", "principal", 1, 8.0, True), _clip("B001", "broll", 2, 6.0, False)]
+    moments = [
+        _moment("P001", 1, 0.0, 8.0, "pessoa falando na varanda", "varanda", ["pessoa"], ["S000", "S001"], talking=True),
+        _moment("B001", 1, 0.0, 6.0, "prato de comida na mesa", "restaurante", ["almoço", "comida"]),
+    ]
+    sentences = [
+        _sentence(0, "P001", 0.5, 3.5, "Hoje tivemos um almoço delicioso.", "P001.M01"),
+        _sentence(1, "P001", 4.0, 7.5, "Depois seguimos viagem.", "P001.M01"),
+    ]
+    roteiro = ProjectRoteiro(project_dir=tmp_path, source=tmp_path, kind="pasta", interval_sec=2.0, clips=clips,
+                             moments=moments, sentences=sentences)
+    return EditorMaterial.from_roteiro(roteiro)
+
+
+def test_coverage_accepts_an_explained_correspondence_with_visual_evidence(tmp_path):
+    material = make_semantic_material(tmp_path)
+
+    def answer(request):
+        [(number, [candidate])] = request.questions.items()
+        return {"coberturas": [{"trecho": number, "letra": candidate.letter, "palavra": "",
+                                "mostra": "um prato de comida na mesa", "porque": "ilustra o almoço que ela conta"}]}
+
+    ai = MockEditorAI({"structure": [_structure((("P001",), 7))], "coverages": [answer]})
+    run = _service(material, tmp_path, ai).run()
+    prompt = ai.calls["coverages"][0].prompt
+    assert "relacionada pelas tags" in prompt and "sem palavra em comum na descrição; tags em comum: almoco" in prompt
+    assert "Diga em mostra o que a imagem realmente mostra" in prompt
+    [coverage] = run.details[0].coverages
+    assert coverage.semantic and coverage.moment_ids == ["B001.M01"] and coverage.sentence_ids[0] == "S000"
+    assert (coverage.word, coverage.image_evidence) == ("almoco", "um prato de comida na mesa")
+    plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
+    report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
+    assert 'correspondência explicada, fala "almoco"' in report and "porque: ilustra o almoço" in report
+
+    trechos = run.details[0].trechos
+    [[candidate]] = [c for c in [ai.calls["coverages"][0].questions[1]]]
+    questions = {1: [candidate]}
+    letter = candidate.letter
+
+    def check(item):
+        return validate_coverages(CoveragesAnswer.model_validate({"coberturas": [{"trecho": 1, "letra": letter, **item}]}),
+                                  questions, trechos, material, Usage())
+
+    # Sem evidência suficiente: o item sai e o trecho fica sem cobertura.
+    assert check({"mostra": "montanha nevada", "porque": "fala do almoço"}).discarded[0].reason.startswith(
+        "mostra 'montanha nevada' não está na descrição/lugar da imagem")
+    assert "não cita nada da fala do trecho 1" in check({"mostra": "prato de comida", "porque": "imagem bonita"}).discarded[0].reason
+    assert check({"palavra": ""}).discarded[0].reason.startswith("sem a palavra em comum")
 
 
 def test_structure_shortfall_list_fits_the_retry_room_with_41_clips(tmp_path):
