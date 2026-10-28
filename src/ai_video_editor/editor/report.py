@@ -137,31 +137,37 @@ def build_editor_report(
     lines += [f"Acervo (cobertura e respiros): {', '.join(structure.library_clip_ids) or 'nenhum'}", ""]
 
     lines += ["## Blocos (passada 2)", ""]
-    kept_ids = {sid for d in run.details for k in d.keep for sid in k.sentence_ids}
     for detail in run.details:
         lines += [f"### {detail.unit_id} — {', '.join(detail.clip_ids)} ({_ORIGIN[detail.origin]})", ""]
         if detail.notes:
             lines.append(f"Notas da IA: {_cell(detail.notes)}")
+        off = " · **fora do alvo**" if detail.duration_off else ""
+        lines.append(
+            f"Duração: frases disponíveis {_sec(detail.available_sec)} → resultante {_sec(detail.result_sec)} → "
+            f"alvo {_sec(detail.target_sec)}{off}"
+        )
         lines.append(
             f"Pedido: ~{_tokens(detail.estimated_tokens)} tokens · acervo oferecido: {len(detail.library_offered)} momento(s)"
         )
+        if detail.clip_order and detail.clip_order != detail.clip_ids:
+            lines.append(f"Ordem dos clipes (da IA): {', '.join(detail.clip_order)}")
         for keep in detail.keep:
             if keep.kind == "frases":
                 lines.append(f"- ficou: {keep.from_sentence}–{keep.to_sentence} ({keep.clip_id}, {len(keep.sentence_ids)} frase(s))")
             else:
                 extra = f", {keep.duration_sec:g}s" if keep.duration_sec else ""
-                lines.append(f"- ficou: momento {keep.moment_id}{extra}")
-        unit_sentences = [
-            s for c in detail.clip_ids for s in material.clip_sentences.get(c, [])
-            if detail.moment_ids is None or (s.moment_ids and s.moment_ids[0] in detail.moment_ids)
-        ]
-        cut = [s for s in unit_sentences if s.id not in kept_ids]
-        for sentence in cut:
-            lines.append(f"- cortou: {sentence.id} — {_cell(_short(sentence.text))}")
+                lines.append(f"- incluiu: momento {keep.moment_id}{extra}")
+        for cut in detail.cuts:
+            lines.append(f"- cortou: {cut.from_sentence}–{cut.to_sentence} · motivo: {_cell(cut.reason or '—')}")
+            lines += [
+                f"  - {sid} — {_cell(_short(material.sentences[sid].text))}"
+                for sid in cut.sentence_ids if sid in material.sentences
+            ]
         for coverage in detail.coverages:
             image = "; ".join(f"{m}: {', '.join(w)}" for m, w in coverage.matched_image.items())
             lines.append(
                 f"- cobertura {coverage.from_sentence}–{coverage.to_sentence} ← {', '.join(coverage.moment_ids)} · "
+                f"{coverage.kind} (em comum: {', '.join(coverage.common_words) or '—'}) · "
                 f"fala: \"{_cell(coverage.speech_evidence)}\" (achou {', '.join(coverage.matched_speech)}) · "
                 f"imagem: \"{_cell(coverage.image_evidence)}\" ({image})" + (f" · {_cell(coverage.reason)}" if coverage.reason else "")
             )

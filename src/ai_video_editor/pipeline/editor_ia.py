@@ -40,6 +40,7 @@ from ai_video_editor.editor import (
     subtitle_sources,
 )
 from ai_video_editor.editor import budget as editor_budget
+from ai_video_editor.editor import service as editor_service
 from ai_video_editor.editor import validate as editor_validate
 from ai_video_editor.editor.assemble import COVERAGE_SNAP_SEC, EDGE_SEC
 from ai_video_editor.editor.report import build_editor_report, build_plan_markdown
@@ -87,12 +88,13 @@ DEFAULT_EDITOR_MODELS = {"ollama": "qwen2.5:7b"}
 DEFAULT_EDITOR_PROVIDER = "ollama"
 
 # Versões de formato que entram nos fingerprints (sobem quando a saída da etapa muda).
-EDITOR_FORMAT = "editor-v1"
+EDITOR_FORMAT = "editor-v2"
 TIMELINE_FORMAT = "editor-timeline-v1"
-REPORT_FORMAT = "editor-report-v1"
+REPORT_FORMAT = "editor-report-v2"
 # Regras do código que mudam o resultado do editor (entram no fingerprint da etapa).
 EDITOR_RULES = (
     editor_validate.OVERLAP_TOLERANCE_SEC, editor_validate.DURATION_TOLERANCE_SEC, editor_validate.RETRY_INVALID_RATIO,
+    editor_validate.EVIDENCE_MAX_WORDS, editor_service.DURATION_TOLERANCE,
     editor_budget.TOKEN_FACTOR, editor_budget.SUMMARY_OUTPUT_TOKENS, editor_budget.STRUCTURE_OUTPUT_TOKENS,
     editor_budget.DETAIL_OUTPUT_TOKENS, editor_budget.MARGIN_TOKENS, editor_budget.LIBRARY_MIN_TOKENS,
 )
