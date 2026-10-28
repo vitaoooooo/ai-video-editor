@@ -251,6 +251,9 @@ def assemble_plan(
     for block in structure.blocks:
         details = [d for d in run.details if d.block_id == block.id]
         pieces = [_piece(e, fps) for e in base if e.block_id == block.id]
+        if not pieces:  # todos os clipes saíram: o bloco não entra no plano
+            warnings.append(f"{block.id}: bloco vazio (nenhum clipe ficou), fora do plano")
+            continue
         worst = max((d.origin for d in details), key=lambda o: origins.get(o, 0), default="ia")
         blocks.append(PlanBlock(
             id=block.id, title=block.title, clip_ids=block.clip_ids, origin=worst,

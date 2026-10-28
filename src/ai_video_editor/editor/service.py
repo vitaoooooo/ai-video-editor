@@ -8,9 +8,15 @@ exato (sem a lista de erros de uma nova tentativa) + versão do pedido da passad
 modelos e raciocínio. Como o pedido do resumo só contém a seção do clipe no roteiro, mudar o pedido de
 outra passada não refaz os resumos. Respostas inaproveitáveis não vão para o cache.
 
-Meta de cada clipe na 2a (aritmética, sem decisão): a meta do bloco repartida entre os clipes com fala na
-proporção da fala livre de cada um (`meta do clipe = meta do bloco × fala do clipe / fala do bloco`); um
-clipe dividido em partes reparte a sua meta do mesmo jeito.
+Alvo do vídeo (`_resolve_target`): a duração do briefing/CLI; sem ela, a escrita no texto do pedido
+(`material.request_duration`: "uns 8 minutos" = 480 s); sem nenhuma, a que a estrutura escolheu. O do pedido
+acima da fala do material inteiro vira a fala disponível (com aviso). As metas que a IA deu aos blocos são
+reescaladas para somar o alvo, na proporção dela (`_rescale_blocks`).
+
+Meta de cada clipe na 2a (aritmética, sem decisão; `_clip_targets`): clipes sem pergunta de cortes (uma frase
+ou fala até `CUT_MIN_SPEECH_SEC`) entram inteiros e contam a fala toda; o resto da meta do bloco é repartido
+pela fala livre de cada clipe, nunca acima da fala do clipe (o excesso vai para os outros); um clipe dividido
+em partes reparte a sua meta do mesmo jeito.
 
 A estrutura não precisa usar todos os clipes: um clipe com fala que a IA não pôs em bloco nem em "fora"
 conta como fora ("não escolhido pela IA"), sem bloco extra. Falta de duração (medida, sem decisão): se a fala
@@ -28,9 +34,12 @@ depois o resto. 2c: só trechos ditos para a câmera (`validate.talking_sentence
 Nova tentativa (uma, com a lista de erros): estrutura sem bloco válido; qualquer pergunta da passada 2 com
 metade ou mais dos itens inválida; 2a com todas as frases cortadas sem `fora: true` (`validate.ALL_CUT`) ou
 com a duração fora da meta ± `DURATION_TOLERANCE` (a nova tentativa mostra os números); 2b de bloco sem fala
-que não escolhe nada. Depois dela, a última resposta aproveitável é aceita com os itens válidos (duração
-fora da meta é registrada; tudo cortado de novo = a IA tirou o clipe do bloco, registrado). Abaixo da meta, a
-nova tentativa da 2a lista as frases cortadas (com os segundos) para a IA poder devolver algumas. Na 2a, os
+que não escolhe nada. Depois dela, a última resposta aproveitável é aceita com os itens válidos; na 2a, entre
+as respostas aproveitáveis, a mais perto da meta (`_closest_cut`; uma que corta tudo nunca ganha de uma que
+mantém algo; duração fora da meta é registrada). Só a estrutura ou um `fora: true` explícito tiram um clipe:
+se todas as respostas cortam tudo sem `fora: true`, o clipe entra inteiro com aviso (`ALL_CUT_KEPT`). A nova
+tentativa da 2a por duração diz quantos segundos cortar ou devolver e lista as frases com os segundos (acima
+da meta, as que ficaram; abaixo, as cortadas). Na 2a, os
 pares contínuos (`validate.continuous_groups`) vão marcados no roteiro, e um par cortado pela metade é
 ajustado pela validação (corta ou fica junto). Fallback neutro
 (com aviso) só sem resposta aproveitável: 2a = nada cortado;
@@ -57,6 +66,7 @@ from ai_video_editor.editor.material import (
     breath_affinity,
     coverage_matches,
     library_ranking,
+    request_duration,
 )
 from ai_video_editor.editor.prompt import (
     COVERAGE_PROMPT_VERSION,
@@ -79,8 +89,8 @@ from ai_video_editor.editor.prompt import (
     build_inserts_prompt,
     build_structure_prompt,
     build_summary_prompt,
-    cut_sentence_retry_lines,
     duration_retry_line,
+    sentence_retry_lines,
     short_text,
 )
 from ai_video_editor.editor.provider import (
@@ -98,6 +108,7 @@ from ai_video_editor.editor.schema import (
     CallStats,
     Candidate,
     ClipSummary,
+    CutAttempt,
     ClipSummaryAnswer,
     CoveragesAnswer,
     CutRun,
@@ -152,6 +163,12 @@ MAX_CONSECUTIVE_FAILURES = 3
 # Faixa aceita da duração resultante de um clipe na 2a: meta ± 35%. Fora dela, UMA nova tentativa com os
 # números; se ainda ficar fora, aceita e registra (a duração é informação para a IA, não decisão do código).
 DURATION_TOLERANCE = 0.35
+# Clipe com fala livre até isto (ou com uma frase só) não tem pergunta de cortes: entra inteiro. Medido no
+# vlog real: clipes de uma frase (3,6 a 31,6 s) eram cortados inteiros com o motivo copiado do formato, e um
+# clipe curto tem pouco o que cortar sem perder o sentido (a estrutura já decidiu que ele entra).
+CUT_MIN_SPEECH_SEC = 12.0
+# Aviso de quando todas as respostas da 2a cortaram tudo sem fora: true.
+ALL_CUT_KEPT = "IA cortou tudo sem dizer fora; mantido inteiro"
 # Estrutura com a fala dos clipes escolhidos abaixo desta fração da meta: UMA nova tentativa informa quanto
 # falta e o que não foi usado (a IA pode manter a resposta).
 STRUCTURE_MIN_RATIO = 0.85
@@ -211,6 +228,8 @@ class Decision:
     problem: Optional[str] = None  # problema extra (duração) que persistiu depois da nova tentativa
     attempts: list[str] = field(default_factory=list)
     estimated: int = 0
+    tries: list[tuple[int, object]] = field(default_factory=list)  # (tentativa, conferência) aproveitáveis
+    chosen: Optional[int] = None  # a tentativa usada
 
 
 def _fmt_sec(seconds: float) -> str:
@@ -313,10 +332,12 @@ class EditorService:
         stats: CallStats,
         extra_problem: Optional[Callable[[object], Optional[str]]] = None,
         retry_details: Optional[Callable[[object], list[str]]] = None,
+        choose: Optional[Callable[[list], int]] = None,
     ) -> Decision:
         """Uma pergunta: cache → IA → (recusada) nova tentativa com os erros. `check.unusable` decide se a
         resposta serve; `check.refused` e `extra_problem` pedem a nova tentativa; `retry_details` (com o
-        `extra_problem`) acrescenta linhas de informação à lista da nova tentativa."""
+        `extra_problem`) acrescenta linhas de informação à lista da nova tentativa. Sem `choose`, vale a última
+        resposta aproveitável; com ele, a que ele escolher entre as conferências aproveitáveis (em ordem)."""
         prompt = build([])
         decision = Decision(estimated=tokens(prompt))
         key = self.key(kind, version, prompt)
@@ -326,18 +347,20 @@ class EditorService:
             if trial.unusable is None:
                 decision.check, decision.answer, decision.origin = trial, cached, "cache"
                 decision.problem = extra_problem(trial) if extra_problem else None
+                decision.tries, decision.chosen = [(1, trial)], 1
                 stats.cached += 1
                 self._cached(kind, unit, decision.estimated)
                 return decision
         errors: list[str] = []
         details: list[str] = []
+        usable: list[tuple[int, object, BaseModel, Optional[str]]] = []
         for attempt in range(1, MAX_ATTEMPTS + 1):
             raw, error = self._ask(call, make_request(build(errors)), stats, kind, unit, attempt)
             if raw is not None:
                 trial = check_of(raw)
                 problem = extra_problem(trial) if extra_problem and trial.unusable is None else None
                 if trial.unusable is None:  # aproveitável: vale se a nova tentativa não resolver
-                    decision.check, decision.answer, decision.problem = trial, raw, problem
+                    usable.append((attempt, trial, raw, problem))
                 problems = [p for p in (trial.refused, problem) if p]
                 if not problems:
                     break
@@ -350,7 +373,10 @@ class EditorService:
             decision.attempts.append(error)
             if self.gave_up:
                 break
-        if decision.answer is not None:
+        if usable:
+            k = choose([u[1] for u in usable]) if choose is not None else len(usable) - 1
+            attempt, decision.check, decision.answer, decision.problem = usable[k]
+            decision.tries, decision.chosen = [(u[0], u[1]) for u in usable], attempt
             self.cache.save(kind, key, decision.answer)
         return decision
 
@@ -581,18 +607,43 @@ class EditorService:
                 "acervo para oferecer como respiro"
             )
         result.speech_sec = round(sum(material.speech_sec(c) for c in in_blocks), 3)
-        if context.target_sec is not None:
-            result.target_total_sec, result.target_origin = context.target_sec, "pedido"
-        elif answer.duracao_total_alvo_sec and answer.duracao_total_alvo_sec > 0:
-            result.target_total_sec, result.target_origin = answer.duracao_total_alvo_sec, "ia"
+        self._resolve_target(result, answer)
+        _rescale_blocks(result.blocks, result.target_total_sec, material)
         return result
+
+    def _requested_target(self) -> tuple[Optional[float], str, str]:
+        """(alvo, origem, nota) do pedido: a duração do briefing/CLI; sem ela, a escrita no texto do pedido
+        (`material.request_duration`)."""
+        if self.context.target_sec is not None:
+            return self.context.target_sec, "pedido", "duração do briefing ou da CLI"
+        found = request_duration(self.context.request)
+        if found is not None:
+            return found[0], "texto", f"\"{found[1]}\" no texto do pedido"
+        return None, "nenhuma", ""
+
+    def _resolve_target(self, result: StructureRun, answer: StructureAnswer) -> None:
+        """Alvo do vídeo: o do pedido (`_requested_target`) > o que a estrutura escolheu. O do pedido acima da
+        fala disponível no material inteiro vira a fala disponível (com aviso); o da IA fica como ela deu."""
+        material = self.material
+        target, origin, note = self._requested_target()
+        if target is None and answer.duracao_total_alvo_sec and answer.duracao_total_alvo_sec > 0:
+            target, origin, note = answer.duracao_total_alvo_sec, "ia", "escolhido pela estrutura (o pedido não diz a duração)"
+        available = sum(material.speech_sec(c) for c in material.clip_ids)
+        if target is not None and origin != "ia" and 0 < available < target:
+            result.target_requested_sec = target
+            note += f"; passa da fala disponível no material ({round(available)} s): alvo = a fala disponível"
+            result.warnings.append(
+                f"alvo: {clock(target)} pedido, mas o material só tem {clock(available)} de fala; alvo = {clock(available)}"
+            )
+            target = round(available, 1)
+        result.target_total_sec, result.target_origin, result.target_note = target, origin, note  # type: ignore[assignment]
 
     def _shortfall(self, check, summaries: dict[str, ClipSummary]) -> Optional[StructureShortfall]:
         """Falta de duração da estrutura (None = sem duração no pedido, sem fala no material, fala ≥
         `STRUCTURE_MIN_RATIO` da duração pedida ou nada fora dos blocos para oferecer). Só medida: o que
         fazer é da IA."""
         material = self.material
-        target = self.context.target_sec
+        target = self._requested_target()[0]
         if target is None or target <= 0 or not any(material.has_speech(c) for c in material.clip_ids):
             return None
         in_blocks = {c for b in check.blocks for c in b.clip_ids}
@@ -651,17 +702,29 @@ class EditorService:
         # 2a: cortes, um pedido por clipe com fala (clipe grande por partes).
         kept: list[str] = []
         removed: list[str] = []
+        fixed = {c: reason for c in speaking if (reason := self._no_cuts_reason(free[c]))}
+        targets = _clip_targets(block.target_sec, {c: sentences_sec(material, free[c]) for c in speaking}, set(fixed))
+        asked = len(speaking) - len(fixed)
         for clip_id in speaking:
             runs_before = len(detail.cut_runs)
             clip_sec = sentences_sec(material, free[clip_id])
-            target = round(block.target_sec * clip_sec / whole, 1) if block.target_sec and whole > 0 else None
-            parts = self._cut_parts(header, clip_id, free[clip_id], target, len(speaking))
+            target = targets.get(clip_id)
+            if clip_id in fixed:  # sem o que cortar: entra inteiro (a estrutura já decidiu que entra)
+                self.calls_done += 1
+                detail.cut_runs.append(CutRun(
+                    unit_id=f"{block.id}.{clip_id}", clip_id=clip_id, origin="ia", available_sec=round(clip_sec, 3),
+                    target_sec=target, result_sec=round(clip_sec, 3), kept_ids=list(free[clip_id]),
+                    no_question=fixed[clip_id],
+                ))
+                kept += free[clip_id]
+                continue
+            parts = self._cut_parts(header, clip_id, free[clip_id], target, asked)
             for k, (moment_ids, ids) in enumerate(parts, start=1):
                 part_target = target
                 if target is not None and len(parts) > 1:
                     part_target = round(target * sentences_sec(material, ids) / clip_sec, 1) if clip_sec > 0 else None
                 unit_id = f"{block.id}.{clip_id}" + (_suffix(k - 1) if len(parts) > 1 else "")
-                cut_run = self._cuts(header, unit_id, clip_id, moment_ids, ids, part_target, k, len(parts), len(speaking))
+                cut_run = self._cuts(header, unit_id, clip_id, moment_ids, ids, part_target, k, len(parts), asked)
                 detail.cut_runs.append(cut_run)
                 kept += cut_run.kept_ids
             if all(r.removed for r in detail.cut_runs[runs_before:]):
@@ -711,7 +774,7 @@ class EditorService:
         if not detail.keep:
             detail.warnings.append("nada ficou neste bloco (sem fala livre e sem imagens)")
 
-        origins = [r.origin for r in detail.cut_runs]
+        origins = [r.origin for r in detail.cut_runs if not r.no_question]
         origins += [s.origin for s in (detail.inserts, detail.coverage) if s.requests]
         if "fallback" in origins:
             detail.origin = "fallback"
@@ -767,6 +830,14 @@ class EditorService:
             parts[-1] = (moment_ids, [s for s in ids if s in set(part_ids) | set(leftover)])
         return parts
 
+    def _no_cuts_reason(self, ids: list[str]) -> str:
+        """Por que o clipe não tem pergunta de cortes ("" = tem): 1 frase ou fala até `CUT_MIN_SPEECH_SEC`."""
+        if len(ids) == 1:
+            return "1 frase"
+        if sentences_sec(self.material, ids) <= CUT_MIN_SPEECH_SEC:
+            return "fala curta"
+        return ""
+
     def _duration_problem(self, check, target: Optional[float]) -> Optional[str]:
         """Resultado fora da meta ± `DURATION_TOLERANCE` (só informação; None = dentro ou sem meta).
 
@@ -782,15 +853,15 @@ class EditorService:
         return duration_retry_line(check.result_sec, target, low, high)
 
     def _cut_list(self, check, target: Optional[float]) -> list[str]:
-        """Abaixo da meta: as frases cortadas, com os segundos, para a nova tentativa (a IA pode devolver)."""
-        if target is None or check.result_sec >= target * (1 - DURATION_TOLERANCE):
+        """Fora da meta: as frases com os segundos para a nova tentativa (acima: as que ficaram, para escolher o
+        que cortar; abaixo: as cortadas, para escolher o que devolver)."""
+        if target is None:
             return []
+        above = check.result_sec > target
         material = self.material
-        items = [
-            (c.sentence_id, sentences_sec(material, [c.sentence_id]), material.sentences[c.sentence_id].text)
-            for c in check.cuts
-        ]
-        return cut_sentence_retry_lines(items)
+        ids = check.kept if above else [c.sentence_id for c in check.cuts]
+        items = [(sid, sentences_sec(material, [sid]), material.sentences[sid].text) for sid in ids]
+        return sentence_retry_lines(above, items)
 
     def _cuts(
         self, header: BlockHeader, unit_id: str, clip_id: str, moment_ids: Optional[list[str]], ids: list[str],
@@ -817,9 +888,15 @@ class EditorService:
             call=self.ai.cuts, check_of=lambda answer: validate_cuts(answer, ids, material), stats=run.stats,
             extra_problem=lambda check: None if check.removed else self._duration_problem(check, target),
             retry_details=lambda check: self._cut_list(check, target),
+            choose=lambda checks: _closest_cut(checks, target),
         )
         self.calls_done += 1
         run.estimated_tokens, run.attempts = decision.estimated, decision.attempts
+        run.tries = [
+            CutAttempt(attempt=n, result_sec=c.result_sec, all_cut=not c.out and not c.kept, out=c.out)
+            for n, c in decision.tries
+        ]
+        run.chosen_attempt = decision.chosen
         if decision.estimated > self.budget.cuts_available:
             run.warnings.append(f"o pedido (~{decision.estimated} tokens) passa do disponível ({self.budget.cuts_available}) mesmo dividido")
         check = decision.check
@@ -841,13 +918,16 @@ class EditorService:
             if decision.problem:
                 run.duration_off = True
                 run.warnings.append(f"fora da meta depois da nova tentativa, aceito assim ({decision.problem})")
-            if check.removed:
+            if check.removed and not check.out:  # só listas que cortam tudo: tirar o clipe não é da 2a
+                check = validate_cuts(CutsAnswer(), ids, material)
+                run.kept_whole = True
+                run.warnings.append(ALL_CUT_KEPT)
+            elif check.removed:
                 run.removed = True
-                why = "fora: true" if check.out else "todas as frases cortadas de novo na nova tentativa"
                 if parts > 1:
-                    run.warnings.append(f"IA tirou a parte {unit_id} do clipe {clip_id} ({why})")
+                    run.warnings.append(f"IA tirou a parte {unit_id} do clipe {clip_id} (fora: true)")
                 else:
-                    run.warnings.append(f"IA tirou o clipe {clip_id} ({why})")
+                    run.warnings.append(f"IA tirou o clipe {clip_id} (fora: true)")
         if run.removed:
             check.kept, check.result_sec = [], 0.0
         run.cuts, run.kept_ids, run.result_sec = check.cuts, check.kept, check.result_sec
@@ -1093,6 +1173,64 @@ class EditorService:
         self.calls_done += 1
         sub.origin = "fallback" if "fallback" in origins else ("cache" if all(o == "cache" for o in origins) else "ia")
         return sub
+
+
+def _closest_cut(checks: list, target: Optional[float]) -> int:
+    """A resposta da 2a usada (validação, não decisão: todas são da IA): um fora: true explícito (o último)
+    vale; senão, entre as que mantêm alguma frase, a mais perto da meta (empate: a primeira; sem meta, a
+    última). Só as que cortam tudo: a última (o clipe entra inteiro, com aviso)."""
+    outs = [k for k, c in enumerate(checks) if c.out]
+    if outs:
+        return outs[-1]
+    keeping = [k for k, c in enumerate(checks) if c.kept]
+    if not keeping:
+        return len(checks) - 1
+    if target is None:
+        return keeping[-1]
+    return min(keeping, key=lambda k: (abs(checks[k].result_sec - target), k))
+
+
+def _clip_targets(block_target: Optional[float], speech: dict[str, float], fixed: set[str]) -> dict[str, float]:
+    """Meta de cada clipe com fala do bloco (aritmética, sem decisão): os sem pergunta (`fixed`) entram com a
+    fala inteira; o resto da meta do bloco é repartido pela fala de cada clipe, e nenhuma meta passa da fala do
+    clipe (o excesso vai para os outros, na mesma proporção). Sem meta do bloco: {} (sem meta)."""
+    if not block_target or sum(speech.values()) <= 0:
+        return {}
+    targets = {c: speech[c] for c in fixed}
+    remaining = block_target - sum(targets.values())
+    open_ = [c for c in speech if c not in fixed]
+    while open_:
+        total = sum(speech[c] for c in open_)
+        share = {c: max(remaining, 0.0) * speech[c] / total if total > 0 else 0.0 for c in open_}
+        over = [c for c in open_ if share[c] > speech[c]]
+        if not over:
+            targets.update(share)
+            break
+        for c in over:
+            targets[c] = speech[c]
+            remaining -= speech[c]
+            open_.remove(c)
+    return {c: round(v, 1) for c, v in targets.items()}
+
+
+def _block_content_sec(block: Block, material: EditorMaterial) -> float:
+    """Fala dos clipes do bloco (sem fala: a duração dos clipes)."""
+    speech = sum(material.speech_sec(c) for c in block.clip_ids)
+    return speech if speech > 0 else sum(material.clips[c].duration_sec for c in block.clip_ids)
+
+
+def _rescale_blocks(blocks: list[Block], total: Optional[float], material: EditorMaterial) -> None:
+    """Metas dos blocos reescaladas para somar o alvo, na proporção que a IA deu (bloco sem meta pesa o
+    conteúdo dele). Sem alvo ou sem nenhuma meta da IA, nada muda. A meta da IA fica em `ai_target_sec`."""
+    if not total or total <= 0 or not any(b.target_sec for b in blocks):
+        return
+    weights = {b.id: b.target_sec if b.target_sec and b.target_sec > 0 else _block_content_sec(b, material) for b in blocks}
+    weight_sum = sum(weights.values())
+    if weight_sum <= 0:
+        return
+    for block in blocks:
+        block.ai_target_sec = block.target_sec
+        block.target_sec = round(total * weights[block.id] / weight_sum, 1)
 
 
 def _suffix(k: int) -> str:

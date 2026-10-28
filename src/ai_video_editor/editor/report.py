@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Optional
 
 from ai_video_editor.editor.material import EditorMaterial
-from ai_video_editor.editor.schema import CallStats, DetailRun, EditorPlan, EditorRun, StructureRun
+from ai_video_editor.editor.schema import CallStats, CutAttempt, DetailRun, EditorPlan, EditorRun, StructureRun
 from ai_video_editor.pipeline.schema import RunTimings
 from ai_video_editor.pipeline.timing import build_timings_section, format_duration
 from ai_video_editor.roteiro.report import clock
 
 _ORIGIN = {"ia": "IA", "cache": "IA (cache)", "fallback": "**fallback neutro**", "falha": "**falhou**"}
-_TARGET_ORIGIN = {"pedido": "do pedido", "ia": "escolhida pela IA", "nenhuma": "livre"}
+_TARGET_ORIGIN = {"pedido": "do pedido", "texto": "lida do texto do pedido", "ia": "escolhida pela IA", "nenhuma": "livre"}
 _PASSES = ("resumo", "estrutura", "cortes", "insercoes", "coberturas")
 
 
@@ -51,10 +51,16 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         f"Duração: fala livre {_sec(detail.available_sec)} → fala que ficou {_sec(detail.speech_sec)} → com as "
         f"inclusões {_sec(detail.result_sec)} → alvo {_sec(detail.target_sec)}"
     )
-    lines += ["", "**2a cortes** (meta do clipe = alvo do bloco × fala do clipe / fala do bloco)", ""]
+    lines += ["", "**2a cortes** (meta do clipe = alvo do bloco repartido pela fala de cada clipe, até a fala dele)", ""]
     if not detail.cut_runs:
         lines.append("- (nenhum clipe com fala)")
     for cut in detail.cut_runs:
+        if cut.no_question:
+            lines.append(
+                f"- {cut.unit_id}: sem pergunta de cortes ({cut.no_question}): entra inteiro, {_sec(cut.result_sec)} "
+                f"· meta {_sec(cut.target_sec)}"
+            )
+            continue
         off = " · **fora da meta**" if cut.duration_off else ""
         lines.append(
             f"- {cut.unit_id} ({_ORIGIN[cut.origin]}, ~{_tokens(cut.estimated_tokens)} tokens): {_sec(cut.available_sec)} "
@@ -68,6 +74,10 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         if cut.normalized_ids:
             lines.append(f"  - {_cell(_normalized(cut.normalized_ids))}")
         lines += [f"  - tentativa recusada: {_cell(_short(a, 300))}" for a in cut.attempts]
+        if len(cut.tries) > 1:
+            lines.append("  - tentativas: " + " · ".join(_try_text(t) for t in cut.tries) + f" → usada a {cut.chosen_attempt}")
+        if cut.kept_whole:
+            lines.append("  - **IA cortou tudo sem dizer fora; mantido inteiro**")
         lines += [f"  - {_cell(j)}" for j in cut.joined]
         if cut.removed:
             lines.append(f"  - **IA tirou o clipe {cut.clip_id}**" + (f" (parte {cut.unit_id})" if cut.moment_ids else ""))
@@ -122,6 +132,18 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         lines += ["", "Avisos:", *(f"- {_cell(_short(w, 300))}" for w in detail.warnings)]
     lines.append("")
     return lines
+
+
+def _try_text(attempt: CutAttempt) -> str:
+    what = " (fora: true)" if attempt.out else " (cortou tudo)" if attempt.all_cut else ""
+    return f"{attempt.attempt}: {attempt.result_sec:.1f}s{what}".replace(".", ",", 1)
+
+
+def _target_cell(structure: StructureRun) -> str:
+    text = f"{_sec(structure.target_total_sec)} ({_TARGET_ORIGIN[structure.target_origin]}"
+    if structure.target_note:
+        text += f": {structure.target_note}"
+    return _cell(text + ")")
 
 
 def _share(speech: float, target: Optional[float]) -> str:
@@ -244,7 +266,7 @@ def build_editor_report(
         f"| Material | {len(material.clips)} clipe(s), {clock(material_sec)} · {len(material.sentences)} frases · "
         f"{len(material.moments)} momentos |",
         f"| Pedido | {_cell(run.request) if run.request.strip() else 'sem pedido'} |",
-        f"| Duração alvo | {_sec(structure.target_total_sec)} ({_TARGET_ORIGIN[structure.target_origin]}) |",
+        f"| Duração alvo | {_target_cell(structure)} |",
         f"| Duração do plano | {_sec(plan.duration_sec)} |",
         f"| IA | {_cell(' → '.join(run.model_chain) or run.provider)} (respondeu: {_cell(model)}) |",
         f"| Contexto | {run.budget.num_ctx} tokens ({run.budget.source}); estimativa caracteres/4 × {run.budget.token_factor:g} |",
@@ -275,8 +297,11 @@ def build_editor_report(
     for block in structure.blocks:
         placed = by_id.get(block.id)
         final = f"{clock(placed.timeline_start)}–{clock(placed.timeline_end)}" if placed and placed.pieces else "—"
+        target = _sec(block.target_sec)
+        if block.ai_target_sec is not None and block.ai_target_sec != block.target_sec:
+            target += f" (IA: {block.ai_target_sec:.0f}s)"
         lines.append(
-            f"| {block.id} | {_cell(block.title or '—')} | {', '.join(block.clip_ids)} | {_sec(block.target_sec)} | "
+            f"| {block.id} | {_cell(block.title or '—')} | {', '.join(block.clip_ids)} | {target} | "
             f"{final} | {_ORIGIN.get(placed.origin if placed else 'ia', '—')} |"
         )
     lines.append("")

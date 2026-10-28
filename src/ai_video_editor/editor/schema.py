@@ -15,10 +15,12 @@ from pydantic import BaseModel, Field, field_validator, model_serializer, model_
 from ai_video_editor.llm.schema import ModelSwitch
 
 # Sobe quando o formato do editor_run.json / editor_plano.json muda.
-EDITOR_SCHEMA_VERSION = 6
+EDITOR_SCHEMA_VERSION = 7
 
 MAX_HIGHLIGHTS = 3
 MAX_PROBLEMS = 3
+# Motivo de um corte da 2a: texto livre, cortado neste tamanho (não há lista de motivos).
+MAX_REASON_CHARS = 120
 
 # ia: resposta validada do modelo; cache: a mesma resposta, de uma execução anterior; fallback: o código
 # montou o resultado neutro porque a IA falhou de vez (aviso no relatório).
@@ -219,7 +221,7 @@ def _number(value):
 
 
 class CutItem(BaseModel):
-    """Corte da 2a: UMA frase (o ID) e o motivo curto."""
+    """Corte da 2a: UMA frase (o ID) e o motivo (texto livre curto, sem lista fechada)."""
 
     frase: Optional[str] = None
     motivo: str = ""
@@ -245,7 +247,8 @@ class CutItem(BaseModel):
     @field_validator("motivo", mode="before")
     @classmethod
     def _strip(cls, value):
-        return _text(value)
+        text = _text(value)
+        return text if len(text) <= MAX_REASON_CHARS else text[: MAX_REASON_CHARS - 1].rstrip() + "…"
 
 
 class CutsAnswer(BaseModel):
@@ -403,7 +406,12 @@ class Block(BaseModel):
     title: str = ""
     subject: str = ""
     clip_ids: list[str]
-    target_sec: Optional[float] = None
+    target_sec: Optional[float] = Field(default=None, description="Meta do bloco (a da IA reescalada para o alvo)")
+    ai_target_sec: Optional[float] = Field(default=None, description="Meta que a IA deu ao bloco, antes da reescala")
+
+
+# pedido: duração do briefing/CLI; texto: lida do texto do pedido; ia: escolhida pela estrutura.
+TargetOrigin = Literal["pedido", "texto", "ia", "nenhuma"]
 
 
 class StructureRun(BaseModel):
@@ -412,7 +420,11 @@ class StructureRun(BaseModel):
     out: list[OutClip] = Field(default_factory=list)
     library_clip_ids: list[str] = Field(default_factory=list, description="Acervo: clipes nem em bloco nem fora")
     target_total_sec: Optional[float] = None
-    target_origin: Literal["pedido", "ia", "nenhuma"] = "nenhuma"
+    target_origin: TargetOrigin = "nenhuma"
+    target_note: str = Field(default="", description="De onde veio o alvo (o trecho lido do pedido, o limite pela fala)")
+    target_requested_sec: Optional[float] = Field(
+        default=None, description="O alvo pedido, quando passou da fala disponível no material (o alvo virou ela)"
+    )
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)
     attempts: list[str] = Field(default_factory=list, description="Erro de cada tentativa recusada")
@@ -520,6 +532,15 @@ class CoverageChoice(BaseModel):
     reason: str = ""
 
 
+class CutAttempt(BaseModel):
+    """Uma resposta aproveitável da 2a: o que ficaria com ela."""
+
+    attempt: int
+    result_sec: float
+    all_cut: bool = False
+    out: bool = False
+
+
 class CutRun(BaseModel):
     """2a de um clipe (ou parte de um clipe grande): meta, resultado e cortes."""
 
@@ -537,6 +558,10 @@ class CutRun(BaseModel):
     joined: list[str] = Field(
         default_factory=list, description="Pares contínuos que a IA cortou pela metade, ajustados pelo código"
     )
+    no_question: str = Field(default="", description="Por que não houve pergunta (1 frase / fala curta): entra inteiro")
+    tries: list[CutAttempt] = Field(default_factory=list, description="Resultado de cada resposta aproveitável")
+    chosen_attempt: Optional[int] = Field(default=None, description="A tentativa usada (a mais perto da meta)")
+    kept_whole: bool = Field(default=False, description="A IA cortou tudo sem fora: true; o clipe entrou inteiro")
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)
     attempts: list[str] = Field(default_factory=list)

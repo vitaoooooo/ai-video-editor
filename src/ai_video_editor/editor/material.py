@@ -141,6 +141,51 @@ def asks_landscape_opening(request: str) -> bool:
     return any(w.startswith(OPENING_STEMS) for w in found) and any(w.startswith(LANDSCAPE_STEMS) for w in found)
 
 
+# Duração escrita no pedido ("uns 8 minutos", "1 minuto e 30 segundos", "5:30", "oito minutos"): só leitura
+# do texto, sem decisão. Números por extenso (pt/es/en) até trinta.
+_NUMBER_WORDS = {
+    "um": 1, "uma": 1, "uno": 1, "one": 1, "dois": 2, "duas": 2, "dos": 2, "two": 2, "tres": 3, "three": 3,
+    "quatro": 4, "cuatro": 4, "four": 4, "cinco": 5, "five": 5, "seis": 6, "six": 6, "sete": 7, "siete": 7,
+    "seven": 7, "oito": 8, "ocho": 8, "eight": 8, "nove": 9, "nueve": 9, "nine": 9, "dez": 10, "diez": 10,
+    "ten": 10, "doze": 12, "doce": 12, "twelve": 12, "quinze": 15, "quince": 15, "fifteen": 15, "vinte": 20,
+    "veinte": 20, "twenty": 20, "trinta": 30, "treinta": 30, "thirty": 30,
+}
+_UNITS = {
+    3600: ("h", "hora", "horas", "hour", "hours"),
+    60: ("min", "mins", "minuto", "minutos", "minute", "minutes", "m"),
+    1: ("s", "seg", "segs", "segundo", "segundos", "second", "seconds", "sec", "secs"),
+}
+_NUM = r"(\d+(?:[.,]\d+)?|" + "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True)) + r")"
+_UNIT = r"(" + "|".join(sorted((u for units in _UNITS.values() for u in units), key=len, reverse=True)) + r")"
+_PART = _NUM + r"\s*" + _UNIT + r"(?![a-z])"
+_DURATION = re.compile(r"(?<![a-z0-9])" + _PART + r"(?:\s*(?:,|e|y|and)?\s*" + _PART + r")*")
+_CLOCK = re.compile(r"(?<![\d:])(\d{1,2}):([0-5]\d)(?![\d:])")
+
+
+def _number(token: str) -> float:
+    return float(_NUMBER_WORDS[token]) if token in _NUMBER_WORDS else float(token.replace(",", "."))
+
+
+def request_duration(request: str) -> Optional[tuple[float, str]]:
+    """A primeira duração escrita no pedido, em segundos, e o trecho lido (None = o pedido não diz).
+
+    Componentes seguidos somam ("1 minuto e 30 segundos" = 90); "5:30" = 5 min 30 s."""
+    text = plain(request)
+    found = _DURATION.search(text)
+    if found is not None:
+        total = 0.0
+        for number, unit in re.findall(_PART, found.group(0)):
+            total += _number(number) * next(f for f, units in _UNITS.items() if unit in units)
+        if total > 0:
+            return total, found.group(0).strip()
+    clock_found = _CLOCK.search(text)
+    if clock_found is not None:
+        total = int(clock_found.group(1)) * 60 + int(clock_found.group(2))
+        if total > 0:
+            return float(total), clock_found.group(0)
+    return None
+
+
 def _fmt_sec(seconds: float) -> str:
     return f"{seconds:.1f}".replace(".", ",") + "s"
 

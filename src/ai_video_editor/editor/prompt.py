@@ -34,7 +34,7 @@ from ai_video_editor.roteiro.report import clock
 # Sobem quando o pedido ou o schema da resposta da passada mudam (invalida só o cache daquela passada).
 SUMMARY_PROMPT_VERSION = "resumo-v1"
 STRUCTURE_PROMPT_VERSION = "estrutura-v6"
-CUTS_PROMPT_VERSION = "cortes-v3"
+CUTS_PROMPT_VERSION = "cortes-v4"
 INSERTS_PROMPT_VERSION = "insercoes-v2"
 COVERAGE_PROMPT_VERSION = "coberturas-v2"
 
@@ -317,20 +317,29 @@ def mark_continuous(section: str, continues: list[str]) -> str:
 
 
 def duration_retry_line(result_sec: float, target_sec: float, low: float, high: float) -> str:
-    """O erro da nova tentativa por duração: os números e o que ajustar."""
-    hint = "corte mais frases" if result_sec > high else "corte menos frases"
+    """O erro da nova tentativa por duração: os números e quantos segundos cortar ou devolver."""
+    if result_sec > high:
+        hint = f"corte cerca de {round(result_sec - target_sec)} s"
+    else:
+        hint = f"devolva cerca de {round(target_sec - result_sec)} s (tire frases da lista cortar)"
     return (
         f"duração: ficou {round(result_sec)} s, a meta deste clipe é {round(target_sec)} s (aceito de {round(low)} a "
-        f"{round(high)} s); {hint}"
+        f"{round(high)} s): {hint}"
     )
 
 
-def cut_sentence_retry_lines(items: list[tuple[str, float, str]]) -> list[str]:
-    """Abaixo da meta: as frases cortadas (código, segundos, texto) que a IA pode devolver."""
+def sentence_retry_lines(above: bool, items: list[tuple[str, float, str]]) -> list[str]:
+    """As frases com a duração para a nova tentativa por duração (código, segundos, texto): acima da meta, as
+    que ficaram (para escolher o que cortar); abaixo, as cortadas (para escolher o que devolver)."""
     if not items:
         return []
-    lines = ["frases que você cortou (para devolver uma, tire-a da lista cortar):"]
-    lines += [f"cortada {sid} ({round(sec)} s): {short_text(text, 10)}" for sid, sec, text in items]
+    if above:
+        lines = ["frases que ficaram (escolha quais cortar):"]
+        word = "mantida"
+    else:
+        lines = ["frases que você cortou (para devolver uma, tire-a da lista cortar):"]
+        word = "cortada"
+    lines += [f"{word} {sid} ({round(sec)} s): {short_text(text, 10)}" for sid, sec, text in items]
     return lines
 
 
@@ -355,8 +364,8 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
         "Como funciona: POR PADRÃO TODAS AS FRASES FICAM, na ordem do roteiro. Você lista só as que saem.",
         "",
         "O que cortar (regras de estilo):",
-        "- Repetição e recomeço: a mesma frase dita de novo; fica a melhor, em geral a última.",
-        "- Fala fraca, hesitação, frase sem sentido sozinha, conversa fora do assunto do bloco.",
+        "- Corte o que você, como editor, tiraria deste clipe para atender ao pedido e à meta; o resto fica.",
+        "- A mesma frase dita mais de uma vez: fica a melhor, em geral a última.",
         "- Conforto auditivo: não corte no meio de um raciocínio; não deixe uma pergunta sem a resposta.",
         "- Imagem ruim (problemas entre colchetes nos momentos) NÃO é motivo para cortar a fala: a imagem pode "
         "ser coberta depois.",
@@ -373,7 +382,11 @@ def build_cuts_prompt(data: CutsPromptInput, errors: Optional[list[str]] = None)
         "",
         mark_continuous(data.section.strip(), data.continues),
         "",
-        'Formato: {"cortar": [{"frase": "código da frase", "motivo": "curto"}], "fora": false, "notas": "curto"}',
+        "- motivo: escreva com as suas palavras, numa frase curta, por que AQUELA frase sai (não há lista de "
+        "motivos para escolher).",
+        "",
+        'Formato: {"cortar": [{"frase": "código da frase", "motivo": "por que esta frase sai"}], "fora": false, '
+        '"notas": "..."}',
         "Nada a cortar: {\"cortar\": [], \"fora\": false, \"notas\": \"...\"}",
     ]
     lines += _retry_lines(errors or [])
