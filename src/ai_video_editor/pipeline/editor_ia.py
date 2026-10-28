@@ -24,7 +24,9 @@ from pydantic import BaseModel, Field
 from ai_video_editor.core.schema import LoudnessTarget
 from ai_video_editor.core.timeline import Timeline
 from ai_video_editor.editor import (
-    DETAIL_PROMPT_VERSION,
+    COVERAGE_PROMPT_VERSION,
+    CUTS_PROMPT_VERSION,
+    INSERTS_PROMPT_VERSION,
     STRUCTURE_PROMPT_VERSION,
     SUMMARY_PROMPT_VERSION,
     ClipSource,
@@ -88,15 +90,17 @@ DEFAULT_EDITOR_MODELS = {"ollama": "qwen2.5:7b"}
 DEFAULT_EDITOR_PROVIDER = "ollama"
 
 # Versões de formato que entram nos fingerprints (sobem quando a saída da etapa muda).
-EDITOR_FORMAT = "editor-v3"
+EDITOR_FORMAT = "editor-v4"
 TIMELINE_FORMAT = "editor-timeline-v1"
-REPORT_FORMAT = "editor-report-v3"
+REPORT_FORMAT = "editor-report-v4"
 # Regras do código que mudam o resultado do editor (entram no fingerprint da etapa).
 EDITOR_RULES = (
     editor_validate.OVERLAP_TOLERANCE_SEC, editor_validate.DURATION_TOLERANCE_SEC, editor_validate.RETRY_INVALID_RATIO,
-    editor_validate.EVIDENCE_MAX_WORDS, editor_service.DURATION_TOLERANCE,
+    editor_validate.EVIDENCE_MAX_WORDS, editor_validate.COVERAGE_EXTEND_SEC, editor_service.DURATION_TOLERANCE,
+    editor_service.COVERAGE_CANDIDATES, editor_service.COVERAGE_TRECHO_WORDS,
     editor_budget.TOKEN_FACTOR, editor_budget.SUMMARY_OUTPUT_TOKENS, editor_budget.STRUCTURE_OUTPUT_TOKENS,
-    editor_budget.DETAIL_OUTPUT_TOKENS, editor_budget.MARGIN_TOKENS, editor_budget.LIBRARY_MIN_TOKENS,
+    editor_budget.CUTS_OUTPUT_TOKENS, editor_budget.INSERTS_OUTPUT_TOKENS, editor_budget.COVERAGE_OUTPUT_TOKENS,
+    editor_budget.MARGIN_TOKENS, editor_budget.RETRY_TOKENS,
 )
 
 
@@ -506,7 +510,8 @@ class EditorPipeline(EditPipeline):
         s.fp_editor = fingerprint(
             "editor", EDITOR_FORMAT, s.fp_roteiro, context.request, context.target_sec, context.director_instructions,
             context.coverage_instructions, ai.provider_name, list(ai.model_chain), ai.thinking_label, budget.num_ctx,
-            SUMMARY_PROMPT_VERSION, STRUCTURE_PROMPT_VERSION, DETAIL_PROMPT_VERSION, EDITOR_RULES,
+            SUMMARY_PROMPT_VERSION, STRUCTURE_PROMPT_VERSION, CUTS_PROMPT_VERSION, INSERTS_PROMPT_VERSION,
+            COVERAGE_PROMPT_VERSION, EDITOR_RULES,
         )
 
         def do_editor() -> tuple[dict, str]:
@@ -522,15 +527,18 @@ class EditorPipeline(EditPipeline):
             fallbacks = sum(1 for d in run.details if d.origin == "fallback") + int(run.structure.origin == "fallback")
             metrics = {
                 "provider": ai.provider_name, "model": run.effective_model or (ai.model_chain[0] if ai.model_chain else ""),
-                "num_ctx": budget.num_ctx, "blocks": len(run.structure.blocks), "units": len(run.details),
-                "coverages": sum(len(d.coverages) for d in run.details), "breaths": sum(len(d.breaths) for d in run.details),
+                "num_ctx": budget.num_ctx, "blocks": len(run.structure.blocks),
+                "cut_requests": sum(len(d.cut_runs) for d in run.details),
+                "coverages": sum(len(d.coverages) for d in run.details),
+                "breaths": sum(1 for d in run.details for k in d.keep if k.breath),
+                "includes": sum(1 for d in run.details for k in d.keep if k.kind == "momento" and not k.breath),
                 "fallbacks": fallbacks, "calls": total.calls, "cached": total.cached, "api_calls": total.api_calls,
                 "input_tokens": total.input_tokens or 0, "output_tokens": total.output_tokens or 0,
             }
             detail = (
-                f"{len(run.structure.blocks)} bloco(s) em {len(run.details)} pedido(s) de detalhe, "
-                f"{metrics['coverages']} cobertura(s), {metrics['breaths']} respiro(s); {total.calls} pedido(s) à IA "
-                f"({total.cached} do cache)"
+                f"{len(run.structure.blocks)} bloco(s), {metrics['cut_requests']} pedido(s) de cortes, "
+                f"{metrics['includes']} inclusão(ões), {metrics['breaths']} respiro(s), {metrics['coverages']} "
+                f"cobertura(s); {total.calls} pedido(s) à IA ({total.cached} do cache)"
             )
             if fallbacks:
                 detail += f"; {fallbacks} FALLBACK(S)"

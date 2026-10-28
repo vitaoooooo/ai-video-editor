@@ -1,10 +1,11 @@
-"""Schemas Pydantic do Editor de IA: as respostas das três passadas (só IDs) e o que o código registra.
+"""Schemas Pydantic do Editor de IA: as respostas das passadas (só IDs, letras e números) e o que o código registra.
 
 As respostas são tolerantes de propósito (campos opcionais, listas cortadas no limite): um item ruim é
 descartado sozinho pela validação do código (`editor/validate.py`), em vez de derrubar a resposta inteira.
 Os nomes dos campos das respostas são os do pedido à IA (em português); os do código, em inglês.
 """
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
@@ -14,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from ai_video_editor.llm.schema import ModelSwitch
 
 # Sobe quando o formato do editor_run.json / editor_plano.json muda.
-EDITOR_SCHEMA_VERSION = 3
+EDITOR_SCHEMA_VERSION = 4
 
 MAX_HIGHLIGHTS = 3
 MAX_PROBLEMS = 3
@@ -176,37 +177,69 @@ class StructureAnswer(BaseModel):
         return _text(value)
 
 
-# --- E11: passada 2 (detalhe de um bloco) ---
+# --- E11: passada 2 em três perguntas por bloco (2a cortes, 2b inclusões e respiros, 2c coberturas) ---
+
+# Palavras que a IA pode mandar no lugar de uma letra para dizer "nenhuma".
+_NONE_TOKENS = {"NENHUMA", "NENHUM", "NADA", "NAO", "NÃO", "NONE", "-", "—", "X"}
+# Tokens que a IA pode mandar em `depois_do_trecho` para dizer "no começo do bloco".
+_START_TOKENS = {"INICIO", "INÍCIO", "COMECO", "COMEÇO", "ANTES"}
 
 
-def _id_list(value):
-    if isinstance(value, str):
-        value = value.replace(";", ",").split(",")
-    if not isinstance(value, list):
+def _letter(value) -> Optional[str]:
+    """`"a"`, `"A)"`, `"**B**"`, `"letra C"` → a letra; vazio → None (a validação diz que falta)."""
+    if value is None:
+        return None
+    text = str(value).strip().upper()
+    if not text:
+        return None
+    if text in _NONE_TOKENS:
+        return text
+    found = re.findall(r"[A-ZÀ-Ý]+", text)
+    if not found:
+        return text
+    last = found[-1]
+    if last in _NONE_TOKENS:
+        return last
+    return last if len(last) <= 2 else text
+
+
+def _number(value):
+    """`3`, `"3"`, `"trecho 3"`, `"início"` → int; outro texto fica como veio (a validação recusa)."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
         return value
-    return [i for i in (_id(v) for v in value) if i]
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else value
+    text = str(value).strip().upper()
+    if not text or text in _START_TOKENS:
+        return 0
+    digits = re.findall(r"\d+", text)
+    return int(digits[0]) if len(digits) == 1 else None
 
 
-class CutAnswer(BaseModel):
-    """Corte da passada 2: faixa de frases (`de`/`ate`, ou uma frase só) com o motivo."""
+class CutItem(BaseModel):
+    """Corte da 2a: UMA frase (o ID) e o motivo curto."""
 
-    de: Optional[str] = None
-    ate: Optional[str] = None
+    frase: Optional[str] = None
     motivo: str = ""
 
     @model_validator(mode="before")
     @classmethod
     def _plain_id(cls, value):
-        """`"S012"` sozinho = cortar só essa frase; `{"frase": "S012"}` também."""
+        """`"S012"` sozinho = cortar essa frase; `{"id": ...}` / `{"de": ...}` também viram `frase`."""
         if isinstance(value, str):
-            return {"de": value, "ate": value}
-        if isinstance(value, dict) and value.get("frase") and not value.get("de"):
-            value = {**value, "de": value["frase"]}
+            return {"frase": value}
+        if isinstance(value, dict) and not value.get("frase"):
+            for name in ("id", "de", "sentence"):
+                if value.get(name):
+                    value = {**value, "frase": value[name]}
+                    break
         return value
 
-    @field_validator("de", "ate", mode="before")
+    @field_validator("frase", mode="before")
     @classmethod
-    def _ids(cls, value):
+    def _sentence(cls, value):
         return _id(value)
 
     @field_validator("motivo", mode="before")
@@ -215,124 +248,96 @@ class CutAnswer(BaseModel):
         return _text(value)
 
 
-# Tokens que a IA pode mandar em `depois_de` para dizer "no começo do bloco".
-_START_TOKENS = {"INICIO", "INÍCIO", "COMECO", "COMEÇO"}
+class CutsAnswer(BaseModel):
+    """Resposta da 2a para um clipe (ou parte): as frases que saem; o resto fica."""
 
-
-class IncludeAnswer(BaseModel):
-    """Momento SEM fala que entra na faixa principal, com o som dele, depois de uma frase ou de outro incluído."""
-
-    momento: Optional[str] = None
-    depois_de: Optional[str] = Field(default=None, description="Frase ou momento incluído; vazio = começo do bloco")
-    duracao_sec: Optional[float] = None
-    motivo: str = ""
-
-    @field_validator("momento", "depois_de", mode="before")
-    @classmethod
-    def _ids(cls, value):
-        value = _id(value)
-        return None if value in _START_TOKENS else value
-
-    @field_validator("duracao_sec", mode="before")
-    @classmethod
-    def _duration(cls, value):
-        return _optional_number(value)
-
-    @field_validator("motivo", mode="before")
-    @classmethod
-    def _strip(cls, value):
-        return _text(value)
-
-
-# Tipos de cobertura (o pedido e a validação usam estes textos).
-COVERAGE_SAYS = "mostra o que é dito"
-COVERAGE_PLACE = "mostra o lugar"
-CoverageKind = Literal["mostra o que é dito", "mostra o lugar"]
-
-
-def _coverage_kind(value):
-    """Texto da IA → tipo ("dito" ou "lugar" bastam); outro texto → None (a validação recusa)."""
-    if value is None:
-        return None
-    text = str(value).lower()
-    if "dito" in text or "diz" in text:
-        return COVERAGE_SAYS
-    if "lugar" in text:
-        return COVERAGE_PLACE
-    return None
-
-
-class CoverageAnswer(BaseModel):
-    de: Optional[str] = None
-    ate: Optional[str] = None
-    momentos: list[str] = Field(default_factory=list)
-    tipo: Optional[CoverageKind] = None
-    evidencia_fala: str = ""
-    evidencia_imagem: str = ""
-    motivo: str = ""
-
-    @field_validator("de", "ate", mode="before")
-    @classmethod
-    def _ids(cls, value):
-        return _id(value)
-
-    @field_validator("momentos", mode="before")
-    @classmethod
-    def _moments(cls, value):
-        return _id_list(value)
-
-    @field_validator("tipo", mode="before")
-    @classmethod
-    def _kind(cls, value):
-        return _coverage_kind(value)
-
-    @field_validator("evidencia_fala", "evidencia_imagem", "motivo", mode="before")
-    @classmethod
-    def _strip(cls, value):
-        return _text(value)
-
-
-class BreathAnswer(BaseModel):
-    depois_de: Optional[str] = None
-    momento: Optional[str] = None
-    duracao_sec: Optional[float] = None
-    motivo: str = ""
-
-    @field_validator("depois_de", "momento", mode="before")
-    @classmethod
-    def _ids(cls, value):
-        return _id(value)
-
-    @field_validator("duracao_sec", mode="before")
-    @classmethod
-    def _duration(cls, value):
-        return _optional_number(value)
-
-    @field_validator("motivo", mode="before")
-    @classmethod
-    def _strip(cls, value):
-        return _text(value)
-
-
-class BlockAnswer(BaseModel):
-    """Resposta da passada 2 para um bloco (ou sub-bloco): por padrão fica tudo; a IA diz o que cortar."""
-
-    cortar: list[CutAnswer] = Field(default_factory=list)
-    incluir: list[IncludeAnswer] = Field(default_factory=list)
-    ordem: list[str] = Field(default_factory=list, description="Clipes do bloco na ordem; vazio = a da estrutura")
-    coberturas: list[CoverageAnswer] = Field(default_factory=list)
-    respiros: list[BreathAnswer] = Field(default_factory=list)
+    cortar: list[CutItem] = Field(default_factory=list)
     notas: str = ""
-
-    @field_validator("ordem", mode="before")
-    @classmethod
-    def _order(cls, value):
-        return _id_list(value)
 
     @field_validator("notas", mode="before")
     @classmethod
     def _strip(cls, value):
         return _text(value)
+
+
+class InsertItem(BaseModel):
+    """Inclusão da 2b: depois de que trecho numerado (0 = começo) entra o candidato da letra."""
+
+    depois_do_trecho: Optional[float] = None
+    letra: Optional[str] = None
+    duracao_sec: Optional[float] = None
+
+    @field_validator("depois_do_trecho", mode="before")
+    @classmethod
+    def _after(cls, value):
+        return _number(value)
+
+    @field_validator("letra", mode="before")
+    @classmethod
+    def _letter(cls, value):
+        return _letter(value)
+
+    @field_validator("duracao_sec", mode="before")
+    @classmethod
+    def _duration(cls, value):
+        return _optional_number(value)
+
+
+class InsertsAnswer(BaseModel):
+    """Resposta da 2b para um bloco: candidatos sem fala que entram entre os trechos."""
+
+    inserir: list[InsertItem] = Field(default_factory=list)
+    notas: str = ""
+
+    @field_validator("notas", mode="before")
+    @classmethod
+    def _strip(cls, value):
+        return _text(value)
+
+
+class CoverageItem(BaseModel):
+    """Cobertura da 2c: o trecho, a letra escolhida (ou "nenhuma") e a palavra em comum copiada."""
+
+    trecho: Optional[float] = None
+    letra: Optional[str] = None
+    palavra: str = ""
+
+    @field_validator("trecho", mode="before")
+    @classmethod
+    def _trecho(cls, value):
+        return _number(value)
+
+    @field_validator("letra", mode="before")
+    @classmethod
+    def _letter(cls, value):
+        return _letter(value)
+
+    @field_validator("palavra", mode="before")
+    @classmethod
+    def _strip(cls, value):
+        return _text(value)
+
+    @property
+    def none(self) -> bool:
+        return self.letra is None or self.letra in _NONE_TOKENS
+
+
+class CoveragesAnswer(BaseModel):
+    """Resposta da 2c para um bloco (ou parte dos trechos dele)."""
+
+    coberturas: list[CoverageItem] = Field(default_factory=list)
+    notas: str = ""
+
+    @field_validator("notas", mode="before")
+    @classmethod
+    def _strip(cls, value):
+        return _text(value)
+
+
+# Tipos de cobertura (do candidato medido pelo código; aparecem no pedido e no relatório).
+COVERAGE_SAYS = "mostra o que é dito"
+COVERAGE_PLACE = "mostra o lugar"
+CoverageKind = Literal["mostra o que é dito", "mostra o lugar"]
 
 
 # --- o que o código registra ---
@@ -359,10 +364,25 @@ class CallStats(BaseModel):
         self.seconds = round(self.seconds + other.seconds, 3)
 
 
+PassKind = Literal["resumo", "estrutura", "cortes", "insercoes", "coberturas"]
+
+
+class RequestRecord(BaseModel):
+    """Um pedido à IA (ou ao cache): tokens estimados pelo orçamento × reais informados pelo provedor."""
+
+    kind: PassKind
+    unit: str = Field(..., description="Clipe, bloco ou parte (P007, B03, B03.P009b...)")
+    attempt: int = 1
+    cached: bool = False
+    estimated_tokens: int = 0
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+
+
 class Discarded(BaseModel):
     """Item da resposta recusado pela validação (só segurança), com o motivo."""
 
-    kind: str = Field(..., description="bloco, fora, faltando, cortar, incluir, ordem, cobertura, respiro")
+    kind: str = Field(..., description="bloco, fora, faltando, cortar, inserir, cobertura")
     item: str = Field(..., description="O item como a IA mandou, resumido")
     reason: str
 
@@ -387,16 +407,16 @@ class StructureRun(BaseModel):
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)
     attempts: list[str] = Field(default_factory=list, description="Erro de cada tentativa recusada")
-    prompt_mode: Literal["completo", "compacto"] = "completo"
     warnings: list[str] = Field(default_factory=list)
     stats: CallStats = Field(default_factory=CallStats)
+    estimated_tokens: int = 0
     normalized_ids: list[str] = Field(
         default_factory=list, description="IDs da resposta aceita trocados pelo formato do roteiro (\"bruto → ID\")"
     )
 
 
 class KeepRange(BaseModel):
-    """Item aceito da faixa principal (frases de um clipe, em ordem, ou um momento)."""
+    """Item aceito da faixa principal: frases seguidas de um clipe (um trecho) ou um momento sem fala."""
 
     kind: Literal["frases", "momento"]
     clip_id: str
@@ -405,75 +425,133 @@ class KeepRange(BaseModel):
     sentence_ids: list[str] = Field(default_factory=list)
     moment_id: Optional[str] = None
     duration_sec: Optional[float] = Field(default=None, description="Pedida pela IA (momento); None = inteiro")
+    breath: bool = Field(default=False, description="Momento do acervo entre as falas (respiro: som mais baixo)")
 
     @property
     def key(self) -> str:
-        """ID do item (o que `depois_de` cita): a frase final ou o momento."""
+        """ID do item: a frase final ou o momento."""
         return self.to_sentence if self.kind == "frases" else self.moment_id
 
 
 class CutChoice(BaseModel):
-    """Corte aceito: frases que saem do vídeo e o motivo da IA."""
+    """Corte aceito (2a): a frase que sai do vídeo e o motivo da IA."""
 
-    from_sentence: str
-    to_sentence: str
-    sentence_ids: list[str]
+    sentence_id: str
     reason: str = ""
 
 
+class Trecho(BaseModel):
+    """Trecho de fala mantido (frases seguidas de um clipe depois dos cortes), numerado no bloco a partir de 1."""
+
+    number: int
+    clip_id: str
+    sentence_ids: list[str]
+    seconds: float
+
+
+class Candidate(BaseModel):
+    """Candidato com letra (2b: momento sem fala; 2c: momento medido para um trecho)."""
+
+    letter: str
+    moment_id: str
+    clip_id: str
+    duration_sec: float
+    source: Literal["bloco", "acervo", "outro clipe"] = "acervo"
+    kind: Optional[CoverageKind] = Field(default=None, description="2c: por que é candidato")
+    words: list[str] = Field(default_factory=list, description="2c: palavras em comum (fala × imagem, ou lugar × lugar)")
+
+
+class InsertChoice(BaseModel):
+    """Inclusão aceita (2b): a letra convertida em momento, depois de que trecho."""
+
+    after_trecho: int
+    letter: str
+    moment_id: str
+    duration_sec: Optional[float] = None
+    breath: bool = Field(..., description="True = momento do acervo (respiro); False = do próprio bloco")
+
+
 class CoverageChoice(BaseModel):
+    trecho: int = 0
+    letter: str = ""
+    word: str = Field(default="", description="A palavra em comum que a IA copiou")
     from_sentence: str
     to_sentence: str
     sentence_ids: list[str]
     clip_id: str = Field(..., description="Clipe que está falando")
     moment_ids: list[str]
     kind: CoverageKind = COVERAGE_SAYS
-    common_words: list[str] = Field(
-        default_factory=list,
-        description="Palavras em comum: evidência da fala × da imagem (o que é dito) ou lugar × lugar (o lugar)",
-    )
-    speech_evidence: str
-    image_evidence: str
-    reason: str = ""
-    matched_speech: list[str] = Field(default_factory=list, description="Palavras da evidência achadas na fala")
-    matched_image: dict[str, list[str]] = Field(default_factory=dict, description="Por momento, palavras achadas")
-
-
-class BreathChoice(BaseModel):
-    after: str = Field(..., description="Frase (S015) ou momento da faixa principal depois do qual entra")
-    moment_id: str
-    duration_sec: Optional[float] = None
+    common_words: list[str] = Field(default_factory=list, description="Palavras em comum medidas pelo código")
+    speech_evidence: str = ""
+    image_evidence: str = ""
     reason: str = ""
 
 
-class DetailRun(BaseModel):
-    """Passada 2 de um bloco ou sub-bloco: o que a IA pediu, o que foi aceito e o que foi descartado."""
+class CutRun(BaseModel):
+    """2a de um clipe (ou parte de um clipe grande): meta, resultado e cortes."""
 
-    unit_id: str = Field(..., description="B01, ou B01a/B01b quando o bloco foi dividido para caber")
-    block_id: str
-    clip_ids: list[str]
-    moment_ids: Optional[list[str]] = Field(default=None, description="Só os momentos deste pedaço (clipe gigante)")
+    unit_id: str = Field(..., description="B03.P009, ou B03.P009a/b quando o clipe foi dividido para caber")
+    clip_id: str
+    moment_ids: Optional[list[str]] = Field(default=None, description="Só os momentos desta parte (clipe grande)")
     origin: Origin
-    keep: list[KeepRange] = Field(default_factory=list, description="Faixa principal: frases não cortadas + incluídos")
     cuts: list[CutChoice] = Field(default_factory=list)
-    clip_order: list[str] = Field(default_factory=list, description="Ordem dos clipes usada (a da IA ou a da estrutura)")
-    coverages: list[CoverageChoice] = Field(default_factory=list)
-    breaths: list[BreathChoice] = Field(default_factory=list)
+    kept_ids: list[str] = Field(default_factory=list)
+    available_sec: float = 0.0
+    target_sec: Optional[float] = Field(default=None, description="Meta: a do bloco repartida pela fala disponível")
+    result_sec: float = 0.0
+    duration_off: bool = Field(default=False, description="Fora da meta ± DURATION_TOLERANCE depois da nova tentativa")
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)
     attempts: list[str] = Field(default_factory=list)
-    available_sec: float = Field(default=0.0, description="Duração das frases livres do pedaço, antes dos cortes")
-    result_sec: float = Field(default=0.0, description="Duração resultante: frases que ficaram + incluídos + respiros")
-    target_sec: Optional[float] = Field(default=None, description="Alvo do pedaço (o do bloco; proporcional se dividido)")
-    duration_off: bool = Field(default=False, description="Fora do alvo ± DURATION_TOLERANCE depois da nova tentativa")
-    library_offered: list[str] = Field(default_factory=list, description="Momentos do acervo pré-selecionados")
-    used_before_sec: float = Field(default=0.0, description="Duração já usada pelos blocos anteriores (estimada)")
-    estimated_tokens: int = 0
     warnings: list[str] = Field(default_factory=list)
     stats: CallStats = Field(default_factory=CallStats)
-    normalized_ids: list[str] = Field(
-        default_factory=list, description="IDs da resposta aceita trocados pelo formato do roteiro (\"bruto → ID\")"
-    )
+    estimated_tokens: int = 0
+    normalized_ids: list[str] = Field(default_factory=list)
+
+
+class SubpassRun(BaseModel):
+    """2b ou 2c de um bloco (em um ou mais pedidos): candidatos com letra, escolhas aceitas e descartes."""
+
+    origin: Origin
+    requests: int = 0
+    candidates: list[Candidate] = Field(default_factory=list)
+    inserts: list[InsertChoice] = Field(default_factory=list)
+    coverages: list[CoverageChoice] = Field(default_factory=list)
+    nones: list[int] = Field(default_factory=list, description="2c: trechos em que a IA respondeu \"nenhuma\"")
+    notes: str = ""
+    discarded: list[Discarded] = Field(default_factory=list)
+    attempts: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    stats: CallStats = Field(default_factory=CallStats)
+    estimated_tokens: int = 0
+
+
+class DetailRun(BaseModel):
+    """Passada 2 de um bloco: 2a por clipe, 2b e 2c do bloco, e a faixa principal montada pelo código."""
+
+    unit_id: str = Field(..., description="O bloco (B01...)")
+    block_id: str
+    clip_ids: list[str]
+    origin: Origin = Field(..., description="A pior das subpassadas (fallback se alguma foi)")
+    keep: list[KeepRange] = Field(default_factory=list, description="Faixa principal na ordem: trechos e inclusões")
+    coverages: list[CoverageChoice] = Field(default_factory=list)
+    trechos: list[Trecho] = Field(default_factory=list)
+    cut_runs: list[CutRun] = Field(default_factory=list)
+    inserts: Optional[SubpassRun] = None
+    coverage: Optional[SubpassRun] = None
+    available_sec: float = Field(default=0.0, description="Fala livre do bloco antes dos cortes")
+    speech_sec: float = Field(default=0.0, description="Fala que ficou depois dos cortes")
+    result_sec: float = Field(default=0.0, description="Fala que ficou + inclusões")
+    target_sec: Optional[float] = None
+    used_before_sec: float = Field(default=0.0, description="Duração já usada pelos blocos anteriores (estimada)")
+    library_offered: list[str] = Field(default_factory=list, description="Momentos do acervo listados na 2b")
+    warnings: list[str] = Field(default_factory=list)
+
+    @property
+    def notes(self) -> str:
+        return " · ".join(n for n in [*(c.notes for c in self.cut_runs),
+                                      self.inserts.notes if self.inserts else "",
+                                      self.coverage.notes if self.coverage else ""] if n)
 
 
 class BudgetInfo(BaseModel):
@@ -483,7 +561,9 @@ class BudgetInfo(BaseModel):
     source: str = Field(..., description="De onde veio o num_ctx (ollama, --editor-ctx, padrão da nuvem)")
     summary_output: int
     structure_output: int
-    detail_output: int
+    cuts_output: int
+    inserts_output: int
+    coverage_output: int
     margin: int
     token_factor: float
 
@@ -493,7 +573,7 @@ def _now() -> datetime:
 
 
 class EditorRun(BaseModel):
-    """Conteúdo do `editor_run.json`: as três passadas, avisos, chamadas e tokens."""
+    """Conteúdo do `editor_run.json`: as passadas, avisos, chamadas e tokens."""
 
     schema_version: int = EDITOR_SCHEMA_VERSION
     created_at: datetime = Field(default_factory=_now)
@@ -509,12 +589,16 @@ class EditorRun(BaseModel):
     details: list[DetailRun] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     summary_stats: CallStats = Field(default_factory=CallStats)
-    detail_stats: CallStats = Field(default_factory=CallStats)
+    cuts_stats: CallStats = Field(default_factory=CallStats)
+    inserts_stats: CallStats = Field(default_factory=CallStats)
+    coverage_stats: CallStats = Field(default_factory=CallStats)
+    requests: list[RequestRecord] = Field(default_factory=list)
 
     @property
     def total_stats(self) -> CallStats:
         total = CallStats()
-        for stats in (self.summary_stats, self.structure.stats if self.structure else CallStats(), self.detail_stats):
+        structure = self.structure.stats if self.structure else CallStats()
+        for stats in (self.summary_stats, structure, self.cuts_stats, self.inserts_stats, self.coverage_stats):
             total.add(stats)
         return total
 
@@ -559,7 +643,7 @@ class PlanBlock(BaseModel):
     id: str
     title: str = ""
     clip_ids: list[str]
-    origin: str = Field(..., description="ia, cache, fallback (por sub-bloco: a pior)")
+    origin: str = Field(..., description="ia, cache, fallback (a pior das subpassadas)")
     timeline_start: float = 0.0
     timeline_end: float = 0.0
     pieces: list[PlanPiece] = Field(default_factory=list)
