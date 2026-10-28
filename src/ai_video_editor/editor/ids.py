@@ -7,7 +7,10 @@ para os recusados. Só segurança: nada é adivinhado.
 - Momento: só caixa, espaços e zeros à esquerda (`p9.m3` → `P009.M03`), e só se o momento existe. Sem o
   clipe (`M03`) não vale: seria adivinhar o clipe.
 - Clipe: caixa, espaços e zeros à esquerda (`p9` → `P009`), se existe.
-- Faixa num campo só (`"P007.S021–P007.S023"` em `de`, com `ate` vazio ou igual): os dois lados.
+- Lixo de markdown ou pontuação em volta do ID (`### P009.M06`, `**S012**`, `"S012".`, `[P007]`): sai antes de
+  tudo (a IA copia o título `###` do roteiro ou o negrito).
+- Faixa num campo só (`"P007.S021–P007.S023"`): reconhecida por `split_range` (a 2a recusa faixas: uma frase
+  por item).
 
 Cada troca é registrada (`IdResolver.fixed`, "P009.S025 → S025"): o relatório conta quantos IDs foram
 normalizados por passada, o sinal de que o pedido ainda induz o formato errado.
@@ -17,7 +20,7 @@ import re
 from typing import Optional
 
 from ai_video_editor.editor.material import EditorMaterial
-from ai_video_editor.editor.schema import BlockAnswer, StructureAnswer
+from ai_video_editor.editor.schema import CutsAnswer, StructureAnswer
 
 _CLIP = re.compile(r"^([A-Z]+)0*(\d+)$")
 _SENTENCE = re.compile(r"^(?:([A-Z]+)0*(\d+)[.:_/-]?)?S0*(\d+)$")
@@ -26,10 +29,12 @@ _MOMENT = re.compile(r"^([A-Z]+)0*(\d+)[.:_/-]?M0*(\d+)$")
 _SENTENCE_TOKEN = re.compile(r"(?:[A-Z]+\d+[.:_/]?)?S\d+")
 # O que pode separar os dois lados de uma faixa escrita num campo só.
 _RANGE_GLUE = re.compile(r"^(?:[-–—~>/,;]|\.\.|A|ATE|ATÉ|AO)+$")
+# Lixo em volta do ID: tudo o que não é letra/dígito nas pontas (###, **, aspas, colchetes, ponto final).
+_EDGES = re.compile(r"^[^A-Z0-9]+|[^A-Z0-9]+$")
 
 
 def _compact(raw: str) -> str:
-    return re.sub(r"\s+", "", raw.upper())
+    return _EDGES.sub("", re.sub(r"\s+", "", raw.upper()))
 
 
 class IdResolver:
@@ -90,24 +95,14 @@ class IdResolver:
         return self._fix(raw, found) if found else raw
 
     def anchor(self, raw: Optional[str]) -> Optional[str]:
-        """`depois_de`: frase ou momento."""
+        """Frase ou momento (destaques e problemas dos resumos)."""
         value = self.sentence(raw)
         return self.moment(raw) if value == raw else value
 
-    def sentence_range(self, de: Optional[str], ate: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-        """`de`/`ate`, separando a faixa escrita num campo só; cada lado normalizado."""
-        for text, other in ((de, ate), (ate, de)):
-            sides = split_range(text)
-            if sides and (not other or other == text):
-                mark = len(self.fixed)
-                first, last = self.sentence(sides[0]), self.sentence(sides[1])
-                del self.fixed[mark:]  # uma troca só: o campo inteiro
-                self.fixed.append(f"{text} → {first}–{last}")
-                return first, last
-        if de == ate:  # uma frase só ("S012" sozinho vira de = ate): conta uma troca
-            value = self.sentence(de)
-            return value, value
-        return self.sentence(de), self.sentence(ate)
+
+def sentence_tokens(text: Optional[str]) -> list[str]:
+    """Frases citadas num texto (`"S170, S171"` → duas): a 2a pede uma por item."""
+    return _SENTENCE_TOKEN.findall(_compact(text)) if text else []
 
 
 def split_range(text: Optional[str]) -> Optional[tuple[str, str]]:
@@ -135,22 +130,13 @@ def normalize_structure(answer: StructureAnswer, material: EditorMaterial) -> tu
     return answer, ids.fixed
 
 
-def normalize_detail(answer: BlockAnswer, material: EditorMaterial) -> tuple[BlockAnswer, list[str]]:
-    """Cópia da resposta da passada 2 com frases, momentos e clipes normalizados, e as trocas feitas."""
+def normalize_cuts(answer: CutsAnswer, material: EditorMaterial) -> tuple[CutsAnswer, list[str]]:
+    """Cópia da resposta da 2a com as frases normalizadas (faixas ficam como vieram: a validação recusa)."""
     ids = IdResolver(material)
     answer = answer.model_copy(deep=True)
-    answer.ordem = [ids.clip(c) for c in answer.ordem]
     for cut in answer.cortar:
-        cut.de, cut.ate = ids.sentence_range(cut.de, cut.ate)
-    for include in answer.incluir:
-        include.momento = ids.moment(include.momento)
-        include.depois_de = ids.anchor(include.depois_de)
-    for coverage in answer.coberturas:
-        coverage.de, coverage.ate = ids.sentence_range(coverage.de, coverage.ate)
-        coverage.momentos = [ids.moment(m) for m in coverage.momentos]
-    for breath in answer.respiros:
-        breath.depois_de = ids.anchor(breath.depois_de)
-        breath.momento = ids.moment(breath.momento)
+        if cut.frase and split_range(cut.frase) is None:
+            cut.frase = ids.sentence(cut.frase)
     return answer, ids.fixed
 
 
@@ -184,15 +170,6 @@ def moment_hint(raw: str, material: EditorMaterial) -> str:
     if m and IdResolver(material)._clip_of(m[1], m[2]) is None:
         return f"o clipe {re.match(r'[A-Z]+[0-9]+', compact)[0]} não existe; {MOMENT_FORMAT}"
     return MOMENT_FORMAT
-
-
-def anchor_hint(raw: str, material: EditorMaterial) -> str:
-    """Dica para `depois_de` que não é frase nem momento conhecido ("" se o ID existe)."""
-    if raw in material.sentences or raw in material.moments:
-        return ""
-    if _MOMENT.match(_compact(raw)):
-        return moment_hint(raw, material)
-    return sentence_hint(raw, material)
 
 
 def clip_hint(raw: str, material: EditorMaterial) -> str:

@@ -5,13 +5,14 @@ from pathlib import Path
 from typing import Optional
 
 from ai_video_editor.editor.material import EditorMaterial
-from ai_video_editor.editor.schema import CallStats, EditorPlan, EditorRun
+from ai_video_editor.editor.schema import CallStats, DetailRun, EditorPlan, EditorRun
 from ai_video_editor.pipeline.schema import RunTimings
 from ai_video_editor.pipeline.timing import build_timings_section, format_duration
 from ai_video_editor.roteiro.report import clock
 
 _ORIGIN = {"ia": "IA", "cache": "IA (cache)", "fallback": "**fallback neutro**", "falha": "**falhou**"}
 _TARGET_ORIGIN = {"pedido": "do pedido", "ia": "escolhida pela IA", "nenhuma": "livre"}
+_PASSES = ("resumo", "estrutura", "cortes", "insercoes", "coberturas")
 
 
 def _cell(text: object) -> str:
@@ -41,6 +42,99 @@ def _stats_row(name: str, stats: CallStats, normalized: int) -> str:
 def _normalized(ids: list[str], limit: int = 4) -> str:
     more = f" (+{len(ids) - limit})" if len(ids) > limit else ""
     return f"IDs normalizados: {len(ids)} ({'; '.join(ids[:limit])}{more})"
+
+
+def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
+    """Um bloco no relatório: 2a por clipe, 2b (letras → IDs), 2c (trecho → letra → momento + palavra)."""
+    lines = [f"### {detail.unit_id} — {', '.join(detail.clip_ids)} ({_ORIGIN[detail.origin]})", ""]
+    lines.append(
+        f"Duração: fala livre {_sec(detail.available_sec)} → fala que ficou {_sec(detail.speech_sec)} → com as "
+        f"inclusões {_sec(detail.result_sec)} → alvo {_sec(detail.target_sec)}"
+    )
+    lines += ["", "**2a cortes** (meta do clipe = alvo do bloco × fala do clipe / fala do bloco)", ""]
+    if not detail.cut_runs:
+        lines.append("- (nenhum clipe com fala)")
+    for cut in detail.cut_runs:
+        off = " · **fora da meta**" if cut.duration_off else ""
+        lines.append(
+            f"- {cut.unit_id} ({_ORIGIN[cut.origin]}, ~{_tokens(cut.estimated_tokens)} tokens): {_sec(cut.available_sec)} "
+            f"→ meta {_sec(cut.target_sec)} → ficou {_sec(cut.result_sec)}{off} · {len(cut.cuts)} corte(s)"
+        )
+        lines += [
+            f"  - cortou {c.sentence_id} — {_cell(_short(material.sentences[c.sentence_id].text, 70))} · "
+            f"motivo: {_cell(c.reason or '—')}"
+            for c in cut.cuts if c.sentence_id in material.sentences
+        ]
+        if cut.normalized_ids:
+            lines.append(f"  - {_cell(_normalized(cut.normalized_ids))}")
+        lines += [f"  - tentativa recusada: {_cell(_short(a, 300))}" for a in cut.attempts]
+    if detail.trechos:
+        lines += ["", "Trechos de fala: " + "; ".join(
+            f"{t.number}: {t.sentence_ids[0]}–{t.sentence_ids[-1]} ({t.clip_id}, {t.seconds:.0f}s)" for t in detail.trechos
+        )]
+    sub = detail.inserts
+    lines += ["", f"**2b inclusões e respiros** ({_ORIGIN[sub.origin] if sub and sub.requests else 'sem pergunta'})", ""]
+    if sub is not None:
+        if sub.requests:
+            lines.append(f"- {len(sub.candidates)} candidato(s) com letra · ~{_tokens(sub.estimated_tokens)} tokens")
+        for choice in sub.inserts:
+            what = "respiro (acervo)" if choice.breath else "momento do bloco"
+            extra = f", {choice.duration_sec:g}s" if choice.duration_sec else ""
+            lines.append(f"- {choice.letter} → {choice.moment_id} ({what}{extra}) depois do trecho {choice.after_trecho}")
+        if sub.requests and not sub.inserts:
+            lines.append("- nenhuma imagem escolhida")
+        lines += [f"- tentativa recusada: {_cell(_short(a, 300))}" for a in sub.attempts]
+    sub = detail.coverage
+    lines += ["", f"**2c coberturas** ({_ORIGIN[sub.origin] if sub and sub.requests else 'sem candidato: sem pergunta'})", ""]
+    if sub is not None:
+        if sub.requests:
+            lines.append(
+                f"- {len(sub.candidates)} candidato(s) medido(s), {sub.requests} pedido(s) · "
+                f"~{_tokens(sub.estimated_tokens)} tokens"
+            )
+        for coverage in sub.coverages:
+            lines.append(
+                f"- trecho {coverage.trecho} → {coverage.letter} → {', '.join(coverage.moment_ids)} · {coverage.kind} · "
+                f"palavra \"{_cell(coverage.word)}\" · cobre {coverage.from_sentence}–{coverage.to_sentence}"
+            )
+        if sub.nones:
+            lines.append(f"- \"nenhuma\" nos trechos {', '.join(str(n) for n in sub.nones)}")
+        lines += [f"- tentativa recusada: {_cell(_short(a, 300))}" for a in sub.attempts]
+    if detail.warnings:
+        lines += ["", "Avisos:", *(f"- {_cell(_short(w, 300))}" for w in detail.warnings)]
+    lines.append("")
+    return lines
+
+
+def _ratio(value: float) -> str:
+    return f"{value:.2f}".replace(".", ",")
+
+
+def _calibration_lines(run: EditorRun) -> list[str]:
+    """Tokens estimados × reais por pedido (os do cache não têm real) e a razão por passada."""
+    measured = [r for r in run.requests if not r.cached and r.input_tokens and r.estimated_tokens]
+    lines = [
+        "## Tokens estimados × reais por pedido",
+        "",
+        f"Estimativa: caracteres/4 × {run.budget.token_factor:g} (`editor/budget.py`). Razão real/estimado acima de 1 "
+        "= a estimativa subestima (o pedido pode estourar o contexto).",
+        "",
+    ]
+    if not measured:
+        return lines + ["Nenhum pedido com tokens reais nesta execução (tudo do cache ou provedor sem contagem).", ""]
+    lines += ["| Passada | Pedidos medidos | Real/estimado (mín–máx) |", "| --- | --- | --- |"]
+    for kind in _PASSES:
+        ratios = [r.input_tokens / r.estimated_tokens for r in measured if r.kind == kind]
+        if ratios:
+            lines.append(f"| {kind} | {len(ratios)} | {_ratio(min(ratios))}–{_ratio(max(ratios))} |")
+    lines += ["", "| Passada | Unidade | Tentativa | Estimados | Reais | Saída |", "| --- | --- | --- | --- | --- | --- |"]
+    for r in measured:
+        lines.append(
+            f"| {r.kind} | {r.unit} | {r.attempt} | {_tokens(r.estimated_tokens)} | {_tokens(r.input_tokens)} | "
+            f"{_tokens(r.output_tokens)} |"
+        )
+    lines.append("")
+    return lines
 
 
 def build_plan_markdown(plan: EditorPlan, material: EditorMaterial) -> str:
@@ -122,9 +216,10 @@ def build_editor_report(
         lines.append(f"| Legendas | `{subtitles_path.name}` ({subtitle_blocks} blocos) |")
     lines.append("")
 
-    lines += ["## Estrutura (passada 1)", "", f"Origem: {_ORIGIN[structure.origin]}" + (
-        f" · pedido {structure.prompt_mode}" if structure.prompt_mode != "completo" else ""
-    )]
+    lines += [
+        "## Estrutura (passada 1)", "",
+        f"Origem: {_ORIGIN[structure.origin]} · pedido ~{_tokens(structure.estimated_tokens)} tokens (uma linha por clipe)",
+    ]
     if structure.notes:
         lines.append(f"Notas da IA: {_cell(structure.notes)}")
     if structure.normalized_ids:
@@ -142,52 +237,13 @@ def build_editor_report(
     if structure.out:
         lines += ["Fora:", *(f"- {o.clipe}: {_cell(o.motivo or '—')}" for o in structure.out), ""]
     lines += [f"Acervo (cobertura e respiros): {', '.join(structure.library_clip_ids) or 'nenhum'}", ""]
-
-    lines += ["## Blocos (passada 2)", ""]
-    for detail in run.details:
-        lines += [f"### {detail.unit_id} — {', '.join(detail.clip_ids)} ({_ORIGIN[detail.origin]})", ""]
-        if detail.notes:
-            lines.append(f"Notas da IA: {_cell(detail.notes)}")
-        off = " · **fora do alvo**" if detail.duration_off else ""
-        lines.append(
-            f"Duração: frases disponíveis {_sec(detail.available_sec)} → resultante {_sec(detail.result_sec)} → "
-            f"alvo {_sec(detail.target_sec)}{off}"
-        )
-        lines.append(
-            f"Pedido: ~{_tokens(detail.estimated_tokens)} tokens · acervo oferecido: {len(detail.library_offered)} momento(s)"
-        )
-        if detail.normalized_ids:
-            lines.append(_cell(_normalized(detail.normalized_ids)))
-        if detail.clip_order and detail.clip_order != detail.clip_ids:
-            lines.append(f"Ordem dos clipes (da IA): {', '.join(detail.clip_order)}")
-        for keep in detail.keep:
-            if keep.kind == "frases":
-                lines.append(f"- ficou: {keep.from_sentence}–{keep.to_sentence} ({keep.clip_id}, {len(keep.sentence_ids)} frase(s))")
-            else:
-                extra = f", {keep.duration_sec:g}s" if keep.duration_sec else ""
-                lines.append(f"- incluiu: momento {keep.moment_id}{extra}")
-        for cut in detail.cuts:
-            lines.append(f"- cortou: {cut.from_sentence}–{cut.to_sentence} · motivo: {_cell(cut.reason or '—')}")
-            lines += [
-                f"  - {sid} — {_cell(_short(material.sentences[sid].text))}"
-                for sid in cut.sentence_ids if sid in material.sentences
-            ]
-        for coverage in detail.coverages:
-            image = "; ".join(f"{m}: {', '.join(w)}" for m, w in coverage.matched_image.items())
-            lines.append(
-                f"- cobertura {coverage.from_sentence}–{coverage.to_sentence} ← {', '.join(coverage.moment_ids)} · "
-                f"{coverage.kind} (em comum: {', '.join(coverage.common_words) or '—'}) · "
-                f"fala: \"{_cell(coverage.speech_evidence)}\" (achou {', '.join(coverage.matched_speech)}) · "
-                f"imagem: \"{_cell(coverage.image_evidence)}\" ({image})" + (f" · {_cell(coverage.reason)}" if coverage.reason else "")
-            )
-        for breath in detail.breaths:
-            extra = f", {breath.duration_sec:g}s" if breath.duration_sec else ""
-            lines.append(
-                f"- respiro depois de {breath.after}: {breath.moment_id}{extra}" + (f" · {_cell(breath.reason)}" if breath.reason else "")
-            )
-        for attempt in detail.attempts:
-            lines.append(f"- tentativa recusada: {_cell(_short(attempt, 300))}")
+    lines += [f"- tentativa recusada: {_cell(_short(a, 300))}" for a in structure.attempts]
+    if structure.attempts:
         lines.append("")
+
+    lines += ["## Blocos (passada 2: 2a cortes, 2b inclusões e respiros, 2c coberturas)", ""]
+    for detail in run.details:
+        lines += _detail_lines(detail, material)
 
     lines += ["## Resumos por clipe (E9)", "", "| Clipe | Origem | Pedaços | Tom | Resumo |", "| --- | --- | --- | --- | --- |"]
     for summary in run.summaries:
@@ -206,22 +262,25 @@ def build_editor_report(
     normalized = {
         "summary": sum(len(s.normalized_ids) for s in run.summaries),
         "structure": len(structure.normalized_ids),
-        "detail": sum(len(d.normalized_ids) for d in run.details),
+        "cuts": sum(len(c.normalized_ids) for d in run.details for c in d.cut_runs),
     }
     lines += [
         "## Chamadas e tokens",
         "",
-        "IDs normalizados: escritos pela IA fora do formato do roteiro (ex.: frase com o clipe na frente) e trocados "
-        "pelo código antes da validação. Muitos = o pedido ainda induz o formato errado.",
+        "IDs normalizados: escritos pela IA fora do formato do roteiro (ex.: frase com o clipe na frente, `###` em "
+        "volta) e trocados pelo código antes da validação. Muitos = o pedido ainda induz o formato errado.",
         "",
         "| Passada | Pedidos | Do cache | Chamadas à API | Tokens de entrada | Tokens de saída | Tempo | IDs normalizados |",
         "| --- | --- | --- | --- | --- | --- | --- | --- |",
         _stats_row("Resumos (E9)", run.summary_stats, normalized["summary"]),
         _stats_row("Estrutura (E10)", structure.stats, normalized["structure"]),
-        _stats_row("Detalhe (E11)", run.detail_stats, normalized["detail"]),
+        _stats_row("2a Cortes (E11)", run.cuts_stats, normalized["cuts"]),
+        _stats_row("2b Inclusões (E11)", run.inserts_stats, 0),
+        _stats_row("2c Coberturas (E11)", run.coverage_stats, 0),
         _stats_row("**Total**", run.total_stats, sum(normalized.values())),
         "",
     ]
+    lines += _calibration_lines(run)
     report = "\n".join(lines)
     if timings is not None:
         report += build_timings_section(timings)

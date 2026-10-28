@@ -5,77 +5,63 @@ tem motivo; bloco sem clipe válido é descartado. **Completude:** todo clipe CO
 "fora" (o esquecido é um item inválido: gera a nova tentativa e, se persistir, vai para um bloco próprio na
 ordem do catálogo, com aviso — `place_forgotten`). Clipes sem fala podem ficar no acervo.
 
-Detalhe (passada 2): por padrão FICA TUDO (as frases livres do pedaço, na ordem dos clipes e do roteiro);
-a resposta diz o que sai e o que entra a mais. Cada item sozinho (o inválido é descartado com o motivo):
+Passada 2, três perguntas por bloco; cada item sozinho (o inválido é descartado com o motivo):
 
-- cortar `de`/`ate` (ou uma frase): as frases existem, do mesmo clipe, em ordem, deste pedaço e ainda
-  livres;
-- ordem: clipes do pedaço (os que faltarem vão no fim, na ordem da estrutura);
-- incluir momento: existe, é de um clipe do pedaço, NÃO tem frase (`Moment.sentence_ids` vazio), não foi
-  usado, `duracao_sec` dentro do momento, `depois_de` = frase que ficou, momento incluído antes ou vazio
-  (começo do bloco);
-- respiro: `depois_de` é uma frase que ficou ou um momento incluído deste pedaço; momento do acervo
-  pré-selecionado ou de um clipe do pedaço, não usado; não entra no meio de uma cobertura;
-- cobertura: frases que ficaram, seguidas na faixa principal (sem respiro/incluído no meio) e não cobertas
-  antes; momentos do acervo pré-selecionado ou de outro clipe do pedaço (nunca o clipe que está falando),
-  não usados. **Evidência** (as duas cortadas nas primeiras `EVIDENCE_MAX_WORDS` palavras): TODAS as palavras
-  de conteúdo de `evidencia_fala` estão nas frases cobertas e TODAS as de `evidencia_imagem` estão na
-  descrição/lugar/tags dos momentos usados (a evidência da imagem não pode vir de outro momento); momento
-  sem nenhuma palavra da evidência sai da cobertura. **Tipo:** "mostra o que é dito" exige ao menos uma
-  palavra de conteúdo em comum entre `evidencia_fala` e `evidencia_imagem`; "mostra o lugar" exige que o
-  lugar de cada momento usado tenha palavra em comum com o lugar do momento da 1ª frase coberta (momento
-  com lugar diferente sai da cobertura). Palavras comparadas sem acento e sem caixa, com o radical simples
-  de `material.same_word` (plural/singular; ônibus/ómnibus).
+- 2a cortes (`validate_cuts`): por padrão FICA TUDO; cada item é UMA frase que existe, deste clipe (ou parte)
+  e ainda livre; faixa ou várias frases num item são recusadas (uma frase por item); repetida, descartada.
+- 2b inclusões (`validate_inserts`): `depois_do_trecho` inteiro de 0 (começo) ao último trecho (fim); letra
+  da lista, no máximo uma vez; `duracao_sec` maior que o momento vira o momento inteiro (com aviso); o
+  trecho do arquivo não pode estar no vídeo. Candidato do bloco entra como momento; do acervo, como respiro.
+- 2c coberturas (`validate_coverages`): trecho perguntado, no máximo uma vez; "nenhuma" vale; letra entre os
+  candidatos DAQUELE trecho, no máximo uma vez no bloco; **evidência**: todas as palavras de conteúdo de
+  `palavra` estão na fala do trecho e na descrição/lugar/tags do momento ("mostra o que é dito") ou no lugar
+  do momento e no lugar de um momento da fala ("mostra o lugar"); sem acento/caixa, mesmo radical
+  (`material.same_word`). A cobertura começa na frase com a palavra (lugar: a 1ª frase daquele lugar) e
+  segue pelas frases seguintes do trecho enquanto couberem na duração do momento (`coverage_span`).
 
-Antes de tudo, os IDs da resposta passam por `editor/ids.py` (`P009.S025` → `S025` só se P009 é o clipe da
-frase; caixa, espaços e zeros à esquerda; faixa num campo só); as trocas ficam em `normalized`. ID recusado
-leva na mensagem o formato certo (vai para a nova tentativa).
+Antes de tudo, os IDs da 2a passam por `editor/ids.py` (`P009.S025` → `S025` só se P009 é o clipe da frase;
+caixa, espaços, zeros à esquerda e lixo de markdown); as trocas ficam em `normalized`. ID recusado leva na
+mensagem o formato certo (vai para a nova tentativa).
 
-Em todos: o mesmo trecho de um arquivo não entra duas vezes no vídeo (intervalos por clipe, tolerância
-`OVERLAP_TOLERANCE_SEC`). A resposta é recusada (nova tentativa com a lista de erros) quando nada fica no
-pedaço ou metade ou mais dos itens é inválida; é inutilizável (fallback neutro) quando nada fica ou quando
-tinha itens e nenhum era válido.
+Em todas: o mesmo trecho de um arquivo não entra duas vezes no vídeo (intervalos por clipe, tolerância
+`OVERLAP_TOLERANCE_SEC`). Uma resposta é recusada (nova tentativa com a lista de erros) com metade ou mais
+dos itens inválida; é inutilizável (fallback neutro) quando tinha itens e nenhum era válido. A 2b de um
+bloco sem fala também é recusada se não escolhe nada (o bloco ficaria vazio).
 """
 
 import copy
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ai_video_editor.editor.ids import (
-    anchor_hint,
-    clip_hint,
-    moment_hint,
-    normalize_detail,
-    normalize_structure,
-    sentence_hint,
-)
-from ai_video_editor.editor.material import EditorMaterial, common_words, content_words, matched_words, moment_text
+from ai_video_editor.editor.ids import clip_hint, normalize_cuts, normalize_structure, sentence_hint, sentence_tokens
+from ai_video_editor.editor.material import EditorMaterial, content_words, matched_words, moment_text
 from ai_video_editor.editor.schema import (
     COVERAGE_PLACE,
     COVERAGE_SAYS,
     Block,
-    BlockAnswer,
-    BreathAnswer,
-    BreathChoice,
-    CoverageAnswer,
+    Candidate,
+    CoveragesAnswer,
     CoverageChoice,
-    CutAnswer,
     CutChoice,
+    CutsAnswer,
     Discarded,
-    IncludeAnswer,
-    KeepRange,
+    InsertChoice,
+    InsertsAnswer,
     OutClip,
     StructureAnswer,
+    Trecho,
 )
 
 # Sobreposição tolerada entre dois usos do mesmo arquivo (tempos do Whisper e das fotos não coincidem).
 OVERLAP_TOLERANCE_SEC = 0.25
-# Folga na comparação da duração pedida com a do momento.
+# Folga na comparação da duração pedida com a do momento (e da cobertura com a duração das frases).
 DURATION_TOLERANCE_SEC = 0.05
-# Fração de itens inválidos a partir da qual a resposta do pedaço é recusada.
+# Fração de itens inválidos a partir da qual a resposta é recusada.
 RETRY_INVALID_RATIO = 0.5
-# Evidências da cobertura: só as primeiras palavras contam (o pedido pede até 6, copiadas).
+# Palavra em comum da cobertura: só as primeiras palavras contam (o pedido pede a palavra copiada).
 EVIDENCE_MAX_WORDS = 6
+# A cobertura pega mais uma frase do trecho enquanto o fim dela não passa da duração do momento + isto.
+COVERAGE_EXTEND_SEC = 0.5
 
 
 def _short(item) -> str:
@@ -86,6 +72,39 @@ def _short(item) -> str:
 
 def first_words(text: str, limit: int = EVIDENCE_MAX_WORDS) -> str:
     return " ".join(text.split()[:limit])
+
+
+@dataclass
+class _Check:
+    """Base das conferências da passada 2: descartes, itens e as regras de recusa."""
+
+    discarded: list[Discarded] = field(default_factory=list)
+    items: int = 0
+
+    @property
+    def errors(self) -> list[str]:
+        return [f"{d.kind} ({d.item}): {d.reason}" for d in self.discarded]
+
+    @property
+    def invalid(self) -> int:
+        return len(self.discarded)
+
+    @property
+    def refused(self) -> Optional[str]:
+        """Por que pedir de novo (None = aceita, com os itens inválidos descartados)."""
+        if self.items and self.invalid / self.items >= RETRY_INVALID_RATIO:
+            return f"{self.invalid} de {self.items} itens inválidos"
+        return None
+
+    @property
+    def unusable(self) -> Optional[str]:
+        """Por que nem a resposta da última tentativa serve (None = aceita os itens válidos)."""
+        if self.items and self.invalid >= self.items:
+            return "nenhum item válido"
+        return None
+
+    def drop(self, kind: str, item, reason: str) -> None:
+        self.discarded.append(Discarded(kind=kind, item=item if isinstance(item, str) else _short(item), reason=reason))
 
 
 # --- passada 1 ---
@@ -197,77 +216,113 @@ class Usage:
         self.intervals.setdefault(clip_id, []).append((start, end, what))
 
 
-@dataclass
-class Unit:
-    """Pedaço da passada 2: um bloco ou, se não coube, parte dele (clipes inteiros ou momentos de um clipe)."""
-
-    unit_id: str
-    block: Block
-    clip_ids: list[str]
-    moment_ids: Optional[list[str]] = None  # só estes momentos (clipe gigante dividido)
-    part: int = 1
-    parts: int = 1
-
-    def sentence_ids(self, material: EditorMaterial) -> list[str]:
-        if self.moment_ids is not None:
-            return [s.id for s in material.moment_sentences(self.moment_ids) if s.clip_id in self.clip_ids]
-        return [s.id for c in self.clip_ids for s in material.clip_sentences.get(c, [])]
-
-    def moments(self, material: EditorMaterial):
-        moments = [m for c in self.clip_ids for m in material.clip_moments.get(c, [])]
-        if self.moment_ids is not None:
-            wanted = set(self.moment_ids)
-            moments = [m for m in moments if m.id in wanted]
-        return moments
-
-    def silent_moments(self, material: EditorMaterial, usage: "Usage"):
-        """Momentos sem frase do pedaço, ainda não usados (os que `incluir` aceita)."""
-        return [m for m in self.moments(material) if not m.sentence_ids and m.id not in usage.moments]
-
-
 def sentences_sec(material: EditorMaterial, ids) -> float:
     return sum(material.sentences[s].end_sec - material.sentences[s].start_sec for s in ids)
 
 
+def take_sentences(usage: Usage, ids, material: EditorMaterial) -> None:
+    """Marca as frases como usadas no vídeo (e o trecho do arquivo delas)."""
+    for sid in ids:
+        sentence = material.sentences[sid]
+        usage.sentences.add(sid)
+        usage.take(sentence.clip_id, sentence.start_sec, sentence.end_sec, f"frase {sid}")
+        usage.kept_order.append(sid)
+
+
+def letters(count: int) -> list[str]:
+    """A, B, ..., Z, AA, AB, ...: as letras dos candidatos na ordem da lista."""
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    result = []
+    for n in range(count):
+        result.append(alphabet[n] if n < 26 else alphabet[n // 26 - 1] + alphabet[n % 26])
+    return result
+
+
+# --- 2a: cortes ---
+
+
 @dataclass
-class DetailCheck:
-    keep: list[KeepRange] = field(default_factory=list)
+class CutsCheck(_Check):
     cuts: list[CutChoice] = field(default_factory=list)
-    clip_order: list[str] = field(default_factory=list)
-    coverages: list[CoverageChoice] = field(default_factory=list)
-    breaths: list[BreathChoice] = field(default_factory=list)
-    discarded: list[Discarded] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    items: int = 0
-    result_sec: float = 0.0  # frases que ficaram + incluídos + respiros
-    usage: Optional[Usage] = None
-    normalized: list[str] = field(default_factory=list)  # IDs trocados pelo formato do roteiro ("bruto → ID")
-
-    @property
-    def errors(self) -> list[str]:
-        return [f"{d.kind} ({d.item}): {d.reason}" for d in self.discarded]
-
-    @property
-    def invalid(self) -> int:
-        return len(self.discarded)
+    kept: list[str] = field(default_factory=list)  # frases que ficam, na ordem do roteiro
+    result_sec: float = 0.0
+    normalized: list[str] = field(default_factory=list)
 
     @property
     def refused(self) -> Optional[str]:
-        """Por que pedir de novo (None = aceita, com os itens inválidos descartados)."""
-        if not self.keep:
-            return "nada fica no bloco (tudo cortado ou nenhum momento incluído)"
-        if self.items and self.invalid / self.items >= RETRY_INVALID_RATIO:
-            return f"{self.invalid} de {self.items} itens inválidos"
-        return None
+        if not self.kept:
+            return "todas as frases do clipe foram cortadas (um clipe que sai inteiro vai em \"fora\" na estrutura)"
+        return super().refused
+
+
+def validate_cuts(answer: CutsAnswer, free: list[str], material: EditorMaterial) -> CutsCheck:
+    """`free`: as frases livres do clipe (ou da parte), em ordem. O que não for cortado fica."""
+    answer, normalized = normalize_cuts(answer, material)
+    check = CutsCheck(items=len(answer.cortar), normalized=normalized)
+    free_set = set(free)
+    cut: dict[str, CutChoice] = {}
+    for raw in answer.cortar:
+        sid = raw.frase
+        if not sid:
+            check.drop("cortar", raw, "item sem frase")
+        elif len(sentence_tokens(sid)) > 1:
+            check.drop("cortar", raw, f"{sid}: uma frase por item (para cortar várias, um item para cada frase)")
+        elif sid not in material.sentences:
+            check.drop("cortar", raw, f"frase {sid} não existe ({sentence_hint(sid, material)})")
+        elif sid not in free_set:
+            owner = material.sentences[sid].clip_id
+            check.drop("cortar", raw, f"frase {sid} não é deste clipe nem desta parte (é do clipe {owner})")
+        elif sid in cut:
+            check.drop("cortar", raw, f"frase {sid} repetida")
+        else:
+            cut[sid] = CutChoice(sentence_id=sid, reason=raw.motivo)
+    check.cuts = [cut[s] for s in free if s in cut]
+    check.kept = [s for s in free if s not in cut]
+    check.result_sec = round(sentences_sec(material, check.kept), 3)
+    return check
+
+
+def build_trechos(clip_order: list[str], kept: set[str], material: EditorMaterial) -> list[Trecho]:
+    """Trechos de fala mantidos, na ordem do roteiro (clipes do bloco em ordem, frases em ordem); uma frase
+    cortada ou fora do bloco quebra o trecho. Numerados a partir de 1."""
+    trechos: list[Trecho] = []
+    for clip_id in clip_order:
+        run: list[str] = []
+        for sentence in [*material.clip_sentences.get(clip_id, []), None]:
+            if sentence is not None and sentence.id in kept:
+                run.append(sentence.id)
+                continue
+            if run:
+                trechos.append(Trecho(
+                    number=len(trechos) + 1, clip_id=clip_id, sentence_ids=list(run),
+                    seconds=round(sentences_sec(material, run), 3),
+                ))
+                run = []
+    return trechos
+
+
+# --- 2b: inclusões e respiros ---
+
+
+@dataclass
+class InsertsCheck(_Check):
+    inserts: list[InsertChoice] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    added_sec: float = 0.0
+    usage: Optional[Usage] = None
+    has_speech: bool = True  # o bloco tem trechos de fala
+
+    @property
+    def refused(self) -> Optional[str]:
+        if not self.has_speech and not self.inserts:
+            return "o bloco não tem fala e nenhuma imagem foi escolhida: o bloco ficaria vazio"
+        return super().refused
 
     @property
     def unusable(self) -> Optional[str]:
-        """Por que nem a resposta da última tentativa serve (None = aceita os itens válidos)."""
-        if not self.keep:
-            return "nada fica no bloco"
-        if self.items and self.invalid >= self.items:
-            return "nenhum item válido"
-        return None
+        if not self.has_speech and not self.inserts:
+            return "bloco vazio"
+        return super().unusable
 
 
 def _moment_span(moment, duration: Optional[float]) -> tuple[float, float]:
@@ -275,225 +330,74 @@ def _moment_span(moment, duration: Optional[float]) -> tuple[float, float]:
     return moment.start_sec, round(moment.start_sec + length, 3)
 
 
-def _duration_problem(moment, duration: Optional[float]) -> Optional[str]:
-    if duration is None:
-        return None
-    if duration <= 0:
-        return f"duracao_sec {duration} inválida"
-    if duration > moment.duration + DURATION_TOLERANCE_SEC:
-        return f"duracao_sec {duration:g} maior que o momento {moment.id} ({moment.duration:g}s)"
-    return None
-
-
-def validate_detail(
-    answer: BlockAnswer, unit: Unit, material: EditorMaterial, library_ids: list[str], usage: Usage
-) -> DetailCheck:
-    """Confere a resposta do pedaço contra uma CÓPIA do uso; `check.usage` é o uso com os itens aceitos."""
-    answer, normalized = normalize_detail(answer, material)
+def validate_inserts(
+    answer: InsertsAnswer, trechos: list[Trecho], candidates: list[Candidate], material: EditorMaterial, usage: Usage
+) -> InsertsCheck:
+    """Confere a 2b contra uma CÓPIA do uso; `check.usage` é o uso com as inclusões aceitas."""
     state = usage.copy()
-    check = DetailCheck(
-        normalized=normalized,
-        items=len(answer.cortar) + len(answer.incluir) + len(answer.coberturas) + len(answer.respiros)
-        + (1 if answer.ordem else 0),
-        usage=state,
-    )
-    unit_clips = set(unit.clip_ids)
-    free = [s for s in unit.sentence_ids(material) if s not in usage.sentences]
-    free_set = set(free)
-    unit_moments = {m.id for m in unit.moments(material)}
-    library = set(library_ids)
-
-    def drop(kind: str, item, reason: str) -> None:
-        check.discarded.append(Discarded(kind=kind, item=_short(item) if not isinstance(item, str) else item, reason=reason))
-
-    # Ordem dos clipes: a da IA (só clipes do pedaço), completada com a da estrutura.
-    order: list[str] = []
-    bad = [c for c in answer.ordem if c not in unit_clips]
-    if bad:
-        unknown = [c for c in bad if c not in material.clips]
-        hint = f" ({clip_hint(unknown[0], material)}: {', '.join(unit.clip_ids)})" if unknown else ""
-        drop("ordem", ", ".join(answer.ordem), f"clipes fora deste bloco: {', '.join(bad[:3])}{hint}")
-    else:
-        order = list(dict.fromkeys(answer.ordem))
-    check.clip_order = order + [c for c in unit.clip_ids if c not in order]
-
-    # Cortes.
-    cut: set[str] = set()
-    for raw in answer.cortar:
-        problem = _cut_problem(raw, material, unit_clips, free_set)
-        if problem:
-            drop("cortar", raw, problem)
+    check = InsertsCheck(items=len(answer.inserir), usage=state, has_speech=bool(trechos))
+    by_letter = {c.letter: c for c in candidates}
+    last = len(trechos)
+    used: set[str] = set()
+    valid_letters = ", ".join(c.letter for c in candidates[:8]) + ("…" if len(candidates) > 8 else "")
+    for raw in answer.inserir:
+        position = raw.depois_do_trecho
+        if position is None or position != int(position):
+            check.drop("inserir", raw, f"depois_do_trecho deve ser um número inteiro de 0 a {last}")
             continue
-        ids = [s.id for s in material.sentence_range(raw.de, raw.ate)]
-        cut.update(ids)
-        check.cuts.append(CutChoice(from_sentence=raw.de, to_sentence=raw.ate, sentence_ids=ids, reason=raw.motivo))
-    kept = [s for s in free if s not in cut]
-    for sid in kept:
-        sentence = material.sentences[sid]
-        state.sentences.add(sid)
-        state.take(sentence.clip_id, sentence.start_sec, sentence.end_sec, f"frase {sid}")
-    kept_set = set(kept)
-
-    # Incluídos (momentos sem fala), ancorados numa frase que ficou ou num incluído anterior.
-    includes: dict[Optional[str], list[IncludeAnswer]] = {}
-    included: set[str] = set()
-    for raw in answer.incluir:
-        problem = _include_problem(raw, material, unit_clips, unit_moments, kept_set, included, state)
-        if problem:
-            drop("incluir", raw, problem)
+        position = int(position)
+        if not 0 <= position <= last:
+            check.drop("inserir", raw, f"depois_do_trecho {position} não existe (de 0 = começo a {last} = fim)")
             continue
-        moment = material.moments[raw.momento]
-        start, end = _moment_span(moment, raw.duracao_sec)
+        if not raw.letra:
+            check.drop("inserir", raw, "item sem letra")
+            continue
+        candidate = by_letter.get(raw.letra)
+        if candidate is None:
+            check.drop("inserir", raw, f"letra {raw.letra} não está na lista (letras: {valid_letters or 'nenhuma'})")
+            continue
+        if raw.letra in used:
+            check.drop("inserir", raw, f"letra {raw.letra} repetida (cada letra no máximo uma vez)")
+            continue
+        moment = material.moments[candidate.moment_id]
+        duration = raw.duracao_sec
+        if duration is not None and duration <= 0:
+            duration = None
+        if duration is not None and duration > moment.duration + DURATION_TOLERANCE_SEC:
+            check.warnings.append(
+                f"inserir {raw.letra}: duracao_sec {duration:g} maior que a imagem ({moment.duration:.1f}s); "
+                "entra a imagem inteira"
+            )
+            duration = None
+        start, end = _moment_span(moment, duration)
+        clash = state.conflict(moment.clip_id, start, end) if moment.id not in state.moments else "já usado"
+        if clash:
+            check.drop("inserir", raw, f"a imagem {raw.letra} ({moment.id}) já está no vídeo ({clash})")
+            continue
+        used.add(raw.letra)
         state.moments.add(moment.id)
         state.take(moment.clip_id, start, end, f"momento {moment.id}")
-        included.add(moment.id)
-        includes.setdefault(raw.depois_de, []).append(raw)
-
-    # Faixa principal: incluídos do começo, depois os clipes na ordem; uma faixa de frases quebra onde há
-    # frase cortada/fora do pedaço ou um incluído ancorado.
-    sequence: list[Optional[str]] = []  # frases em ordem; None onde há um momento (quebra a sequência)
-    keys: dict[str, int] = {}  # ID que `depois_de` pode citar → posição na sequência
-
-    def emit_includes(anchor: Optional[str]) -> None:
-        for raw in includes.pop(anchor, []):
-            moment = material.moments[raw.momento]
-            sequence.append(None)
-            keys[moment.id] = len(sequence) - 1
-            check.keep.append(KeepRange(
-                kind="momento", clip_id=moment.clip_id, moment_id=moment.id, duration_sec=raw.duracao_sec,
-            ))
-            emit_includes(moment.id)
-
-    emit_includes(None)
-    for clip_id in check.clip_order:
-        run: list[str] = []
-
-        def close() -> None:
-            if run:
-                check.keep.append(KeepRange(
-                    kind="frases", clip_id=clip_id, from_sentence=run[0], to_sentence=run[-1], sentence_ids=list(run),
-                ))
-                state.kept_order.extend(run)
-                run.clear()
-
-        for sentence in material.clip_sentences.get(clip_id, []):
-            if sentence.id not in kept_set:
-                close()
-                continue
-            run.append(sentence.id)
-            sequence.append(sentence.id)
-            keys[sentence.id] = len(sequence) - 1
-            if sentence.id in includes:
-                close()
-                emit_includes(sentence.id)
-        close()
-
-    allowed_moments = library | unit_moments
-    breath_after: set[int] = set()
-    breaths_sec = 0.0
-    for raw in answer.respiros:
-        problem = _breath_problem(raw, material, keys, allowed_moments, state)
-        if problem:
-            drop("respiro", raw, problem)
-            continue
-        moment = material.moments[raw.momento]
-        start, end = _moment_span(moment, raw.duracao_sec)
-        state.moments.add(moment.id)
-        state.take(moment.clip_id, start, end, f"respiro {moment.id}")
-        breaths_sec += end - start
-        breath_after.add(keys[raw.depois_de])
-        check.breaths.append(BreathChoice(
-            after=raw.depois_de, moment_id=moment.id, duration_sec=raw.duracao_sec, reason=raw.motivo,
+        check.added_sec += end - start
+        check.inserts.append(InsertChoice(
+            after_trecho=position, letter=raw.letra, moment_id=moment.id, duration_sec=duration,
+            breath=candidate.source != "bloco",
         ))
-
-    position = {sid: i for i, sid in enumerate(sequence) if sid is not None}
-    for raw in answer.coberturas:
-        result = _coverage(raw, material, position, breath_after, allowed_moments, state, check)
-        if isinstance(result, str):
-            drop("cobertura", raw, result)
-            continue
-        check.coverages.append(result)
-
-    included_sec = sum(
-        _moment_span(material.moments[k.moment_id], k.duration_sec)[1] - material.moments[k.moment_id].start_sec
-        for k in check.keep if k.kind == "momento"
-    )
-    check.result_sec = round(sentences_sec(material, kept) + included_sec + breaths_sec, 3)
-    state.used_sec += check.result_sec
+    check.added_sec = round(check.added_sec, 3)
     return check
 
 
-def _cut_problem(raw: CutAnswer, material, unit_clips, free: set[str]) -> Optional[str]:
-    if not raw.de and not raw.ate:
-        return "corte sem frases"
-    de, ate = raw.de or raw.ate, raw.ate or raw.de
-    raw.de, raw.ate = de, ate
-    for sid in (de, ate):
-        if sid not in material.sentences:
-            return f"frase {sid} não existe ({sentence_hint(sid, material)})"
-    first, last = material.sentences[de], material.sentences[ate]
-    if first.clip_id != last.clip_id:
-        return f"{de} e {ate} são de clipes diferentes"
-    if first.index > last.index:
-        return f"{de} vem depois de {ate}"
-    if first.clip_id not in unit_clips:
-        return f"{de} é do clipe {first.clip_id}, fora deste bloco"
-    outside = [s.id for s in material.sentence_range(de, ate) if s.id not in free]
-    if outside:
-        return f"frases fora deste pedaço do bloco ou já no vídeo: {', '.join(outside[:3])}"
-    return None
+def neutral_inserts(trechos: list[Trecho], candidates: list[Candidate]) -> InsertsAnswer:
+    """Fallback neutro da 2b: nada a mais num bloco com fala; num bloco sem fala, todas as imagens do bloco
+    na ordem (o bloco não pode ficar vazio)."""
+    if trechos:
+        return InsertsAnswer(notas="fallback neutro: nenhuma imagem incluída")
+    return InsertsAnswer.model_validate({
+        "inserir": [{"depois_do_trecho": 0, "letra": c.letter} for c in candidates if c.source == "bloco"],
+        "notas": "fallback neutro: todas as imagens do bloco, em ordem",
+    })
 
 
-def _include_problem(raw: IncludeAnswer, material, unit_clips, unit_moments, kept: set[str], included: set[str], state: Usage) -> Optional[str]:
-    if not raw.momento:
-        return "incluir sem momento"
-    moment = material.moments.get(raw.momento)
-    if moment is None:
-        return f"momento {raw.momento} não existe ({moment_hint(raw.momento, material)})"
-    if moment.clip_id not in unit_clips or raw.momento not in unit_moments:
-        return f"momento {raw.momento} não é deste bloco"
-    if moment.sentence_ids:
-        return f"momento {raw.momento} tem fala ({', '.join(moment.sentence_ids[:3])}): só entram momentos sem fala"
-    if raw.momento in state.moments:
-        return f"momento {raw.momento} já usado no vídeo"
-    if raw.depois_de is not None and raw.depois_de not in kept and raw.depois_de not in included:
-        return f"depois_de {raw.depois_de} não é uma frase que ficou nem um momento incluído antes{_hint(raw.depois_de, material)}"
-    problem = _duration_problem(moment, raw.duracao_sec)
-    if problem:
-        return problem
-    start, end = _moment_span(moment, raw.duracao_sec)
-    if end - start <= 0:
-        return f"momento {raw.momento} sem duração"
-    clash = state.conflict(moment.clip_id, start, end)
-    return f"o trecho de {raw.momento} já está no vídeo ({clash})" if clash else None
-
-
-def _breath_problem(raw: BreathAnswer, material, keys: dict[str, int], allowed, state: Usage) -> Optional[str]:
-    if not raw.depois_de or raw.depois_de not in keys:
-        return (
-            f"depois_de {raw.depois_de or '(vazio)'} não é uma frase que ficou nem um momento incluído neste bloco"
-            + (_hint(raw.depois_de, material) if raw.depois_de else "")
-        )
-    if not raw.momento:
-        return "respiro sem momento"
-    moment = material.moments.get(raw.momento)
-    if moment is None:
-        return f"momento {raw.momento} não existe ({moment_hint(raw.momento, material)})"
-    if raw.momento not in allowed:
-        return f"momento {raw.momento} não está no acervo oferecido nem no bloco"
-    if raw.momento in state.moments:
-        return f"momento {raw.momento} já usado no vídeo"
-    problem = _duration_problem(moment, raw.duracao_sec)
-    if problem:
-        return problem
-    start, end = _moment_span(moment, raw.duracao_sec)
-    clash = state.conflict(moment.clip_id, start, end)
-    return f"o trecho de {raw.momento} já está no vídeo ({clash})" if clash else None
-
-
-def _hint(raw: str, material) -> str:
-    hint = anchor_hint(raw, material)
-    return f" ({hint})" if hint else ""
+# --- 2c: coberturas ---
 
 
 def _missing(evidence: str, text: str) -> list[str]:
@@ -502,124 +406,128 @@ def _missing(evidence: str, text: str) -> list[str]:
     return [w for w in content_words(evidence) if w not in found]
 
 
-def _coverage(raw: CoverageAnswer, material, position, breath_after: set[int], allowed, state: Usage, check: DetailCheck):
-    if not raw.de or not raw.ate:
-        return "cobertura sem de/ate"
-    for sid in (raw.de, raw.ate):
-        if sid not in material.sentences:
-            return f"frase {sid} não existe ({sentence_hint(sid, material)})"
-    sentences = material.sentence_range(raw.de, raw.ate)
-    if not sentences:
-        return f"{raw.de}–{raw.ate} não é uma faixa de frases do mesmo clipe, em ordem"
-    ids = [s.id for s in sentences]
-    missing = [sid for sid in ids if sid not in position]
-    if missing:
-        return f"cobertura sobre frase que não fica neste bloco: {', '.join(missing[:3])}"
-    spots = [position[sid] for sid in ids]
-    if any(b != a + 1 for a, b in zip(spots, spots[1:])):
-        return f"as frases {raw.de}–{raw.ate} não estão seguidas na faixa principal"
-    if any(p in breath_after for p in spots[:-1]):
-        return "há um respiro no meio das frases cobertas"
-    covered = [sid for sid in ids if sid in state.covered]
-    if covered:
-        return f"frase já coberta: {', '.join(covered[:3])}"
-    if raw.tipo is None:
-        return f'tipo ausente ou desconhecido (use "{COVERAGE_SAYS}" ou "{COVERAGE_PLACE}")'
-    speech_evidence, image_evidence = first_words(raw.evidencia_fala), first_words(raw.evidencia_imagem)
-    speech = " ".join(s.text for s in sentences)
-    speech_words = matched_words(speech_evidence, speech)
-    if not speech_words:
-        return f"evidencia_fala ({speech_evidence!r}) não aparece no texto de {raw.de}–{raw.ate}"
-    not_said = _missing(speech_evidence, speech)
-    if not_said:
-        return f"evidencia_fala cita palavras que não estão em {raw.de}–{raw.ate}: {', '.join(not_said[:4])}"
-    if not content_words(image_evidence):
-        return "evidencia_imagem sem palavras de conteúdo"
-    common: list[str] = []
-    if raw.tipo == COVERAGE_SAYS:
-        common = common_words(speech_evidence, image_evidence)
-        if not common:
-            return (
-                f'"{COVERAGE_SAYS}" sem palavra em comum entre evidencia_fala ({speech_evidence!r}) e '
-                f"evidencia_imagem ({image_evidence!r})"
-            )
-    speaker = sentences[0].clip_id
-    speech_moment = material.moments.get(sentences[0].moment_ids[0]) if sentences[0].moment_ids else None
-    speech_place = speech_moment.place if speech_moment is not None else ""
-    if raw.tipo == COVERAGE_PLACE and not content_words(speech_place):
-        return f'"{COVERAGE_PLACE}": o momento da fala ({speech_moment.id if speech_moment else "?"}) não tem lugar'
-    kept: list[str] = []
-    image_words: dict[str, list[str]] = {}
-    for moment_id in raw.momentos:
-        moment = material.moments.get(moment_id)
-        reason = None
-        if moment is None:
-            reason = f"não existe; {moment_hint(moment_id, material)}"
-        elif moment.clip_id == speaker:
-            reason = "é do clipe que está falando"
-        elif moment_id not in allowed:
-            reason = "não está no acervo oferecido nem no bloco"
-        elif moment_id in state.moments or moment_id in kept:
-            reason = "já usado no vídeo"
-        elif state.conflict(moment.clip_id, moment.start_sec, moment.end_sec):
-            reason = "o trecho já está no vídeo"
+def speech_places(trecho: Trecho, material: EditorMaterial) -> list[str]:
+    """Lugares dos momentos em que as frases do trecho começam (sem repetir, em ordem)."""
+    places: list[str] = []
+    for sid in trecho.sentence_ids:
+        sentence = material.sentences[sid]
+        moment = material.moments.get(sentence.moment_ids[0]) if sentence.moment_ids else None
+        if moment is not None and moment.place and moment.place not in places:
+            places.append(moment.place)
+    return places
+
+
+def coverage_span(trecho: Trecho, candidate: Candidate, word: str, material: EditorMaterial) -> list[str]:
+    """Frases cobertas: da 1ª frase do trecho com a palavra ("mostra o que é dito") ou do lugar do momento
+    ("mostra o lugar"), seguindo enquanto o fim da frase cabe na duração do momento (+ `COVERAGE_EXTEND_SEC`)."""
+    ids = trecho.sentence_ids
+    moment = material.moments[candidate.moment_id]
+    start = 0
+    for k, sid in enumerate(ids):
+        sentence = material.sentences[sid]
+        if candidate.kind == COVERAGE_PLACE:
+            where = material.moments.get(sentence.moment_ids[0]) if sentence.moment_ids else None
+            hit = where is not None and bool(matched_words(moment.place, where.place))
         else:
-            found = matched_words(image_evidence, moment_text(moment))
-            place_common = common_words(moment.place, speech_place) if raw.tipo == COVERAGE_PLACE else []
-            if not found:
-                reason = f"evidencia_imagem ({image_evidence!r}) não aparece na descrição/lugar/tags"
-            elif raw.tipo == COVERAGE_PLACE and not place_common:
-                reason = f"lugar {moment.place or '(vazio)'!r} diferente do lugar da fala ({speech_place!r})"
-            else:
-                image_words[moment_id] = found
-                common += [w for w in place_common if w not in common]
-        if reason:
-            check.warnings.append(f"cobertura {raw.de}–{raw.ate}: momento {moment_id} retirado ({reason})")
-            continue
-        kept.append(moment_id)
-    if not kept:
-        return "nenhum momento válido na cobertura"
-    used_text = " ".join(moment_text(material.moments[m]) for m in kept)
-    not_shown = _missing(image_evidence, used_text)
-    if not_shown:
-        sources = sorted({
-            m.id for m in material.moments.values()
-            if m.id not in kept and any(matched_words(w, moment_text(m)) for w in not_shown)
-        })
-        where = f" (aparece em {', '.join(sources[:3])})" if sources else ""
-        return (
-            f"evidencia_imagem cita palavras que não estão nos momentos usados ({', '.join(kept)}): "
-            f"{', '.join(not_shown[:4])}{where}"
-        )
-    for moment_id in kept:
-        moment = material.moments[moment_id]
-        state.moments.add(moment_id)
-        state.take(moment.clip_id, moment.start_sec, moment.end_sec, f"cobertura {moment_id}")
-    state.covered.update(ids)
-    return CoverageChoice(
-        from_sentence=raw.de, to_sentence=raw.ate, sentence_ids=ids, clip_id=speaker, moment_ids=kept, kind=raw.tipo,
-        common_words=common, speech_evidence=speech_evidence, image_evidence=image_evidence, reason=raw.motivo,
-        matched_speech=speech_words, matched_image=image_words,
-    )
+            hit = bool(matched_words(word, sentence.text))
+        if hit:
+            start = k
+            break
+    first = material.sentences[ids[start]]
+    span = [ids[start]]
+    for sid in ids[start + 1:]:
+        if material.sentences[sid].end_sec - first.start_sec > moment.duration + COVERAGE_EXTEND_SEC:
+            break
+        span.append(sid)
+    return span
 
 
-def neutral_detail(unit: Unit, material: EditorMaterial, usage: Usage) -> BlockAnswer:
-    """Fallback neutro do pedaço (a IA falhou de vez): nada cortado (todas as frases livres, na ordem), sem
-    cobertura nem respiros; os momentos livres de um clipe sem fala entram em ordem, no lugar do clipe."""
-    includes: list[dict] = []
-    anchor: Optional[str] = None
-    unit_sentences = set(unit.sentence_ids(material))
-    for clip_id in unit.clip_ids:
-        clip_sentences = material.clip_sentences.get(clip_id, [])
-        if clip_sentences:
-            free = [s.id for s in clip_sentences if s.id in unit_sentences and s.id not in usage.sentences]
-            anchor = free[-1] if free else anchor
+@dataclass
+class CoverageCheck(_Check):
+    coverages: list[CoverageChoice] = field(default_factory=list)
+    nones: list[int] = field(default_factory=list)
+    usage: Optional[Usage] = None
+
+
+def validate_coverages(
+    answer: CoveragesAnswer,
+    questions: dict[int, list[Candidate]],
+    trechos: list[Trecho],
+    material: EditorMaterial,
+    usage: Usage,
+) -> CoverageCheck:
+    """`questions`: trecho perguntado → candidatos dele (com letra). Confere contra uma CÓPIA do uso."""
+    state = usage.copy()
+    check = CoverageCheck(items=len(answer.coberturas), usage=state)
+    by_number = {t.number: t for t in trechos}
+    seen_trechos: set[int] = set()
+    used_letters: set[str] = set()
+    for raw in answer.coberturas:
+        number = raw.trecho
+        if number is None or number != int(number) or int(number) not in questions:
+            asked = ", ".join(str(n) for n in questions)
+            shown = int(number) if number is not None and number == int(number) else number
+            check.drop("cobertura", raw, f"trecho {shown} não foi perguntado (trechos: {asked})")
             continue
-        for moment in unit.moments(material):
-            if moment.clip_id == clip_id and moment.id not in usage.moments and not usage.conflict(clip_id, moment.start_sec, moment.end_sec):
-                includes.append({"momento": moment.id, "depois_de": anchor})
-                anchor = moment.id
-    return BlockAnswer.model_validate({"incluir": includes, "notas": "fallback neutro: a IA falhou neste bloco"})
+        number = int(number)
+        if number in seen_trechos:
+            check.drop("cobertura", raw, f"trecho {number} repetido (um item por trecho)")
+            continue
+        seen_trechos.add(number)
+        if raw.none:
+            check.nones.append(number)
+            continue
+        options = {c.letter: c for c in questions[number]}
+        candidate = options.get(raw.letra)
+        if candidate is None:
+            check.drop("cobertura", raw, f"letra {raw.letra} não é candidata do trecho {number} "
+                                         f"(letras: {', '.join(options)} ou \"nenhuma\")")
+            continue
+        if raw.letra in used_letters:
+            check.drop("cobertura", raw, f"letra {raw.letra} já usada em outro trecho")
+            continue
+        trecho = by_number[number]
+        moment = material.moments[candidate.moment_id]
+        word = first_words(raw.palavra)
+        if not content_words(word):
+            check.drop("cobertura", raw, f"sem a palavra em comum (copie uma de: {', '.join(candidate.words)})")
+            continue
+        speech = " ".join(material.sentences[s].text for s in trecho.sentence_ids)
+        if candidate.kind == COVERAGE_PLACE:
+            places = " ".join(speech_places(trecho, material))
+            missing = _missing(word, moment.place) or _missing(word, places)
+            if missing:
+                check.drop("cobertura", raw, f"palavra {word!r} não está no lugar da imagem ({moment.place!r}) e no "
+                                             f"da fala ({places!r}): {', '.join(missing)}")
+                continue
+        else:
+            not_said = _missing(word, speech)
+            if not_said:
+                check.drop("cobertura", raw, f"palavra {word!r} não está na fala do trecho {number}: {', '.join(not_said)}")
+                continue
+            not_shown = _missing(word, moment_text(moment))
+            if not_shown:
+                check.drop("cobertura", raw, f"palavra {word!r} não está na descrição/lugar/tags da imagem "
+                                             f"{raw.letra}: {', '.join(not_shown)}")
+                continue
+        if moment.id in state.moments or state.conflict(moment.clip_id, moment.start_sec, moment.end_sec):
+            check.drop("cobertura", raw, f"a imagem {raw.letra} ({moment.id}) já está no vídeo")
+            continue
+        span = coverage_span(trecho, candidate, word, material)
+        covered = [s for s in span if s in state.covered]
+        if covered:
+            check.drop("cobertura", raw, f"frase já coberta: {', '.join(covered[:3])}")
+            continue
+        used_letters.add(raw.letra)
+        state.moments.add(moment.id)
+        state.take(moment.clip_id, moment.start_sec, moment.end_sec, f"cobertura {moment.id}")
+        state.covered.update(span)
+        check.coverages.append(CoverageChoice(
+            trecho=number, letter=raw.letra, word=word, from_sentence=span[0], to_sentence=span[-1],
+            sentence_ids=span, clip_id=trecho.clip_id, moment_ids=[moment.id], kind=candidate.kind or COVERAGE_SAYS,
+            common_words=list(candidate.words), speech_evidence=word, image_evidence=word,
+        ))
+    return check
 
 
 def neutral_structure(material: EditorMaterial) -> StructureAnswer:

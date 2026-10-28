@@ -1,4 +1,4 @@
-"""Interface da IA do Editor (três passadas) e os pedidos que ela recebe.
+"""Interface da IA do Editor (resumo, estrutura e as três perguntas da passada 2) e os pedidos que ela recebe.
 
 Cada pedido leva o texto já montado (`prompt`, o que um modelo de verdade lê) e os dados de onde ele saiu
 (o mock decide a partir deles, sem ler o texto).
@@ -10,9 +10,17 @@ from typing import Optional
 
 from ai_video_editor.editor.material import EditorMaterial
 from ai_video_editor.editor.prompt import EditorContext
-from ai_video_editor.editor.schema import BlockAnswer, ClipSummary, ClipSummaryAnswer, StructureAnswer
+from ai_video_editor.editor.schema import (
+    Candidate,
+    ClipSummary,
+    ClipSummaryAnswer,
+    CoveragesAnswer,
+    CutsAnswer,
+    InsertsAnswer,
+    StructureAnswer,
+    Trecho,
+)
 from ai_video_editor.llm.schema import ModelSwitch
-from ai_video_editor.roteiro.schema import Moment
 
 
 @dataclass
@@ -34,24 +42,45 @@ class StructureRequest:
 
 
 @dataclass
-class DetailRequest:
+class CutsRequest:
+    """2a: um clipe (ou parte dele)."""
+
     unit_id: str
     prompt: str
     material: EditorMaterial
-    context: EditorContext
-    clip_ids: list[str]
-    sentence_ids: list[str]  # frases do pedaço ainda não usadas no vídeo, em ordem
-    moments: list[Moment]  # momentos do pedaço ainda não usados, em ordem
-    library: list[Moment]  # pré-seleção do acervo
+    clip_id: str
+    sentence_ids: list[str]  # frases livres do clipe (ou parte), em ordem
     target_sec: Optional[float] = None
-    block_target_sec: Optional[float] = None  # alvo do pedaço (o do bloco; proporcional se dividido)
-    silent: list[Moment] = field(default_factory=list)  # momentos sem fala livres do pedaço (os de `incluir`)
+
+
+@dataclass
+class InsertsRequest:
+    """2b: um bloco."""
+
+    unit_id: str
+    prompt: str
+    material: EditorMaterial
+    trechos: list[Trecho]
+    candidates: list[Candidate]
+    block_target_sec: Optional[float] = None
+    current_sec: float = 0.0
+
+
+@dataclass
+class CoverageRequest:
+    """2c: um bloco (ou parte dos trechos dele)."""
+
+    unit_id: str
+    prompt: str
+    material: EditorMaterial
+    trechos: list[Trecho]
+    questions: dict[int, list[Candidate]]  # trecho → candidatos com letra
 
 
 class EditorAI(ABC):
-    """Contrato da IA do Editor: só devolve IDs (a validação e os tempos são do código).
+    """Contrato da IA do Editor: só devolve IDs, letras e números (a validação e os tempos são do código).
 
-    Raises (nos três métodos): AIResponseValidationError se a resposta não puder ser lida; outros
+    Raises (em todos os métodos): AIResponseValidationError se a resposta não puder ser lida; outros
     AIProviderError da camada `llm`.
     """
 
@@ -79,4 +108,10 @@ class EditorAI(ABC):
     def structure(self, request: StructureRequest) -> StructureAnswer: ...
 
     @abstractmethod
-    def detail(self, request: DetailRequest) -> BlockAnswer: ...
+    def cuts(self, request: CutsRequest) -> CutsAnswer: ...
+
+    @abstractmethod
+    def inserts(self, request: InsertsRequest) -> InsertsAnswer: ...
+
+    @abstractmethod
+    def coverages(self, request: CoverageRequest) -> CoveragesAnswer: ...

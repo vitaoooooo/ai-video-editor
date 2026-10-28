@@ -4,21 +4,37 @@
   com problema.
 - Estrutura: um bloco por clipe com fala, na ordem do catálogo; os sem fala ficam no acervo (sem nenhum
   clipe com fala: um bloco só, com todos).
-- Detalhe: nada cortado (todas as frases livres ficam); um clipe sem fala entra com todos os momentos sem
-  fala livres (`incluir`, no lugar do clipe). A 1ª faixa ganha uma cobertura "mostra o que é dito" com o
-  primeiro momento do acervo que divide uma palavra com a fala (essa palavra é as duas evidências) e, depois
-  dela, um respiro com o momento seguinte do acervo, de até 2 s.
+- 2a cortes: nada cortado (todas as frases livres ficam).
+- 2b inclusões: bloco sem fala = todas as imagens do bloco, em ordem; com fala, as imagens do bloco no fim
+  e um respiro de até 2 s depois do 1º trecho com a 1ª imagem do acervo que NÃO divide palavra com a fala
+  (as que dividem ficam para a cobertura).
+- 2c coberturas: o 1º trecho perguntado com candidato "mostra o que é dito" ganha esse candidato (a 1ª
+  palavra em comum); os outros, "nenhuma".
 
-`responses` = respostas fixas por passada (`"summary"`, `"structure"`, `"detail"`), uma por chamada, na
-ordem; um item pode ser a resposta (modelo ou dict), uma exceção (lançada) ou uma função do pedido.
-Acabada a lista daquela passada, volta à resposta determinística.
+`responses` = respostas fixas por passada (`"summary"`, `"structure"`, `"cuts"`, `"inserts"`, `"coverages"`),
+uma por chamada, na ordem; um item pode ser a resposta (modelo ou dict), uma exceção (lançada) ou uma
+função do pedido. Acabada a lista daquela passada, volta à resposta determinística.
 """
 
 from typing import Any, Callable, Optional, Union
 
-from ai_video_editor.editor.material import matched_words, moment_text
-from ai_video_editor.editor.provider import DetailRequest, EditorAI, StructureRequest, SummaryRequest
-from ai_video_editor.editor.schema import COVERAGE_SAYS, BlockAnswer, ClipSummaryAnswer, StructureAnswer
+from ai_video_editor.editor.material import common_words, moment_text
+from ai_video_editor.editor.provider import (
+    CoverageRequest,
+    CutsRequest,
+    EditorAI,
+    InsertsRequest,
+    StructureRequest,
+    SummaryRequest,
+)
+from ai_video_editor.editor.schema import (
+    COVERAGE_SAYS,
+    ClipSummaryAnswer,
+    CoveragesAnswer,
+    CutsAnswer,
+    InsertsAnswer,
+    StructureAnswer,
+)
 
 MockEditorResponse = Union[dict, Exception, Callable[[Any], Any], Any]
 MOCK_BREATH_SEC = 2.0
@@ -27,7 +43,7 @@ MOCK_BREATH_SEC = 2.0
 class MockEditorAI(EditorAI):
     def __init__(self, responses: Optional[dict[str, list[MockEditorResponse]]] = None):
         self.responses = {k: list(v) for k, v in (responses or {}).items()}
-        self.calls: dict[str, list] = {"summary": [], "structure": [], "detail": []}
+        self.calls: dict[str, list] = {"summary": [], "structure": [], "cuts": [], "inserts": [], "coverages": []}
 
     @property
     def provider_name(self) -> str:
@@ -93,46 +109,42 @@ class MockEditorAI(EditorAI):
         total = request.context.target_sec or round(sum(b["duracao_alvo_sec"] for b in blocks), 1)
         return StructureAnswer(blocos=blocks, fora=[], duracao_total_alvo_sec=total, notas="estrutura simulada")
 
-    def detail(self, request: DetailRequest) -> BlockAnswer:
-        fixed = self._fixed("detail", request, BlockAnswer)
+    def cuts(self, request: CutsRequest) -> CutsAnswer:
+        fixed = self._fixed("cuts", request, CutsAnswer)
+        return fixed if fixed is not None else CutsAnswer(notas="cortes simulados: nada cortado")
+
+    def inserts(self, request: InsertsRequest) -> InsertsAnswer:
+        fixed = self._fixed("inserts", request, InsertsAnswer)
         if fixed is not None:
             return fixed
         material = request.material
-        free = set(request.sentence_ids)
-        includes: list[dict] = []
-        faixas: list[list[str]] = []
-        anchor = None
-        for clip_id in request.clip_ids:
-            sentences = [s.id for s in material.clip_sentences.get(clip_id, []) if s.id in free]
-            if sentences:
-                faixas.append(sentences)
-                anchor = sentences[-1]
-            elif not material.clip_sentences.get(clip_id):
-                for moment in request.silent:
-                    if moment.clip_id == clip_id:
-                        includes.append({"momento": moment.id, "depois_de": anchor})
-                        anchor = moment.id
-        coverages, breaths = [], []
-        library = list(request.library)
-        if faixas:
-            first = faixas[0]
-            speech = " ".join(material.sentences[s].text for s in first)
-            for moment in library:
-                found = matched_words(moment_text(moment), speech)
-                if found:
-                    coverages.append({
-                        "de": first[0], "ate": first[-1], "momentos": [moment.id], "tipo": COVERAGE_SAYS,
-                        "evidencia_fala": found[0],
-                        "evidencia_imagem": found[0], "motivo": "a imagem mostra o que é dito",
-                    })
-                    library.remove(moment)
-                    break
-            free_breath = next((m for m in library if not m.sentence_ids), None)
-            if free_breath is not None:
-                breaths.append({
-                    "depois_de": first[-1], "momento": free_breath.id,
-                    "duracao_sec": round(min(MOCK_BREATH_SEC, free_breath.duration), 2), "motivo": "respiro simulado",
+        own = [c for c in request.candidates if c.source == "bloco"]
+        if not request.trechos:
+            items = [{"depois_do_trecho": 0, "letra": c.letter} for c in own]
+            return InsertsAnswer.model_validate({"inserir": items, "notas": "inclusões simuladas"})
+        last = len(request.trechos)
+        items = [{"depois_do_trecho": last, "letra": c.letter} for c in own]
+        speech = " ".join(material.sentences[s].text for t in request.trechos for s in t.sentence_ids)
+        for candidate in request.candidates:
+            moment = material.moments[candidate.moment_id]
+            if candidate.source != "bloco" and not common_words(speech, moment_text(moment)):
+                items.append({
+                    "depois_do_trecho": 1, "letra": candidate.letter,
+                    "duracao_sec": round(min(MOCK_BREATH_SEC, candidate.duration_sec), 2),
                 })
-        return BlockAnswer.model_validate({
-            "incluir": includes, "coberturas": coverages, "respiros": breaths, "notas": "detalhe simulado",
-        })
+                break
+        return InsertsAnswer.model_validate({"inserir": items, "notas": "inclusões simuladas"})
+
+    def coverages(self, request: CoverageRequest) -> CoveragesAnswer:
+        fixed = self._fixed("coverages", request, CoveragesAnswer)
+        if fixed is not None:
+            return fixed
+        items, done = [], False
+        for number, candidates in request.questions.items():
+            says = next((c for c in candidates if c.kind == COVERAGE_SAYS), None)
+            if says is not None and not done:
+                items.append({"trecho": number, "letra": says.letter, "palavra": says.words[0]})
+                done = True
+            else:
+                items.append({"trecho": number, "letra": "nenhuma", "palavra": ""})
+        return CoveragesAnswer.model_validate({"coberturas": items, "notas": "coberturas simuladas"})

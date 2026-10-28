@@ -1,10 +1,32 @@
 """Orçamento de contexto do Editor de IA (segurança: o que não cabe é dividido, nunca cortado em silêncio).
 
 Conta em tokens estimados: caracteres/4 (`roteiro.report.estimate_tokens`, a mesma régua do roteiro.md)
-vezes `TOKEN_FACTOR`, porque o tokenizador dos modelos locais conta mais tokens que isso em português.
+vezes `TOKEN_FACTOR`, medido no tokenizador do modelo local padrão.
 
-    disponível para o pedido = num_ctx − saída esperada da passada − MARGIN_TOKENS
-    orçamento do conteúdo    = disponível − tokens(pedido montado sem as seções e sem o acervo)
+Calibração (vlog real "trilha La Islita", 41 clipes, pedidos em português com fala em espanhol e português;
+`prompt_eval_count` do qwen2.5:7b no Ollama para cada pedido reconstruído, contra caracteres/4):
+
+    passada                  pedidos   real/estimado: mín    máx
+    resumos (E9)               41                     1,355   1,674
+    estrutura v3 (compacta)     2                     1,539   1,539
+    detalhe v3 (antigo)        25                     1,355   1,480
+    B07 (erro real, v3)         1                     1,537 (7932 tokens reais para ~5160 estimados)
+    estrutura v4                2                     1,505   1,507
+    2a cortes                  25                     1,372   1,622
+    2b inclusões               25                     1,432   1,532
+    2c coberturas              17                     1,333   1,450
+
+O tokenizador do Qwen conta cada dígito como um token: IDs, tempos e números pesam mais que o texto
+(os resumos, com mais tempos por caractere, ficam no topo). Não há diferença que justifique fator por
+passada ou idioma: vale um fator só, `TOKEN_FACTOR` = 1,70, acima do maior medido (1,674). O template de
+chat do servidor (~30 tokens medidos) e o schema que o Ollama acrescenta no modo texto (130 a 250
+tokens estimados, conforme a passada) ficam em `MARGIN_TOKENS`. Com 1,70, o pedido do B07 (~5160 × 1,70
+= 8772 tokens) passa do disponível em 8192 e é dividido; cada parte cabe mesmo no pior real/estimado
+medido (teste `test_b07_case_fits_after_the_calibration_when_split`). O relatório mostra estimados ×
+reais de cada pedido para acompanhar a calibração em outros materiais e modelos.
+
+    disponível para o pedido = num_ctx − saída esperada da passada − MARGIN_TOKENS − RETRY_TOKENS
+    orçamento do conteúdo    = disponível − tokens(pedido montado sem as partes variáveis)
 
 `num_ctx`: `--editor-ctx`; senão o `num_ctx` do provedor Ollama (o menor, se a cadeia tiver vários) ou,
 na nuvem, `CLOUD_CONTEXT_TOKENS` (bem abaixo do limite real: pedidos menores respondem melhor).
@@ -17,18 +39,21 @@ from typing import Optional
 from ai_video_editor.editor.schema import BudgetInfo
 from ai_video_editor.roteiro.report import estimate_tokens
 
-# Estimativa caracteres/4 vezes isto (o Qwen conta ~1,2× em português; a calibrar no material real).
-TOKEN_FACTOR = 1.25
+# Caracteres/4 vezes isto: o maior real/estimado medido no vlog real (1,674), arredondado para cima.
+TOKEN_FACTOR = 1.70
 # Saída reservada de cada passada (o JSON pedido, com folga para o modelo escrever motivos).
 SUMMARY_OUTPUT_TOKENS = 600
 STRUCTURE_OUTPUT_TOKENS = 1500
-DETAIL_OUTPUT_TOKENS = 2000
+CUTS_OUTPUT_TOKENS = 1200
+INSERTS_OUTPUT_TOKENS = 600
+COVERAGE_OUTPUT_TOKENS = 600
 # Folga para o template de chat do servidor e para o schema que o Ollama acrescenta no modo texto.
 MARGIN_TOKENS = 600
+# Espaço da lista de erros da nova tentativa (`prompt.RETRY_MAX_CHARS` = 1500 caracteres + as duas linhas
+# fixas, ~1650 caracteres × 1,70 / 4 ≈ 702): o pedido da nova tentativa cabe onde o primeiro coube.
+RETRY_TOKENS = 720
 # Contexto usado com provedores de nuvem (o limite real é maior; o editor prefere pedidos menores).
 CLOUD_CONTEXT_TOKENS = 32768
-# Ao dividir um bloco, sobra pelo menos isso para a pré-seleção do acervo.
-LIBRARY_MIN_TOKENS = 500
 
 
 def tokens(text: str) -> int:
@@ -41,7 +66,7 @@ class Budget:
     source: str
 
     def available(self, output_tokens: int) -> int:
-        return self.num_ctx - output_tokens - MARGIN_TOKENS
+        return self.num_ctx - output_tokens - MARGIN_TOKENS - RETRY_TOKENS
 
     @property
     def summary_available(self) -> int:
@@ -52,13 +77,22 @@ class Budget:
         return self.available(STRUCTURE_OUTPUT_TOKENS)
 
     @property
-    def detail_available(self) -> int:
-        return self.available(DETAIL_OUTPUT_TOKENS)
+    def cuts_available(self) -> int:
+        return self.available(CUTS_OUTPUT_TOKENS)
+
+    @property
+    def inserts_available(self) -> int:
+        return self.available(INSERTS_OUTPUT_TOKENS)
+
+    @property
+    def coverage_available(self) -> int:
+        return self.available(COVERAGE_OUTPUT_TOKENS)
 
     def info(self) -> BudgetInfo:
         return BudgetInfo(
             num_ctx=self.num_ctx, source=self.source, summary_output=SUMMARY_OUTPUT_TOKENS,
-            structure_output=STRUCTURE_OUTPUT_TOKENS, detail_output=DETAIL_OUTPUT_TOKENS, margin=MARGIN_TOKENS,
+            structure_output=STRUCTURE_OUTPUT_TOKENS, cuts_output=CUTS_OUTPUT_TOKENS,
+            inserts_output=INSERTS_OUTPUT_TOKENS, coverage_output=COVERAGE_OUTPUT_TOKENS, margin=MARGIN_TOKENS,
             token_factor=TOKEN_FACTOR,
         )
 

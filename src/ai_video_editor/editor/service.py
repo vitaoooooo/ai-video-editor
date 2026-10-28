@@ -1,64 +1,105 @@
-"""Passadas do Editor de IA: resumos por clipe (E9), estrutura (E10) e detalhe por bloco (E11).
+"""Passadas do Editor de IA: resumos por clipe (E9), estrutura (E10) e, por bloco, as três perguntas da
+passada 2 (E11): 2a cortes por clipe, 2b inclusões e respiros, 2c coberturas. O plano do bloco é montado
+pelo código a partir das três respostas (ordem do roteiro; sem pergunta de ordem).
 
 Cada chamada aceita vai para um cache em disco assim que termina (um Ctrl+C no meio não perde o que já
 foi feito), em `<projects>/_cache/editor_ia/<passada>/<fingerprint>.json`, com fingerprint = o pedido
 exato (sem a lista de erros de uma nova tentativa) + versão do pedido da passada + provedor, cadeia de
 modelos e raciocínio. Como o pedido do resumo só contém a seção do clipe no roteiro, mudar o pedido de
-outra passada não refaz os resumos. Respostas inaproveitáveis não vão para o cache (a próxima execução pede
-de novo).
+outra passada não refaz os resumos. Respostas inaproveitáveis não vão para o cache.
+
+Meta de cada clipe na 2a (aritmética, sem decisão): a meta do bloco repartida entre os clipes com fala na
+proporção da fala livre de cada um (`meta do clipe = meta do bloco × fala do clipe / fala do bloco`); um
+clipe dividido em partes reparte a sua meta do mesmo jeito.
 
 Nova tentativa (uma, com a lista de erros): estrutura sem bloco válido ou com clipe com fala esquecido;
-detalhe com metade ou mais dos itens inválida, sem nada no bloco ou com a duração resultante fora do alvo
-do pedaço ± `DURATION_TOLERANCE` (a nova tentativa mostra os números). Depois dela, a última resposta
-aproveitável é aceita com os itens válidos (os inválidos saem com aviso; duração fora do alvo é registrada);
-clipe com fala ainda esquecido vai para um bloco próprio. Fallback neutro (`validate.neutral_*`, com aviso)
-só sem resposta aproveitável (erro da API, fora do formato, nenhum item válido, nada no bloco). Depois de
+qualquer pergunta da passada 2 com metade ou mais dos itens inválida; 2a com todas as frases cortadas ou
+com a duração fora da meta ± `DURATION_TOLERANCE` (a nova tentativa mostra os números); 2b de bloco sem fala
+que não escolhe nada. Depois dela, a última resposta aproveitável é aceita com os itens válidos (duração
+fora da meta é registrada). Fallback neutro (com aviso) só sem resposta aproveitável: 2a = nada cortado;
+2b = nada a mais (bloco sem fala: todas as imagens dele, em ordem); 2c = sem cobertura. Depois de
 `MAX_CONSECUTIVE_FAILURES` erros seguidos da API (não de validação), a IA não é mais chamada nesta execução
 e o resto vai pelos fallbacks. Erro de autenticação interrompe tudo.
+
+Cada pedido fica registrado em `EditorRun.requests` com os tokens estimados pelo orçamento e os reais
+informados pelo provedor (acompanhamento da calibração de `budget.TOKEN_FACTOR`).
 """
 
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
 from pydantic import BaseModel
 
-from ai_video_editor.editor.budget import LIBRARY_MIN_TOKENS, Budget, tokens
+from ai_video_editor.editor.budget import Budget, tokens
 from ai_video_editor.editor.ids import IdResolver
-from ai_video_editor.editor.material import EditorMaterial, library_ranking
+from ai_video_editor.editor.material import EditorMaterial, coverage_matches, library_ranking
 from ai_video_editor.editor.prompt import (
-    DETAIL_PROMPT_VERSION,
+    COVERAGE_PROMPT_VERSION,
+    CUTS_PROMPT_VERSION,
+    INSERTS_PROMPT_VERSION,
     STRUCTURE_PROMPT_VERSION,
+    STRUCTURE_SUMMARY_WORDS,
     SUMMARY_PROMPT_VERSION,
-    DetailPromptInput,
+    TRECHO_WORDS,
+    BlockHeader,
+    CoveragePromptInput,
+    CoverageQuestion,
+    CutsPromptInput,
     EditorContext,
-    StructureClip,
-    build_detail_prompt,
+    InsertsPromptInput,
+    build_coverage_prompt,
+    build_cuts_prompt,
+    build_inserts_prompt,
     build_structure_prompt,
     build_summary_prompt,
     duration_retry_line,
+    short_text,
 )
-from ai_video_editor.editor.provider import DetailRequest, EditorAI, StructureRequest, SummaryRequest
+from ai_video_editor.editor.provider import (
+    CoverageRequest,
+    CutsRequest,
+    EditorAI,
+    InsertsRequest,
+    StructureRequest,
+    SummaryRequest,
+)
 from ai_video_editor.editor.schema import (
+    COVERAGE_PLACE,
+    COVERAGE_SAYS,
     Block,
-    BlockAnswer,
     CallStats,
+    Candidate,
     ClipSummary,
     ClipSummaryAnswer,
+    CoveragesAnswer,
+    CutRun,
+    CutsAnswer,
     DetailRun,
     EditorRun,
+    InsertsAnswer,
+    KeepRange,
+    RequestRecord,
     StructureAnswer,
     StructureRun,
+    SubpassRun,
     SummaryNote,
+    Trecho,
 )
 from ai_video_editor.editor.validate import (
-    Unit,
     Usage,
-    neutral_detail,
+    build_trechos,
+    letters,
+    neutral_inserts,
     neutral_structure,
     place_forgotten,
     sentences_sec,
-    validate_detail,
+    speech_places,
+    take_sentences,
+    validate_coverages,
+    validate_cuts,
+    validate_inserts,
     validate_structure,
 )
 from ai_video_editor.intelligence.exceptions import (
@@ -68,17 +109,21 @@ from ai_video_editor.intelligence.exceptions import (
 )
 from ai_video_editor.pipeline.project import fingerprint
 from ai_video_editor.pipeline.schema import StageProgress
+from ai_video_editor.roteiro.report import clock
+from ai_video_editor.roteiro.schema import Moment
 
 EDITOR_CACHE_DIR = Path("_cache") / "editor_ia"
 # Tentativas por pedido: a 1ª + uma nova com a lista de erros.
 MAX_ATTEMPTS = 2
 # Erros seguidos da API (não de validação) antes de parar de chamar a IA nesta execução.
 MAX_CONSECUTIVE_FAILURES = 3
-# Frases do bloco anterior que vão como continuidade.
-CONTINUITY_SENTENCES = 2
-# Faixa aceita da duração resultante de um pedaço: alvo ± 35%. Fora dela, UMA nova tentativa com os números;
-# se ainda ficar fora, aceita e registra (a duração é informação para a IA, não uma decisão do código).
+# Faixa aceita da duração resultante de um clipe na 2a: meta ± 35%. Fora dela, UMA nova tentativa com os
+# números; se ainda ficar fora, aceita e registra (a duração é informação para a IA, não decisão do código).
 DURATION_TOLERANCE = 0.35
+# Candidatos de cobertura listados por trecho na 2c.
+COVERAGE_CANDIDATES = 4
+# Texto de um trecho na 2c: até tantas palavras (a palavra em comum é conferida na fala inteira).
+COVERAGE_TRECHO_WORDS = 60
 
 Notice = Callable[[str], None]
 Progress = Callable[[StageProgress], None]
@@ -114,8 +159,24 @@ def editor_cache(projects_root: Path) -> CallCache:
     return CallCache(Path(projects_root) / EDITOR_CACHE_DIR)
 
 
+@dataclass
+class Decision:
+    """Resultado de uma pergunta da passada 2: a conferência aceita (None = fallback) e o caminho até ela."""
+
+    check: object = None
+    answer: Optional[BaseModel] = None
+    origin: str = "ia"
+    problem: Optional[str] = None  # problema extra (duração) que persistiu depois da nova tentativa
+    attempts: list[str] = field(default_factory=list)
+    estimated: int = 0
+
+
+def _fmt_sec(seconds: float) -> str:
+    return f"{seconds:.1f}".replace(".", ",") + "s"
+
+
 class EditorService:
-    """Executa as três passadas sobre o material e devolve o `EditorRun` (sem tempos de mídia: isso é a montagem)."""
+    """Executa as passadas sobre o material e devolve o `EditorRun` (sem tempos de mídia: isso é a montagem)."""
 
     def __init__(
         self,
@@ -138,6 +199,7 @@ class EditorService:
         self.gave_up = False
         self.calls_done = 0
         self.calls_total = 0
+        self.requests: list[RequestRecord] = []
 
     # --- infraestrutura ---
 
@@ -156,10 +218,15 @@ class EditorService:
         if self.on_progress is not None:
             self.on_progress(StageProgress(done=self.calls_done, total=max(self.calls_total, 1), unit="calls", note=note))
 
-    def _ask(self, call: Callable, request, stats: CallStats) -> tuple[Optional[BaseModel], Optional[str]]:
+    def _cached(self, kind: str, unit: str, estimated: int) -> None:
+        self.requests.append(RequestRecord(kind=kind, unit=unit, cached=True, estimated_tokens=estimated))
+
+    def _ask(self, call: Callable, request, stats: CallStats, kind: str, unit: str, attempt: int = 1):
         """(resposta, erro). Erro de validação conta como tentativa; erro da API, como falha seguida."""
         if self.gave_up:
             return None, f"a IA não foi chamada ({MAX_CONSECUTIVE_FAILURES} erros seguidos da API antes)"
+        record = RequestRecord(kind=kind, unit=unit, attempt=attempt, estimated_tokens=tokens(request.prompt))
+        self.ai.last_input_tokens = self.ai.last_output_tokens = None
         started = time.perf_counter()
         error: Optional[str] = None
         answer = None
@@ -186,8 +253,57 @@ class EditorService:
                 value = getattr(self.ai, attr, None)
                 if isinstance(value, int):
                     setattr(stats, name, (getattr(stats, name) or 0) + value)
+                    setattr(record, name, value)
             stats.seconds = round(stats.seconds + time.perf_counter() - started, 3)
+            self.requests.append(record)
         return answer, error
+
+    def _decide(
+        self,
+        kind: str,
+        version: str,
+        unit: str,
+        schema: type[BaseModel],
+        build: Callable[[list[str]], str],
+        make_request: Callable[[str], object],
+        call: Callable,
+        check_of: Callable[[BaseModel], object],
+        stats: CallStats,
+        extra_problem: Optional[Callable[[object], Optional[str]]] = None,
+    ) -> Decision:
+        """Uma pergunta: cache → IA → (recusada) nova tentativa com os erros. `check.unusable` decide se a
+        resposta serve; `check.refused` e `extra_problem` pedem a nova tentativa."""
+        prompt = build([])
+        decision = Decision(estimated=tokens(prompt))
+        key = self.key(kind, version, prompt)
+        cached = self.cache.load(kind, key, schema)
+        if cached is not None:
+            trial = check_of(cached)
+            if trial.unusable is None:
+                decision.check, decision.answer, decision.origin = trial, cached, "cache"
+                decision.problem = extra_problem(trial) if extra_problem else None
+                stats.cached += 1
+                self._cached(kind, unit, decision.estimated)
+                return decision
+        errors: list[str] = []
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            raw, error = self._ask(call, make_request(build(errors)), stats, kind, unit, attempt)
+            if raw is not None:
+                trial = check_of(raw)
+                problem = extra_problem(trial) if extra_problem and trial.unusable is None else None
+                if trial.unusable is None:  # aproveitável: vale se a nova tentativa não resolver
+                    decision.check, decision.answer, decision.problem = trial, raw, problem
+                problems = [p for p in (trial.refused, problem) if p]
+                if not problems:
+                    break
+                error = "; ".join(problems) + (": " + "; ".join(trial.errors[:12]) if trial.errors else "")
+            errors.append(error)
+            decision.attempts.append(error)
+            if self.gave_up:
+                break
+        if decision.answer is not None:
+            self.cache.save(kind, key, decision.answer)
+        return decision
 
     # --- execução ---
 
@@ -209,18 +325,20 @@ class EditorService:
         run.warnings += run.structure.warnings
 
         usage = Usage()
-        units = [(block, self._units(block)) for block in run.structure.blocks]
-        self.calls_total = self.calls_done + sum(len(u) for _, u in units)
-        for block, block_units in units:
-            if len(block_units) > 1:
-                note = f"bloco {block.id} dividido em {len(block_units)} pedaços para caber no contexto ({self.budget.num_ctx} tokens)"
-                run.warnings.append(note)
-                self._notice(note)
-            for unit in block_units:
-                detail, usage = self._detail(unit, run.structure, usage)
-                run.details.append(detail)
-                run.detail_stats.add(detail.stats)
-                run.warnings += [f"{detail.unit_id}: {w}" for w in detail.warnings]
+        self.calls_total = self.calls_done + sum(
+            sum(1 for c in b.clip_ids if material.has_speech(c)) + 2 for b in run.structure.blocks
+        )
+        for block in run.structure.blocks:
+            detail = self._block(block, run.structure, usage)
+            run.details.append(detail)
+            for cut_run in detail.cut_runs:
+                run.cuts_stats.add(cut_run.stats)
+            if detail.inserts is not None:
+                run.inserts_stats.add(detail.inserts.stats)
+            if detail.coverage is not None:
+                run.coverage_stats.add(detail.coverage.stats)
+            run.warnings += [f"{detail.unit_id}: {w}" for w in detail.warnings]
+        run.requests = list(self.requests)
         run.effective_model = (
             f"{self.ai.effective_provider}:{self.ai.effective_model_id}" if self.ai.effective_model_id else None
         )
@@ -253,7 +371,8 @@ class EditorService:
         answers: list[ClipSummaryAnswer] = []
         errors_seen: list[str] = []
         for k, moment_ids in enumerate(parts, start=1):
-            self._progress(f"resumo {clip_id}" + (f" ({k}/{len(parts)})" if len(parts) > 1 else ""))
+            unit = clip_id + (f" ({k}/{len(parts)})" if len(parts) > 1 else "")
+            self._progress(f"resumo {unit}")
             section = material.section(clip_id, moment_ids)
             prompt = build_summary_prompt(section, k, len(parts))
             key = self.key("resumos", SUMMARY_PROMPT_VERSION, prompt)
@@ -261,14 +380,15 @@ class EditorService:
             if answer is not None:
                 summary.cached_parts += 1
                 stats.cached += 1
+                self._cached("resumo", unit, tokens(prompt))
             else:
                 errors: list[str] = []
-                for _ in range(MAX_ATTEMPTS):
+                for attempt in range(1, MAX_ATTEMPTS + 1):
                     request = SummaryRequest(
                         clip_id=clip_id, prompt=build_summary_prompt(section, k, len(parts), errors),
                         material=material, moment_ids=moment_ids, part=k, parts=len(parts),
                     )
-                    answer, error = self._ask(self.ai.summarize, request, stats)
+                    answer, error = self._ask(self.ai.summarize, request, stats, "resumo", unit, attempt)
                     if answer is not None:
                         self.cache.save("resumos", key, answer)
                         break
@@ -309,30 +429,35 @@ class EditorService:
 
     # --- E10: estrutura ---
 
-    def _structure(self, summaries: dict[str, ClipSummary]) -> StructureRun:
-        material, context = self.material, self.context
-        clips = [
-            StructureClip(c, material.clip_line(c), summaries.get(c), tokens(material.section(c) + "\n"))
+    def structure_lines(self, summaries: dict[str, ClipSummary]) -> list[str]:
+        """Uma linha por clipe, todos os clipes (ID, papel, duração, fala, data e o resumo curto)."""
+        material = self.material
+        return [
+            material.structure_line(
+                c, summaries[c].answer.resumo if c in summaries and summaries[c].answer else None,
+                STRUCTURE_SUMMARY_WORDS,
+            )
             for c in material.clip_ids
         ]
-        block_tokens = max(0, self._content_budget(Block(id="B01", clip_ids=[])))
+
+    def _structure(self, summaries: dict[str, ClipSummary]) -> StructureRun:
+        material, context = self.material, self.context
+        lines = self.structure_lines(summaries)
         result = StructureRun(origin="ia")
 
         def prompt_for(errors: Optional[list[str]] = None) -> str:
-            return build_structure_prompt(context, clips, result.prompt_mode == "compacto", errors, block_tokens)
+            return build_structure_prompt(context, lines, errors)
 
         prompt = prompt_for()
-        if tokens(prompt) > self.budget.structure_available:
-            result.prompt_mode = "compacto"
-            prompt = prompt_for()
-            result.warnings.append(
-                "a lista de clipes com os resumos completos não coube no contexto; a estrutura recebeu os resumos encurtados"
-            )
+        result.estimated_tokens = tokens(prompt)
         self._progress("estrutura")
         answer: Optional[StructureAnswer] = None
         check = None
-        if tokens(prompt) > self.budget.structure_available:
-            result.attempts.append(f"o pedido da estrutura (~{tokens(prompt)} tokens) não cabe no contexto ({self.budget.num_ctx})")
+        if result.estimated_tokens > self.budget.structure_available:
+            result.attempts.append(
+                f"o pedido da estrutura (~{result.estimated_tokens} tokens, uma linha por clipe) não cabe no "
+                f"contexto ({self.budget.num_ctx})"
+            )
         else:
             key = self.key("estrutura", STRUCTURE_PROMPT_VERSION, prompt)
             cached = self.cache.load("estrutura", key, StructureAnswer)
@@ -341,10 +466,11 @@ class EditorService:
                 if check.blocks:
                     answer, result.origin = cached, "cache"
                     result.stats.cached += 1
+                    self._cached("estrutura", "estrutura", result.estimated_tokens)
             errors: list[str] = []
-            for _ in range(0 if answer is not None else MAX_ATTEMPTS):
+            for attempt in range(1, 1 + (0 if answer is not None else MAX_ATTEMPTS)):
                 request = StructureRequest(prompt=prompt_for(errors), material=material, context=context, summaries=summaries)
-                raw, error = self._ask(self.ai.structure, request, result.stats)
+                raw, error = self._ask(self.ai.structure, request, result.stats, "estrutura", "estrutura", attempt)
                 if raw is not None:
                     trial = validate_structure(raw, material)
                     if trial.blocks:  # aproveitável: a última aproveitável vale se a nova tentativa não resolver
@@ -391,208 +517,450 @@ class EditorService:
             result.target_total_sec, result.target_origin = answer.duracao_total_alvo_sec, "ia"
         return result
 
-    # --- E11: detalhe ---
+    # --- E11: passada 2 de um bloco ---
 
-    def _continuity(self, usage: Usage) -> list[str]:
-        return [f"{sid} — {self.material.sentences[sid].text}" for sid in usage.kept_order[-CONTINUITY_SENTENCES:]]
-
-    def _content_budget(self, block) -> int:
-        """Tokens para as seções dos clipes: disponível − pedido sem seções nem acervo − mínimo do acervo."""
-        longest = max((s.text for s in self.material.sentences.values()), key=len, default="")
-        probe = DetailPromptInput(
-            unit_id=block.id, block_id=block.id, title=block.title, subject=block.subject, context=self.context,
-            target_total_sec=None, block_target_sec=block.target_sec, used_before_sec=0.0, part=1, parts=2,
-            previous_sentences=[f"S000 — {longest}"] * CONTINUITY_SENTENCES,
-        )
-        return self.budget.detail_available - tokens(build_detail_prompt(probe)) - LIBRARY_MIN_TOKENS
-
-    def _units(self, block) -> list[Unit]:
-        """O bloco inteiro, ou pedaços em ordem: grupos de clipes e, num clipe gigante, grupos de momentos."""
+    def _block(self, block: Block, structure: StructureRun, usage: Usage) -> DetailRun:
+        """2a por clipe → trechos → 2b → 2c; a faixa principal do bloco montada pelo código. Atualiza `usage`."""
         material = self.material
-        budget = self._content_budget(block)
-        sizes = {c: tokens(material.section(c) + "\n") for c in block.clip_ids}
-        if sum(sizes.values()) <= budget:
-            return [Unit(unit_id=block.id, block=block, clip_ids=list(block.clip_ids))]
-        groups: list[tuple[list[str], Optional[list[str]]]] = []
-        current: list[str] = []
-        used = 0
-        for clip_id in block.clip_ids:
-            if sizes[clip_id] > budget:
-                if current:
-                    groups.append((current, None))
-                    current, used = [], 0
-                groups += [([clip_id], chunk) for chunk in self._moment_chunks(clip_id, budget)]
-                continue
-            if current and used + sizes[clip_id] > budget:
-                groups.append((current, None))
-                current, used = [], 0
-            current.append(clip_id)
-            used += sizes[clip_id]
-        if current:
-            groups.append((current, None))
-        letters = "abcdefghijklmnopqrstuvwxyz"
-        return [
-            Unit(
-                unit_id=f"{block.id}{letters[k] if k < len(letters) else k + 1}", block=block, clip_ids=clips,
-                moment_ids=moments, part=k + 1, parts=len(groups),
-            )
-            for k, (clips, moments) in enumerate(groups)
-        ]
+        header = BlockHeader(
+            block_id=block.id, title=block.title, subject=block.subject, context=self.context,
+            target_total_sec=structure.target_total_sec, block_target_sec=block.target_sec,
+            used_before_sec=round(usage.used_sec, 3),
+        )
+        detail = DetailRun(
+            unit_id=block.id, block_id=block.id, clip_ids=list(block.clip_ids), origin="ia",
+            used_before_sec=round(usage.used_sec, 3), target_sec=block.target_sec,
+        )
+        free = {
+            c: [s.id for s in material.clip_sentences.get(c, []) if s.id not in usage.sentences] for c in block.clip_ids
+        }
+        speaking = [c for c in block.clip_ids if free[c]]
+        whole = sentences_sec(material, [s for c in speaking for s in free[c]])
+        detail.available_sec = round(whole, 3)
 
-    def _moment_chunks(self, clip_id: str, budget: int) -> list[list[str]]:
+        # 2a: cortes, um pedido por clipe com fala (clipe grande por partes).
+        kept: list[str] = []
+        for clip_id in speaking:
+            clip_sec = sentences_sec(material, free[clip_id])
+            target = round(block.target_sec * clip_sec / whole, 1) if block.target_sec and whole > 0 else None
+            parts = self._cut_parts(header, clip_id, free[clip_id], target, len(speaking))
+            for k, (moment_ids, ids) in enumerate(parts, start=1):
+                part_target = target
+                if target is not None and len(parts) > 1:
+                    part_target = round(target * sentences_sec(material, ids) / clip_sec, 1) if clip_sec > 0 else None
+                unit_id = f"{block.id}.{clip_id}" + (_suffix(k - 1) if len(parts) > 1 else "")
+                cut_run = self._cuts(header, unit_id, clip_id, moment_ids, ids, part_target, k, len(parts), len(speaking))
+                detail.cut_runs.append(cut_run)
+                kept += cut_run.kept_ids
+        take_sentences(usage, kept, material)
+        trechos = build_trechos(block.clip_ids, set(kept), material)
+        detail.trechos = trechos
+        detail.speech_sec = round(sum(t.seconds for t in trechos), 3)
+
+        # 2b: inclusões e respiros; 2c: coberturas.
+        detail.inserts = self._inserts(header, block, trechos, structure, usage, detail)
+        detail.coverage = self._coverage(header, block, trechos, structure, usage)
+
+        by_after: dict[int, list] = {}
+        for choice in detail.inserts.inserts:
+            by_after.setdefault(choice.after_trecho, []).append(choice)
+
+        def emit(after: int) -> None:
+            for choice in by_after.get(after, []):
+                moment = material.moments[choice.moment_id]
+                detail.keep.append(KeepRange(
+                    kind="momento", clip_id=moment.clip_id, moment_id=moment.id, duration_sec=choice.duration_sec,
+                    breath=choice.breath,
+                ))
+
+        emit(0)
+        for trecho in trechos:
+            detail.keep.append(KeepRange(
+                kind="frases", clip_id=trecho.clip_id, from_sentence=trecho.sentence_ids[0],
+                to_sentence=trecho.sentence_ids[-1], sentence_ids=list(trecho.sentence_ids),
+            ))
+            emit(trecho.number)
+        detail.coverages = list(detail.coverage.coverages)
+        inserted = sum(
+            min(c.duration_sec or material.moments[c.moment_id].duration, material.moments[c.moment_id].duration)
+            for c in detail.inserts.inserts
+        )
+        detail.result_sec = round(detail.speech_sec + inserted, 3)
+        usage.used_sec += detail.result_sec
+        detail.library_offered = [c.moment_id for c in detail.inserts.candidates if c.source == "acervo"]
+        if not detail.keep:
+            detail.warnings.append("nada ficou neste bloco (sem fala livre e sem imagens)")
+
+        origins = [r.origin for r in detail.cut_runs]
+        origins += [s.origin for s in (detail.inserts, detail.coverage) if s.requests]
+        if "fallback" in origins:
+            detail.origin = "fallback"
+        elif origins and all(o == "cache" for o in origins):
+            detail.origin = "cache"
+        for cut_run in detail.cut_runs:
+            detail.warnings += [f"{cut_run.unit_id}: {w}" for w in cut_run.warnings]
+        for name, sub in (("inclusões", detail.inserts), ("coberturas", detail.coverage)):
+            detail.warnings += [f"{name}: {w}" for w in sub.warnings]
+        return detail
+
+    # --- 2a ---
+
+    def _cut_parts(
+        self, header: BlockHeader, clip_id: str, ids: list[str], target: Optional[float], block_clips: int
+    ) -> list[tuple[Optional[list[str]], list[str]]]:
+        """[(None, frases)] se o clipe inteiro cabe num pedido; senão (momentos, frases) de cada parte."""
+        material = self.material
+        available = self.budget.cuts_available
+
+        def prompt(moment_ids: Optional[list[str]], part_ids: list[str], parts: int) -> str:
+            return build_cuts_prompt(CutsPromptInput(
+                header=header, clip_id=clip_id, section=material.section(clip_id, moment_ids),
+                available_sec=sentences_sec(material, part_ids), target_sec=target, part=1, parts=parts,
+                block_clips=block_clips,
+            ))
+
+        if tokens(prompt(None, ids, 1)) <= available:
+            return [(None, ids)]
+        wanted = set(ids)
+
+        def sentences_of(moment_ids: list[str]) -> list[str]:
+            return [s.id for s in material.moment_sentences(moment_ids) if s.id in wanted]
+
         chunks: list[list[str]] = []
         current: list[str] = []
-        for moment in self.material.clip_moments.get(clip_id, []):
+        for moment in material.clip_moments.get(clip_id, []):
             trial = current + [moment.id]
-            if current and tokens(self.material.section(clip_id, trial) + "\n") > budget:
+            if current and tokens(prompt(trial, sentences_of(trial), 2)) > available:
                 chunks.append(current)
                 trial = [moment.id]
             current = trial
         if current:
             chunks.append(current)
-        return chunks
+        parts = [(chunk, sentences_of(chunk)) for chunk in chunks]
+        parts = [p for p in parts if p[1]]
+        placed = {s for _, part_ids in parts for s in part_ids}
+        leftover = [s for s in ids if s not in placed]  # frases sem momento: vão com a última parte
+        if not parts:
+            return [(None, ids)]
+        if leftover:
+            moment_ids, part_ids = parts[-1]
+            parts[-1] = (moment_ids, [s for s in ids if s in set(part_ids) | set(leftover)])
+        return parts
 
-    def _unit_target(self, unit: Unit) -> Optional[float]:
-        """Alvo do pedaço: o do bloco; dividido, proporcional à duração das frases (sem fala: dos momentos)."""
-        target = unit.block.target_sec
-        if target is None or unit.parts == 1:
-            return target
-        material = self.material
-        block_sentences = [s.id for c in unit.block.clip_ids for s in material.clip_sentences.get(c, [])]
-        whole = sentences_sec(material, block_sentences)
-        part = sentences_sec(material, unit.sentence_ids(material))
-        if whole <= 0:
-            whole = sum(m.duration for c in unit.block.clip_ids for m in material.clip_moments.get(c, []))
-            part = sum(m.duration for m in unit.moments(material))
-        return round(target * part / whole, 1) if whole > 0 else target
+    def _duration_problem(self, check, target: Optional[float]) -> Optional[str]:
+        """Resultado fora da meta ± `DURATION_TOLERANCE` (só informação; None = dentro ou sem meta).
 
-    def _duration_problem(self, check, target: Optional[float], free_silent: int) -> Optional[str]:
-        """Resultado fora de alvo ± `DURATION_TOLERANCE` (só informação; None = dentro ou sem alvo).
-
-        Abaixo do alvo sem nada cortado e sem momento sem fala livre, não há o que ajustar: não pede de novo.
+        Abaixo da meta sem nada cortado, não há o que ajustar: não pede de novo.
         """
         if target is None or target <= 0:
             return None
         low, high = target * (1 - DURATION_TOLERANCE), target * (1 + DURATION_TOLERANCE)
         if low <= check.result_sec <= high:
             return None
-        if check.result_sec < low and not check.cuts and free_silent == 0:
+        if check.result_sec < low and not check.cuts:
             return None
         return duration_retry_line(check.result_sec, target, low, high)
 
-    def _detail(self, unit: Unit, structure: StructureRun, usage: Usage) -> tuple[DetailRun, Usage]:
-        material, context = self.material, self.context
-        block = unit.block
-        detail = DetailRun(
-            unit_id=unit.unit_id, block_id=block.id, clip_ids=list(unit.clip_ids), moment_ids=unit.moment_ids,
-            origin="ia", used_before_sec=round(usage.used_sec, 3),
+    def _cuts(
+        self, header: BlockHeader, unit_id: str, clip_id: str, moment_ids: Optional[list[str]], ids: list[str],
+        target: Optional[float], part: int, parts: int, block_clips: int,
+    ) -> CutRun:
+        material = self.material
+        self._progress(f"cortes {unit_id}")
+        data = CutsPromptInput(
+            header=header, clip_id=clip_id, section=material.section(clip_id, moment_ids),
+            available_sec=round(sentences_sec(material, ids), 3), target_sec=target, part=part, parts=parts,
+            block_clips=block_clips,
         )
-        self._progress(f"bloco {unit.unit_id} ({', '.join(unit.clip_ids)})")
-        sentence_ids = [s for s in unit.sentence_ids(material) if s not in usage.sentences]
-        moments = [m for m in unit.moments(material) if m.id not in usage.moments]
-        silent = unit.silent_moments(material, usage)
-        detail.available_sec = round(sentences_sec(material, sentence_ids), 3)
-        detail.target_sec = self._unit_target(unit)
-        data = DetailPromptInput(
-            unit_id=unit.unit_id, block_id=block.id, title=block.title, subject=block.subject, context=context,
-            target_total_sec=structure.target_total_sec, block_target_sec=block.target_sec,
-            used_before_sec=usage.used_sec, part=unit.part, parts=unit.parts,
-            previous_sentences=self._continuity(usage),
-            sections=[material.section(c, unit.moment_ids) for c in unit.clip_ids],
-            silent_lines=[material.moment_line(m) for m in silent], available_sec=detail.available_sec,
-            unit_target_sec=detail.target_sec, clip_ids=list(unit.clip_ids),
+        run = CutRun(
+            unit_id=unit_id, clip_id=clip_id, moment_ids=moment_ids, origin="ia", available_sec=data.available_sec,
+            target_sec=target,
         )
-        library_budget = self.budget.detail_available - tokens(build_detail_prompt(data))
-        if library_budget < 0:
-            detail.warnings.append(
-                f"o pedido passa do contexto em ~{-library_budget} tokens mesmo dividido (acervo vazio)"
-            )
-        candidates = [
-            m for clip_id in structure.library_clip_ids for m in material.clip_moments.get(clip_id, [])
-            if m.id not in usage.moments and not usage.conflict(m.clip_id, m.start_sec, m.end_sec)
-        ]
-        offered, spent = [], 0
-        for moment in library_ranking(material, unit.clip_ids, candidates):
-            cost = tokens(material.moment_line(moment) + "\n")
-            if spent + cost > library_budget:
-                break
-            offered.append(moment)
-            spent += cost
-        if len(offered) < len(candidates):
-            detail.warnings.append(f"acervo: {len(offered)} de {len(candidates)} momentos couberam no pedido")
-        detail.library_offered = [m.id for m in offered]
-        data.library_lines = [material.moment_line(m) for m in offered]
-        prompt = build_detail_prompt(data)
-        detail.estimated_tokens = tokens(prompt)
-        if not sentence_ids and not moments:
-            detail.origin = "fallback"
-            detail.warnings.append("nada livre neste pedaço (frases e momentos já usados)")
-            self.calls_done += 1
-            return detail, usage
-
-        key = self.key("detalhe", DETAIL_PROMPT_VERSION, prompt)
-        check = None
-        accepted: Optional[BlockAnswer] = None
-        duration_problem: Optional[str] = None
-        cached = self.cache.load("detalhe", key, BlockAnswer)
-        if cached is not None:
-            trial = validate_detail(cached, unit, material, detail.library_offered, usage)
-            if trial.unusable is None:
-                check, accepted, detail.origin = trial, cached, "cache"
-                duration_problem = self._duration_problem(trial, detail.target_sec, len(silent))
-                detail.stats.cached += 1
-        errors: list[str] = []
-        for _ in range(0 if check is not None else MAX_ATTEMPTS):
-            request = DetailRequest(
-                unit_id=unit.unit_id, prompt=build_detail_prompt(data, errors), material=material, context=context,
-                clip_ids=list(unit.clip_ids), sentence_ids=sentence_ids, moments=moments, library=offered,
-                target_sec=structure.target_total_sec, block_target_sec=detail.target_sec, silent=silent,
-            )
-            raw, error = self._ask(self.ai.detail, request, detail.stats)
-            if raw is not None:
-                trial = validate_detail(raw, unit, material, detail.library_offered, usage)
-                if trial.unusable is None:  # aproveitável: vale se a nova tentativa não resolver
-                    check, accepted = trial, raw
-                    duration_problem = self._duration_problem(trial, detail.target_sec, len(silent))
-                problems = [p for p in (trial.refused, duration_problem if trial.unusable is None else None) if p]
-                if not problems:
-                    break
-                error = "; ".join(problems) + (": " + "; ".join(trial.errors[:12]) if trial.errors else "")
-            errors.append(error)
-            detail.attempts.append(error)
-            if self.gave_up:
-                break
-        if accepted is not None:
-            detail.notes = accepted.notas
-            if detail.origin != "cache":
-                self.cache.save("detalhe", key, accepted)
-            if detail.attempts and check.discarded:
-                detail.warnings.append(
-                    f"aceitos os itens válidos da resposta; {len(check.discarded)} item(ns) inválido(s) descartado(s)"
-                )
-            if duration_problem:
-                detail.duration_off = True
-                detail.warnings.append(f"fora do alvo depois da nova tentativa, aceito assim ({duration_problem})")
-        if check is None:
-            check = validate_detail(neutral_detail(unit, material, usage), unit, material, [], usage)
-            detail.origin = "fallback"
-            detail.notes = "fallback neutro"
-            message = (
-                f"BLOCO {unit.unit_id} PELO FALLBACK NEUTRO (a IA falhou de vez): todas as frases dos clipes em ordem, "
-                f"sem cobertura nem respiros. Motivo: {detail.attempts[-1] if detail.attempts else 'sem resposta'}"
-            )
-            detail.warnings.append(message)
-            self._notice(message)
+        decision = self._decide(
+            "cortes", CUTS_PROMPT_VERSION, unit_id, CutsAnswer,
+            build=lambda errors: build_cuts_prompt(data, errors),
+            make_request=lambda prompt: CutsRequest(
+                unit_id=unit_id, prompt=prompt, material=material, clip_id=clip_id, sentence_ids=list(ids),
+                target_sec=target,
+            ),
+            call=self.ai.cuts, check_of=lambda answer: validate_cuts(answer, ids, material), stats=run.stats,
+            extra_problem=lambda check: self._duration_problem(check, target),
+        )
         self.calls_done += 1
-        detail.keep, detail.coverages, detail.breaths = check.keep, check.coverages, check.breaths
-        detail.cuts, detail.clip_order, detail.result_sec = check.cuts, check.clip_order, check.result_sec
-        detail.discarded = check.discarded
-        if detail.origin != "fallback":
-            detail.normalized_ids = check.normalized
-        detail.warnings += check.warnings
-        for item in check.discarded:
-            detail.warnings.append(f"{item.kind} descartado ({item.item}): {item.reason}")
-        return detail, check.usage
+        run.estimated_tokens, run.attempts = decision.estimated, decision.attempts
+        if decision.estimated > self.budget.cuts_available:
+            run.warnings.append(f"o pedido (~{decision.estimated} tokens) passa do disponível ({self.budget.cuts_available}) mesmo dividido")
+        check = decision.check
+        if check is None:
+            check = validate_cuts(CutsAnswer(), ids, material)
+            run.origin = "fallback"
+            message = (
+                f"CORTES {unit_id} PELO FALLBACK NEUTRO (a IA falhou de vez): nada cortado. "
+                f"Motivo: {decision.attempts[-1] if decision.attempts else 'sem resposta'}"
+            )
+            run.warnings.append(message)
+            self._notice(message)
+        else:
+            run.origin = decision.origin  # type: ignore[assignment]
+            run.notes = decision.answer.notas
+            run.normalized_ids = check.normalized
+            if decision.attempts and check.discarded:
+                run.warnings.append(f"aceitos os itens válidos; {len(check.discarded)} item(ns) inválido(s) descartado(s)")
+            if decision.problem:
+                run.duration_off = True
+                run.warnings.append(f"fora da meta depois da nova tentativa, aceito assim ({decision.problem})")
+        run.cuts, run.kept_ids, run.result_sec = check.cuts, check.kept, check.result_sec
+        run.discarded = check.discarded
+        run.warnings += [f"cortar descartado ({d.item}): {d.reason}" for d in check.discarded]
+        return run
+
+    # --- 2b ---
+
+    def _free_moment(self, moment: Moment, usage: Usage) -> bool:
+        return (
+            moment.duration > 0 and moment.id not in usage.moments
+            and not usage.conflict(moment.clip_id, moment.start_sec, moment.end_sec)
+        )
+
+    def _inserts(
+        self, header: BlockHeader, block: Block, trechos: list[Trecho], structure: StructureRun, usage: Usage,
+        detail: DetailRun,
+    ) -> SubpassRun:
+        material = self.material
+        sub = SubpassRun(origin="ia")
+        own = [
+            m for c in block.clip_ids for m in material.clip_moments.get(c, [])
+            if not m.sentence_ids and self._free_moment(m, usage)
+        ]
+        pool = [
+            m for c in structure.library_clip_ids for m in material.clip_moments.get(c, [])
+            if not m.sentence_ids and self._free_moment(m, usage)
+        ]
+        library = library_ranking(material, block.clip_ids, pool)
+        trecho_lines = [_trecho_line(t, material, TRECHO_WORDS) for t in trechos]
+
+        def make(moments: list[tuple[Moment, str]]) -> list[Candidate]:
+            return [
+                Candidate(letter=letter, moment_id=m.id, clip_id=m.clip_id, duration_sec=round(m.duration, 3), source=source)
+                for letter, (m, source) in zip(letters(len(moments)), moments)
+            ]
+
+        def data_for(candidates: list[Candidate], left: int) -> InsertsPromptInput:
+            return InsertsPromptInput(
+                header=header, trecho_lines=trecho_lines, candidate_lines=[_insert_line(c, material) for c in candidates],
+                current_sec=detail.speech_sec, library_left=left,
+            )
+
+        chosen = [(m, "bloco") for m in own]
+        for n, moment in enumerate(library):
+            trial = make(chosen + [(moment, "acervo")])
+            if tokens(build_inserts_prompt(data_for(trial, len(library) - n - 1))) > self.budget.inserts_available:
+                break
+            chosen.append((moment, "acervo"))
+        candidates = make(chosen)
+        sub.candidates = candidates
+        left = len(own) + len(library) - len(candidates)
+        if left:
+            sub.warnings.append(f"acervo: {len(candidates) - len(own)} de {len(library)} imagens couberam no pedido")
+        if not candidates:
+            if not trechos:
+                sub.warnings.append("bloco sem fala e sem imagens livres")
+            self.calls_done += 1
+            return sub
+        data = data_for(candidates, left)
+        self._progress(f"inclusões {block.id}")
+        decision = self._decide(
+            "insercoes", INSERTS_PROMPT_VERSION, block.id, InsertsAnswer,
+            build=lambda errors: build_inserts_prompt(data, errors),
+            make_request=lambda prompt: InsertsRequest(
+                unit_id=block.id, prompt=prompt, material=material, trechos=trechos, candidates=candidates,
+                block_target_sec=block.target_sec, current_sec=detail.speech_sec,
+            ),
+            call=self.ai.inserts,
+            check_of=lambda answer: validate_inserts(answer, trechos, candidates, material, usage),
+            stats=sub.stats,
+        )
+        self.calls_done += 1
+        sub.requests, sub.estimated_tokens, sub.attempts = 1, decision.estimated, decision.attempts
+        check = decision.check
+        if check is None:
+            check = validate_inserts(neutral_inserts(trechos, candidates), trechos, candidates, material, usage)
+            sub.origin = "fallback"
+            message = (
+                f"INCLUSÕES {block.id} PELO FALLBACK NEUTRO (a IA falhou de vez): "
+                + ("nenhuma imagem a mais. " if trechos else "todas as imagens do bloco, em ordem. ")
+                + f"Motivo: {decision.attempts[-1] if decision.attempts else 'sem resposta'}"
+            )
+            sub.warnings.append(message)
+            self._notice(message)
+        else:
+            sub.origin = decision.origin  # type: ignore[assignment]
+            sub.notes = decision.answer.notas
+        sub.inserts, sub.discarded = check.inserts, check.discarded
+        sub.warnings += check.warnings + [f"inserir descartado ({d.item}): {d.reason}" for d in check.discarded]
+        _replace_usage(usage, check.usage)
+        return sub
+
+    # --- 2c ---
+
+    def _coverage(
+        self, header: BlockHeader, block: Block, trechos: list[Trecho], structure: StructureRun, usage: Usage
+    ) -> SubpassRun:
+        material = self.material
+        sub = SubpassRun(origin="ia")
+        pool_clips = [*block.clip_ids, *structure.library_clip_ids]
+        pool = [m for c in pool_clips for m in material.clip_moments.get(c, []) if self._free_moment(m, usage)]
+        pool = library_ranking(material, block.clip_ids, pool)
+        letter_of: dict[str, str] = {}
+        questions: dict[int, list[Candidate]] = {}
+        texts: dict[int, CoverageQuestion] = {}
+        for trecho in trechos:
+            speech = " ".join(material.sentences[s].text for s in trecho.sentence_ids)
+            options = [m for m in pool if m.clip_id != trecho.clip_id]
+            matches = coverage_matches(
+                speech, speech_places(trecho, material), options, COVERAGE_CANDIDATES, COVERAGE_SAYS, COVERAGE_PLACE,
+            )
+            if not matches:
+                continue
+            candidates = []
+            for match in matches:
+                letter = letter_of.setdefault(match.moment.id, letters(len(letter_of) + 1)[-1])
+                candidates.append(Candidate(
+                    letter=letter, moment_id=match.moment.id, clip_id=match.moment.clip_id,
+                    duration_sec=round(match.moment.duration, 3),
+                    source="acervo" if match.moment.clip_id in structure.library_clip_ids else "outro clipe",
+                    kind=match.kind, words=match.words,
+                ))
+            questions[trecho.number] = candidates
+            texts[trecho.number] = CoverageQuestion(
+                trecho_line=_coverage_trecho_line(trecho, material),
+                candidate_lines=[_coverage_line(c, material) for c in candidates],
+            )
+        unique: dict[str, Candidate] = {}
+        for candidates in questions.values():
+            for candidate in candidates:
+                unique.setdefault(candidate.letter, candidate)
+        sub.candidates = list(unique.values())
+        if not questions:
+            self.calls_done += 1
+            return sub
+
+        # Os trechos perguntados em pedidos que cabem no contexto (em ordem).
+        groups: list[list[int]] = []
+        current: list[int] = []
+        for number in questions:
+            trial = current + [number]
+            prompt = build_coverage_prompt(CoveragePromptInput(header=header, questions=[texts[n] for n in trial], parts=2))
+            if current and tokens(prompt) > self.budget.coverage_available:
+                groups.append(current)
+                trial = [number]
+            current = trial
+        groups.append(current)
+
+        origins = []
+        for k, group in enumerate(groups, start=1):
+            unit = block.id + (_suffix(k - 1) if len(groups) > 1 else "")
+            asked = {n: questions[n] for n in group}
+            data = CoveragePromptInput(header=header, questions=[texts[n] for n in group], part=k, parts=len(groups))
+            self._progress(f"coberturas {unit}")
+            decision = self._decide(
+                "coberturas", COVERAGE_PROMPT_VERSION, unit, CoveragesAnswer,
+                build=lambda errors, data=data: build_coverage_prompt(data, errors),
+                make_request=lambda prompt, asked=asked: CoverageRequest(
+                    unit_id=unit, prompt=prompt, material=material, trechos=trechos, questions=asked,
+                ),
+                call=self.ai.coverages,
+                check_of=lambda answer, asked=asked: validate_coverages(answer, asked, trechos, material, usage),
+                stats=sub.stats,
+            )
+            sub.requests += 1
+            sub.estimated_tokens += decision.estimated
+            sub.attempts += decision.attempts
+            check = decision.check
+            if check is None:
+                origins.append("fallback")
+                message = (
+                    f"COBERTURAS {unit} PELO FALLBACK NEUTRO (a IA falhou de vez): sem cobertura. "
+                    f"Motivo: {decision.attempts[-1] if decision.attempts else 'sem resposta'}"
+                )
+                sub.warnings.append(message)
+                self._notice(message)
+                continue
+            origins.append(decision.origin)
+            sub.notes = " · ".join(n for n in (sub.notes, decision.answer.notas) if n)
+            sub.coverages += check.coverages
+            sub.nones += check.nones
+            sub.discarded += check.discarded
+            sub.warnings += [f"cobertura descartada ({d.item}): {d.reason}" for d in check.discarded]
+            _replace_usage(usage, check.usage)
+        self.calls_done += 1
+        sub.origin = "fallback" if "fallback" in origins else ("cache" if all(o == "cache" for o in origins) else "ia")
+        return sub
+
+
+def _suffix(k: int) -> str:
+    alphabet = "abcdefghijklmnopqrstuvwxyz"
+    return alphabet[k] if k < len(alphabet) else str(k + 1)
+
+
+def _replace_usage(usage: Usage, new: Usage) -> None:
+    """O uso do serviço passa a ser o da conferência aceita (os validadores trabalham sobre uma cópia)."""
+    usage.__dict__.update(new.__dict__)
+
+
+def _issues(moment: Optional[Moment]) -> str:
+    return f" [{', '.join(moment.issues)}]" if moment is not None and moment.issues else ""
+
+
+def _trecho_line(trecho: Trecho, material: EditorMaterial, words: int) -> str:
+    """`3: S012–S015 (P006, 6 s): texto…`"""
+    first, last = trecho.sentence_ids[0], trecho.sentence_ids[-1]
+    ids = first if first == last else f"{first}–{last}"
+    text = " ".join(material.sentences[s].text for s in trecho.sentence_ids)
+    return f"{trecho.number}: {ids} ({trecho.clip_id}, {round(trecho.seconds)} s): {short_text(text, words)}"
+
+
+def _insert_line(candidate: Candidate, material: EditorMaterial) -> str:
+    """`A: descrição · lugar: lago · 9,0s · B004 (acervo) [problemas]`"""
+    moment = material.moments[candidate.moment_id]
+    parts = [moment.description or "(sem descrição)"]
+    if moment.place:
+        parts.append(f"lugar: {moment.place}")
+    parts.append(_fmt_sec(moment.duration))
+    where = "do bloco" if candidate.source == "bloco" else "acervo"
+    parts.append(f"{moment.clip_id} ({where})")
+    return f"{candidate.letter}: {' · '.join(parts)}{_issues(moment)}"
+
+
+def _coverage_trecho_line(trecho: Trecho, material: EditorMaterial) -> str:
+    """`Trecho 3 (S012–S015 · P006 · 6 s; imagem de quem fala: … [problemas]): "texto"`"""
+    first, last = trecho.sentence_ids[0], trecho.sentence_ids[-1]
+    ids = first if first == last else f"{first}–{last}"
+    sentence = material.sentences[first]
+    moment = material.moments.get(sentence.moment_ids[0]) if sentence.moment_ids else None
+    image = ""
+    if moment is not None:
+        image = f"; imagem de quem fala: {moment.description or '(sem descrição)'}{_issues(moment)}"
+        if moment.talking_to_camera:
+            image += ", fala para a câmera"
+    text = " ".join(material.sentences[s].text for s in trecho.sentence_ids)
+    return (
+        f"Trecho {trecho.number} ({ids} · {trecho.clip_id} · {round(trecho.seconds)} s{image}): "
+        f"\"{short_text(text, COVERAGE_TRECHO_WORDS)}\""
+    )
+
+
+def _coverage_line(candidate: Candidate, material: EditorMaterial) -> str:
+    """`C: descrição · lugar: lago · 9,0s · D001 [problemas] — mostra o que é dito; em comum: lago`"""
+    moment = material.moments[candidate.moment_id]
+    parts = [moment.description or "(sem descrição)"]
+    if moment.place:
+        parts.append(f"lugar: {moment.place}")
+    parts += [_fmt_sec(moment.duration), moment.clip_id]
+    return (
+        f"{candidate.letter}: {' · '.join(parts)}{_issues(moment)} — {candidate.kind}; "
+        f"em comum: {', '.join(candidate.words)}"
+    )
 
 
 def _join_summaries(answers: list[ClipSummaryAnswer]) -> ClipSummaryAnswer:

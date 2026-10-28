@@ -1,7 +1,9 @@
-"""O roteiro visto pelo Editor de IA: índices por ID, seções de texto e a pré-seleção do acervo.
+"""O roteiro visto pelo Editor de IA: índices por ID, seções de texto, a pré-seleção do acervo e os candidatos
+de cobertura medidos.
 
 Nada aqui decide edição: só organiza o que o roteiro já mediu e descreveu, para montar os pedidos e
-conferir as respostas. A pré-seleção do acervo é só para caber no contexto (a IA escolhe).
+conferir as respostas. A pré-seleção do acervo é só para caber no contexto, e os candidatos de cobertura
+são uma medida (palavra em comum, mesmo lugar): a IA escolhe, e "nenhuma" é sempre uma opção.
 """
 
 import re
@@ -169,6 +171,27 @@ class EditorMaterial:
         )
         return clip_section(partial, clip)
 
+    def speech_sec(self, clip_id: str) -> float:
+        """Soma das durações das frases do clipe."""
+        return sum(s.end_sec - s.start_sec for s in self.clip_sentences.get(clip_id, []))
+
+    def structure_line(self, clip_id: str, summary: Optional[str], words: int) -> str:
+        """Clipe numa linha para a estrutura: ID, papel, duração, fala (com os segundos de frases), data e o
+        resumo nas primeiras `words` palavras (a lista inteira sempre cabe: nunca precisa encurtar depois)."""
+        clip = self.clips[clip_id]
+        parts = [clip.id, clip.role, clock(clip.duration_sec)]
+        if self.has_speech(clip_id):
+            parts.append(f"fala sim ({round(self.speech_sec(clip_id))} s de frases)")
+        else:
+            parts.append("fala não")
+        if clip.recorded_at is not None:
+            parts.append(clip.recorded_at.strftime("%Y-%m-%d %H:%M"))
+        text = " ".join((summary or "(sem resumo)").split())
+        cut = text.split()
+        if len(cut) > words:
+            text = " ".join(cut[:words]) + "…"
+        return f"- {' · '.join(parts)} — {text}"
+
     def clip_line(self, clip_id: str) -> str:
         """Linha curta do clipe: ID, papel, duração, fala, data, ordem do catálogo."""
         clip = self.clips[clip_id]
@@ -217,3 +240,33 @@ def library_ranking(
         return common + (2 if moment.place and plain(moment.place) in places else 0)
 
     return sorted(candidates, key=lambda m: (-score(m), order.get(m.clip_id, 0), m.start_sec))
+
+
+@dataclass
+class CoverageMatch:
+    """Candidato de cobertura medido para um trecho: o momento, o tipo e as palavras em comum."""
+
+    moment: Moment
+    kind: str  # COVERAGE_SAYS ou COVERAGE_PLACE (textos de `editor.schema`)
+    words: list[str]
+
+
+def coverage_matches(
+    speech: str, speech_places: list[str], candidates: Iterable[Moment], limit: int, says: str, place: str
+) -> list[CoverageMatch]:
+    """Até `limit` momentos com palavra de conteúdo em comum com a fala (`says`: as palavras da fala achadas
+    na descrição/lugar/tags, regra de `same_word`) ou com o mesmo lugar de um momento da fala (`place`:
+    palavras em comum entre os lugares). Ordem: mais palavras da fala, depois mais palavras de lugar;
+    empate na ordem recebida. Uma medida, não uma escolha: a IA decide se a imagem mostra mesmo aquilo."""
+    found: list[tuple[int, int, int, CoverageMatch]] = []
+    for n, moment in enumerate(candidates):
+        said = common_words(speech, moment_text(moment))
+        places = []
+        for where in speech_places:
+            places += [w for w in common_words(moment.place, where) if w not in places]
+        if said:
+            found.append((-len(said), -len(places), n, CoverageMatch(moment, says, said)))
+        elif places:
+            found.append((0, -len(places), n, CoverageMatch(moment, place, places)))
+    found.sort(key=lambda item: item[:3])
+    return [item[3] for item in found[:limit]]

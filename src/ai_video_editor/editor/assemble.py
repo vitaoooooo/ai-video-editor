@@ -5,13 +5,11 @@
   palavra), limitado à janela da faixa (no máximo `EDGE_SEC` antes da 1ª e depois da última frase, nunca
   dentro das frases vizinhas). Cada trecho vira um item de `video_main` com o som do clipe; os micro fades
   são os da Timeline (`audio_fade_sec`).
-- Momento incluído (`incluir`, só momento sem fala): um item da base com o som da própria imagem; a duração
-  pedida, limitada ao momento (sem pedido, o momento inteiro).
-- Respiro: item da base logo depois do item indicado (com o som da imagem, rótulo `respiro ...`); depois de
-  uma frase no meio de uma faixa, a faixa é dividida entre o fim dessa frase e o início da seguinte (nunca
-  dentro de uma palavra).
-- Cobertura: `video_overlay` do início da 1ª frase coberta ao fim da última, na Timeline final (a fala
-  continua); vários momentos dividem o tempo na ordem dada, o mais igual possível sem passar da duração de
+- Momento incluído (2b, só momento sem fala, candidato do próprio bloco): um item da base com o som da
+  própria imagem; a duração pedida, limitada ao momento (sem pedido, o momento inteiro).
+- Respiro (2b, candidato do acervo): o mesmo, entre os trechos, com o som mais baixo (rótulo `respiro ...`).
+- Cobertura (2c): `video_overlay` do início da 1ª frase coberta ao fim da última, na Timeline final (a
+  fala continua); vários momentos dividem o tempo na ordem dada, o mais igual possível sem passar da duração de
   cada um (`coverage.assemble.distribute`); se não bastam, o fim fica sem cobertura (aviso) — nunca estica
   nem repete. O som da imagem entra baixinho em `audio_ambient` (momento sem fala, clipe com áudio).
   Início ou fim a menos de `COVERAGE_SNAP_SEC` da borda do item da base vai para a borda: a sobra seria um
@@ -29,7 +27,6 @@ from ai_video_editor.coverage.assemble import AMBIENT_FADE_SEC, COVERAGE_AMBIENT
 from ai_video_editor.director.schema import Sentence
 from ai_video_editor.editor.material import EditorMaterial
 from ai_video_editor.editor.schema import (
-    BreathChoice,
     EditorPlan,
     EditorRun,
     KeepRange,
@@ -134,19 +131,6 @@ def faixa_ranges(
     return result
 
 
-def _split_at(ranges: list[TimeRange], at: float) -> tuple[list[TimeRange], list[TimeRange]]:
-    head, tail = [], []
-    for r in ranges:
-        if r.end_sec <= at:
-            head.append(r)
-        elif r.start_sec >= at:
-            tail.append(r)
-        else:
-            head.append(TimeRange(start_sec=r.start_sec, end_sec=round(at, 3)))
-            tail.append(TimeRange(start_sec=round(at, 3), end_sec=r.end_sec))
-    return head, tail
-
-
 def assemble_plan(
     run: EditorRun,
     material: EditorMaterial,
@@ -166,50 +150,27 @@ def assemble_plan(
     warnings: list[str] = []
     used_clips = [c for d in run.details for c in d.clip_ids]
     used_clips += [m.split(".")[0] for d in run.details for c in d.coverages for m in c.moment_ids]
-    used_clips += [b.moment_id.split(".")[0] for d in run.details for b in d.breaths]
     fps = spine_fps([sources[c].fps for c in dict.fromkeys(used_clips) if c in sources])
 
     entries: list[_Entry] = []
     for detail in run.details:
-        breaths: dict[str, list[BreathChoice]] = {}
-        for breath in detail.breaths:
-            breaths.setdefault(breath.after, []).append(breath)
-
-        def add_breaths(anchor: str) -> None:
-            for n, breath in enumerate(breaths.pop(anchor, []), start=1):
-                moment = material.moments[breath.moment_id]
-                length = moment.duration if breath.duration_sec is None else min(breath.duration_sec, moment.duration)
-                source = sources[moment.clip_id]
-                entries.append(_Entry(
-                    kind="respiro", clip_id=moment.clip_id, ids=[moment.id], source_in=moment.start_sec,
-                    source_out=round(moment.start_sec + length, 3), unit_id=detail.unit_id, block_id=detail.block_id,
-                    label=f"{BREATH_LABEL_PREFIX}{moment.id}", use_audio=source.has_audio, volume=BREATH_VOLUME,
-                ))
-
         for keep in detail.keep:
             if keep.kind == "momento":
                 moment = material.moments[keep.moment_id]
                 length = moment.duration if keep.duration_sec is None else min(keep.duration_sec, moment.duration)
+                has_audio = sources[moment.clip_id].has_audio
                 entries.append(_Entry(
-                    kind="momento", clip_id=moment.clip_id, ids=[moment.id], source_in=moment.start_sec,
-                    source_out=round(moment.start_sec + length, 3), unit_id=detail.unit_id, block_id=detail.block_id,
-                    label=f"momento {moment.id}", use_audio=sources[moment.clip_id].has_audio,
+                    kind="respiro" if keep.breath else "momento", clip_id=moment.clip_id, ids=[moment.id],
+                    source_in=moment.start_sec, source_out=round(moment.start_sec + length, 3), unit_id=detail.unit_id,
+                    block_id=detail.block_id,
+                    label=f"{BREATH_LABEL_PREFIX}{moment.id}" if keep.breath else f"momento {moment.id}",
+                    use_audio=has_audio, volume=BREATH_VOLUME if keep.breath else 1.0,
                 ))
-                add_breaths(moment.id)
                 continue
             ranges = faixa_ranges(keep, material, sources[keep.clip_id], cut)
             if not ranges:
                 warnings.append(f"{detail.unit_id}: {keep.from_sentence}–{keep.to_sentence} sem trecho de fala depois do corte")
-            ids = keep.sentence_ids
-            for k, sid in enumerate(ids[:-1]):
-                if sid not in breaths:
-                    continue
-                end, start = material.sentences[sid].end_sec, material.sentences[ids[k + 1]].start_sec
-                head, ranges = _split_at(ranges, (end + start) / 2 if start > end else end)
-                entries += [_faixa_entry(keep, r, detail.unit_id, detail.block_id, material) for r in head]
-                add_breaths(sid)  # a faixa continua depois do respiro, com as frases seguintes
             entries += [_faixa_entry(keep, r, detail.unit_id, detail.block_id, material) for r in ranges]
-            add_breaths(keep.to_sentence)
 
     position = 0
     base: list[_Entry] = []
