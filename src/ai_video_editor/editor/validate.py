@@ -1,23 +1,29 @@
 """Validação das respostas do Editor de IA: só segurança, item a item (nenhuma regra editorial).
 
 Estrutura (passada 1): IDs de clipes existem; cada clipe no máximo uma vez entre blocos e "fora"; "fora"
-tem motivo; bloco sem clipe válido é descartado. **Completude:** todo clipe COM fala está num bloco ou em
-"fora" (o esquecido é um item inválido: gera a nova tentativa e, se persistir, vai para um bloco próprio na
-ordem do catálogo, com aviso — `place_forgotten`). Clipes sem fala podem ficar no acervo.
+tem motivo; bloco sem clipe válido é descartado. A IA usa só o que é pertinente ao pedido: um clipe com
+fala que ela não pôs em nenhum bloco nem em "fora" conta como fora, com o motivo `NOT_CHOSEN` (sem nova
+tentativa e sem bloco extra). Clipes sem fala que ficam de fora da lista são o acervo.
 
 Passada 2, três perguntas por bloco; cada item sozinho (o inválido é descartado com o motivo):
 
 - 2a cortes (`validate_cuts`): por padrão FICA TUDO; cada item é UMA frase que existe, deste clipe (ou parte)
   e ainda livre; faixa ou várias frases num item são recusadas (uma frase por item); repetida, descartada.
-- 2b inclusões (`validate_inserts`): `depois_do_trecho` inteiro de 0 (começo) ao último trecho (fim); letra
-  da lista, no máximo uma vez; `duracao_sec` maior que o momento vira o momento inteiro (com aviso); o
-  trecho do arquivo não pode estar no vídeo. Candidato do bloco entra como momento; do acervo, como respiro.
+  Todas as frases cortadas sem `fora: true` pede a nova tentativa dizendo isso (`ALL_CUT`); se persistir (ou
+  com `fora: true`), o clipe sai do bloco (decisão da IA, registrada).
+- 2b inclusões (`validate_inserts`): `depois_do_trecho` numa das posições oferecidas (`breath_positions`
+  para respiro, `own_positions` para imagem do bloco, medidas por `insert_positions`); letra da lista, no
+  máximo uma vez; `duracao_sec` maior que o momento vira o momento inteiro (com aviso); o trecho do arquivo
+  não pode estar no vídeo. Candidato do bloco entra como momento; do acervo, como respiro: no máximo
+  `RESPIRO_MAX_SEC` (centrado no momento), nunca dois respiros seguidos, e a soma das inclusões não passa
+  da sobra do bloco (os respiros que passam são recusados do último para o primeiro).
 - 2c coberturas (`validate_coverages`): trecho perguntado, no máximo uma vez; "nenhuma" vale; letra entre os
   candidatos DAQUELE trecho, no máximo uma vez no bloco; **evidência**: todas as palavras de conteúdo de
-  `palavra` estão na fala do trecho e na descrição/lugar/tags do momento ("mostra o que é dito") ou no lugar
-  do momento e no lugar de um momento da fala ("mostra o lugar"); sem acento/caixa, mesmo radical
-  (`material.same_word`). A cobertura começa na frase com a palavra (lugar: a 1ª frase daquele lugar) e
-  segue pelas frases seguintes do trecho enquanto couberem na duração do momento (`coverage_span`).
+  `palavra` estão na fala do trecho e na descrição/lugar do momento ("mostra o que é dito"; as tags não
+  valem) ou no lugar do momento e no lugar de um momento da fala ("mostra o lugar"); sem acento/caixa, mesmo
+  radical (`material.same_word`), sem palavras genéricas (`material.GENERIC_WORDS`). A cobertura começa na
+  frase com a palavra (lugar: a 1ª frase daquele lugar), só entre as frases ditas para a câmera
+  (`talking_sentences`), e segue pelas seguintes enquanto couberem na duração do momento (`coverage_span`).
 
 Antes de tudo, os IDs da 2a passam por `editor/ids.py` (`P009.S025` → `S025` só se P009 é o clipe da frase;
 caixa, espaços, zeros à esquerda e lixo de markdown); as trocas ficam em `normalized`. ID recusado leva na
@@ -34,7 +40,13 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ai_video_editor.editor.ids import clip_hint, normalize_cuts, normalize_structure, sentence_hint, sentence_tokens
-from ai_video_editor.editor.material import EditorMaterial, content_words, matched_words, moment_text
+from ai_video_editor.editor.material import (
+    EditorMaterial,
+    content_words,
+    matched_words,
+    moment_visible_text,
+    same_place,
+)
 from ai_video_editor.editor.schema import (
     COVERAGE_PLACE,
     COVERAGE_SAYS,
@@ -48,6 +60,7 @@ from ai_video_editor.editor.schema import (
     InsertChoice,
     InsertsAnswer,
     OutClip,
+    Skipped,
     StructureAnswer,
     Trecho,
 )
@@ -62,6 +75,15 @@ RETRY_INVALID_RATIO = 0.5
 EVIDENCE_MAX_WORDS = 6
 # A cobertura pega mais uma frase do trecho enquanto o fim dela não passa da duração do momento + isto.
 COVERAGE_EXTEND_SEC = 0.5
+# Respiro é pausa curta: o momento do acervo escolhido entra com no máximo isto, centrado no momento.
+RESPIRO_MAX_SEC = 6.0
+# Trecho que termina a menos disto do fim do clipe: a gravação parou no meio da fala (a fala continua).
+CLIP_END_SPEECH_SEC = 1.0
+# Motivo de "fora" de um clipe com fala que a IA não pôs em nenhum bloco nem em "fora".
+NOT_CHOSEN = "não escolhido pela IA"
+# Pontuação que fecha uma frase (sem ela, ou com reticências, a fala continua no trecho seguinte).
+_FINAL_PUNCTUATION = (".", "!", "?")
+_CLOSERS = "\"'”’»)]"
 
 
 def _short(item) -> str:
@@ -115,7 +137,7 @@ class StructureCheck:
     blocks: list[Block]
     out: list[OutClip]
     discarded: list[Discarded]
-    forgotten: list[str] = field(default_factory=list)  # clipes com fala nem em bloco nem em "fora"
+    not_chosen: list[str] = field(default_factory=list)  # clipes com fala nem em bloco nem em "fora" (= fora)
     normalized: list[str] = field(default_factory=list)  # IDs trocados pelo formato do roteiro ("bruto → ID")
 
     @property
@@ -127,11 +149,6 @@ class StructureCheck:
         """Por que pedir de novo (None = aceita, com os itens inválidos descartados)."""
         if not self.blocks:
             return "nenhum bloco válido"
-        if self.forgotten:
-            return (
-                f"clipes com fala esquecidos (ponha cada um num bloco ou em \"fora\" com motivo): "
-                f"{', '.join(self.forgotten)}"
-            )
         return None
 
 
@@ -169,24 +186,9 @@ def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> Str
         else:
             seen.add(raw.clipe)
             out.append(raw)
-    forgotten = [c for c in material.clip_ids if material.has_speech(c) and c not in seen]
-    for clip_id in forgotten:
-        discarded.append(Discarded(kind="faltando", item=clip_id, reason=f"clipe {clip_id} tem fala e não está em bloco nem em fora"))
-    return StructureCheck(blocks=blocks, out=out, discarded=discarded, forgotten=forgotten, normalized=normalized)
-
-
-def place_forgotten(blocks: list[Block], forgotten: list[str], material: EditorMaterial) -> list[Block]:
-    """Cada clipe com fala esquecido vira um bloco próprio, na ordem do catálogo: logo depois do bloco que tem
-    o clipe anterior a ele no catálogo (sem nenhum anterior, no começo). Blocos renumerados na ordem final."""
-    order = {clip_id: n for n, clip_id in enumerate(material.clip_ids)}
-    result = list(blocks)
-    for clip_id in sorted(forgotten, key=order.__getitem__):
-        position = 0
-        for k, block in enumerate(result):
-            if any(order[c] < order[clip_id] for c in block.clip_ids):
-                position = k + 1
-        result.insert(position, Block(id="", title=f"(clipe esquecido {clip_id})", clip_ids=[clip_id]))
-    return [b.model_copy(update={"id": f"B{n:02d}"}) for n, b in enumerate(result, start=1)]
+    not_chosen = [c for c in material.clip_ids if material.has_speech(c) and c not in seen]
+    out += [OutClip(clipe=c, motivo=NOT_CHOSEN) for c in not_chosen]
+    return StructureCheck(blocks=blocks, out=out, discarded=discarded, not_chosen=not_chosen, normalized=normalized)
 
 
 # --- passada 2 ---
@@ -241,24 +243,38 @@ def letters(count: int) -> list[str]:
 # --- 2a: cortes ---
 
 
+# Erro da nova tentativa da 2a quando a resposta corta todas as frases sem dizer fora: true.
+ALL_CUT = "você cortou todas as frases; mantenha as que contam o assunto ou responda fora: true"
+
+
 @dataclass
 class CutsCheck(_Check):
     cuts: list[CutChoice] = field(default_factory=list)
     kept: list[str] = field(default_factory=list)  # frases que ficam, na ordem do roteiro
     result_sec: float = 0.0
     normalized: list[str] = field(default_factory=list)
+    out: bool = False  # a IA respondeu fora: true (o clipe ou a parte sai do bloco)
+
+    @property
+    def removed(self) -> bool:
+        """O clipe (ou a parte) sai do bloco: fora: true ou nenhuma frase ficou."""
+        return self.out or not self.kept
 
     @property
     def refused(self) -> Optional[str]:
-        if not self.kept:
-            return "todas as frases do clipe foram cortadas (um clipe que sai inteiro vai em \"fora\" na estrutura)"
+        if not self.out and not self.kept:
+            return ALL_CUT
         return super().refused
 
 
 def validate_cuts(answer: CutsAnswer, free: list[str], material: EditorMaterial) -> CutsCheck:
     """`free`: as frases livres do clipe (ou da parte), em ordem. O que não for cortado fica."""
     answer, normalized = normalize_cuts(answer, material)
-    check = CutsCheck(items=len(answer.cortar), normalized=normalized)
+    check = CutsCheck(items=len(answer.cortar), normalized=normalized, out=answer.fora)
+    if answer.fora:  # o clipe (ou a parte) inteiro sai: os itens de corte não importam
+        check.items = 0
+        check.cuts = [CutChoice(sentence_id=s, reason="fora: true") for s in free]
+        return check
     free_set = set(free)
     cut: dict[str, CutChoice] = {}
     for raw in answer.cortar:
@@ -304,11 +320,85 @@ def build_trechos(clip_order: list[str], kept: set[str], material: EditorMateria
 # --- 2b: inclusões e respiros ---
 
 
+def speech_continues(trecho: Trecho, material: EditorMaterial) -> Optional[str]:
+    """Por que a fala continua depois do trecho (None = termina): a última frase sem pontuação final ou com
+    reticências, ou o trecho acaba a menos de `CLIP_END_SPEECH_SEC` do fim do clipe (a gravação parou no meio
+    da fala; o Whisper põe ponto final mesmo assim)."""
+    last = material.sentences[trecho.sentence_ids[-1]]
+    text = last.text.strip().rstrip(_CLOSERS).rstrip()
+    if text.endswith(("...", "…")):
+        return "fala continua (termina em reticências)"
+    if not text.endswith(_FINAL_PUNCTUATION):
+        return "fala continua (sem pontuação final)"
+    clip = material.clips.get(trecho.clip_id)
+    if clip is not None and clip.duration_sec - last.end_sec < CLIP_END_SPEECH_SEC:
+        return "fala continua (o clipe acaba no meio da fala)"
+    return None
+
+
+def trecho_place(trecho: Trecho, material: EditorMaterial, end: bool) -> str:
+    """Lugar do último momento do trecho (`end`) ou do primeiro ("" = sem lugar medido)."""
+    sentence = material.sentences[trecho.sentence_ids[-1 if end else 0]]
+    if not sentence.moment_ids:
+        return ""
+    moment = material.moments.get(sentence.moment_ids[-1 if end else 0])
+    return moment.place if moment is not None else ""
+
+
+@dataclass
+class InsertPositions:
+    """Posições `depois_do_trecho` medidas para a 2b de um bloco (0 = começo; N = depois do trecho N)."""
+
+    breath: list[int] = field(default_factory=list)  # onde pode haver respiro (troca medida)
+    own: list[int] = field(default_factory=list)  # onde pode entrar uma imagem do próprio bloco
+    refused: list[Skipped] = field(default_factory=list)  # posições de respiro recusadas, com o motivo
+    notes: dict[int, str] = field(default_factory=dict)  # posição de respiro → a troca medida
+
+
+def insert_positions(
+    trechos: list[Trecho], material: EditorMaterial, first_block: bool, opening: bool
+) -> InsertPositions:
+    """Mede onde pode haver inclusão (informação para a 2b; a IA escolhe se usa).
+
+    Respiro: no começo do bloco (exceto no 1º bloco do vídeo, que começa pela 1ª fala ou imagem escolhida, a
+    não ser que o pedido peça abertura com paisagem: `opening`) e entre dois trechos cujo lugar muda (lugar do
+    último momento do trecho N × do primeiro do N+1, `material.same_place`). Nunca onde a fala continua
+    (`speech_continues`) nem no fim do bloco. Imagem do próprio bloco: de 0 ao fim, menos onde a fala continua.
+    """
+    result = InsertPositions()
+    last = len(trechos)
+    if first_block and not opening:
+        result.refused.append(Skipped(number=0, reason="começo do vídeo (o pedido não pede abertura com paisagem)"))
+    else:
+        result.breath.append(0)
+        result.notes[0] = "começo do bloco"
+    result.own.append(0)
+    for n in range(1, last):
+        before, after = trechos[n - 1], trechos[n]
+        continues = speech_continues(before, material)
+        if continues:
+            result.refused.append(Skipped(number=n, reason=continues))
+            continue
+        result.own.append(n)
+        a, b = trecho_place(before, material, end=True), trecho_place(after, material, end=False)
+        if not a or not b:
+            result.refused.append(Skipped(number=n, reason="lugar não medido"))
+        elif same_place(a, b):
+            result.refused.append(Skipped(number=n, reason=f"mesmo lugar ({a})"))
+        else:
+            result.breath.append(n)
+            result.notes[n] = f"troca de lugar: {a} → {b}"
+    if last:
+        result.own.append(last)
+    return result
+
+
 @dataclass
 class InsertsCheck(_Check):
     inserts: list[InsertChoice] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     added_sec: float = 0.0
+    breath_sec: float = 0.0
     usage: Optional[Usage] = None
     has_speech: bool = True  # o bloco tem trechos de fala
 
@@ -330,16 +420,44 @@ def _moment_span(moment, duration: Optional[float]) -> tuple[float, float]:
     return moment.start_sec, round(moment.start_sec + length, 3)
 
 
+def breath_span(moment, duration: Optional[float] = None) -> tuple[float, float]:
+    """Trecho do respiro no clipe: no máximo `RESPIRO_MAX_SEC` (e a duração pedida), centrado no momento."""
+    length = min(moment.duration, RESPIRO_MAX_SEC, duration if duration is not None else moment.duration)
+    start = moment.start_sec + (moment.duration - length) / 2
+    return round(start, 3), round(start + length, 3)
+
+
+def _positions_text(positions: list[int]) -> str:
+    return ", ".join(str(p) for p in positions) or "nenhuma"
+
+
 def validate_inserts(
-    answer: InsertsAnswer, trechos: list[Trecho], candidates: list[Candidate], material: EditorMaterial, usage: Usage
+    answer: InsertsAnswer,
+    trechos: list[Trecho],
+    candidates: list[Candidate],
+    material: EditorMaterial,
+    usage: Usage,
+    spare_sec: Optional[float] = None,
+    breath_positions: Optional[list[int]] = None,
+    own_positions: Optional[list[int]] = None,
 ) -> InsertsCheck:
-    """Confere a 2b contra uma CÓPIA do uso; `check.usage` é o uso com as inclusões aceitas."""
+    """Confere a 2b contra uma CÓPIA do uso; `check.usage` é o uso com as inclusões aceitas.
+
+    `spare_sec`: sobra do bloco (None = sem limite de tempo): as inclusões aceitas somam no máximo isso, e os
+    respiros que passam são recusados do último para o primeiro. `breath_positions`/`own_positions`: as
+    posições oferecidas no pedido (None = todas de 0 ao último trecho).
+    """
     state = usage.copy()
     check = InsertsCheck(items=len(answer.inserir), usage=state, has_speech=bool(trechos))
     by_letter = {c.letter: c for c in candidates}
     last = len(trechos)
+    every = list(range(last + 1))
+    breath_ok = every if breath_positions is None else list(breath_positions)
+    own_ok = every if own_positions is None else list(own_positions)
     used: set[str] = set()
     valid_letters = ", ".join(c.letter for c in candidates[:8]) + ("…" if len(candidates) > 8 else "")
+    accepted: list[tuple[InsertChoice, tuple[str, float, float]]] = []
+    previous_breath: dict[int, bool] = {}  # posição → o último item aceito ali é um respiro
     for raw in answer.inserir:
         position = raw.depois_do_trecho
         if position is None or position != int(position):
@@ -359,30 +477,71 @@ def validate_inserts(
         if raw.letra in used:
             check.drop("inserir", raw, f"letra {raw.letra} repetida (cada letra no máximo uma vez)")
             continue
+        breath = candidate.source != "bloco"
+        allowed = breath_ok if breath else own_ok
+        if position not in allowed:
+            what = "respiro (imagem do acervo)" if breath else "imagem do bloco"
+            check.drop("inserir", raw, f"posição {position} fora da lista para {what} (posições: {_positions_text(allowed)})")
+            continue
+        if breath and previous_breath.get(position):
+            check.drop("inserir", raw, f"dois respiros seguidos depois do trecho {position}")
+            continue
         moment = material.moments[candidate.moment_id]
         duration = raw.duracao_sec
         if duration is not None and duration <= 0:
             duration = None
         if duration is not None and duration > moment.duration + DURATION_TOLERANCE_SEC:
-            check.warnings.append(
-                f"inserir {raw.letra}: duracao_sec {duration:g} maior que a imagem ({moment.duration:.1f}s); "
-                "entra a imagem inteira"
-            )
+            if not breath:
+                check.warnings.append(
+                    f"inserir {raw.letra}: duracao_sec {duration:g} maior que a imagem ({moment.duration:.1f}s); "
+                    "entra a imagem inteira"
+                )
             duration = None
-        start, end = _moment_span(moment, duration)
+        start, end = breath_span(moment, duration) if breath else _moment_span(moment, duration)
         clash = state.conflict(moment.clip_id, start, end) if moment.id not in state.moments else "já usado"
+        if not clash:
+            for _, (clip_id, a, b) in accepted:
+                if clip_id == moment.clip_id and min(b, end) - max(a, start) > OVERLAP_TOLERANCE_SEC:
+                    clash = "outra imagem desta resposta"
         if clash:
             check.drop("inserir", raw, f"a imagem {raw.letra} ({moment.id}) já está no vídeo ({clash})")
             continue
+        if breath and moment.duration > RESPIRO_MAX_SEC and (duration is None or duration > RESPIRO_MAX_SEC):
+            check.warnings.append(
+                f"respiro {raw.letra} ({moment.id}): {moment.duration:.1f}s cortado para {end - start:.1f}s, no centro "
+                f"do momento (respiro = no máximo {RESPIRO_MAX_SEC:g} s)"
+            )
         used.add(raw.letra)
-        state.moments.add(moment.id)
-        state.take(moment.clip_id, start, end, f"momento {moment.id}")
-        check.added_sec += end - start
-        check.inserts.append(InsertChoice(
-            after_trecho=position, letter=raw.letra, moment_id=moment.id, duration_sec=duration,
-            breath=candidate.source != "bloco",
-        ))
+        previous_breath[position] = breath
+        choice = InsertChoice(
+            after_trecho=position, letter=raw.letra, moment_id=moment.id,
+            duration_sec=round(end - start, 3) if breath else duration, start_sec=start if breath else None,
+            breath=breath,
+        )
+        accepted.append((choice, (moment.clip_id, start, end)))
+    if spare_sec is not None:
+        total = sum(b - a for _, (_, a, b) in accepted)
+        for k in range(len(accepted) - 1, -1, -1):
+            if total <= spare_sec + DURATION_TOLERANCE_SEC:
+                break
+            choice, (_, a, b) = accepted[k]
+            if not choice.breath:
+                continue
+            total -= b - a
+            check.drop(
+                "inserir", f"depois_do_trecho={choice.after_trecho}, letra={choice.letter}",
+                f"respiro {choice.letter} ({b - a:.1f}s) passa da sobra do bloco ({max(spare_sec, 0):.0f} s)",
+            )
+            accepted.pop(k)
+    for choice, (clip_id, a, b) in accepted:
+        state.moments.add(choice.moment_id)
+        state.take(clip_id, a, b, f"momento {choice.moment_id}")
+        check.added_sec += b - a
+        if choice.breath:
+            check.breath_sec += b - a
+        check.inserts.append(choice)
     check.added_sec = round(check.added_sec, 3)
+    check.breath_sec = round(check.breath_sec, 3)
     return check
 
 
@@ -417,13 +576,31 @@ def speech_places(trecho: Trecho, material: EditorMaterial) -> list[str]:
     return places
 
 
-def coverage_span(trecho: Trecho, candidate: Candidate, word: str, material: EditorMaterial) -> list[str]:
+def talking_sentences(trecho: Trecho, material: EditorMaterial) -> list[str]:
+    """Frases do trecho que começam num momento marcado "falando para a câmera" (as únicas que podem ser
+    cobertas: nas outras, a própria imagem já mostra o assunto)."""
+    result = []
+    for sid in trecho.sentence_ids:
+        sentence = material.sentences[sid]
+        moment = material.moments.get(sentence.moment_ids[0]) if sentence.moment_ids else None
+        if moment is not None and moment.talking_to_camera:
+            result.append(sid)
+    return result
+
+
+def coverage_span(
+    trecho: Trecho, candidate: Candidate, word: str, material: EditorMaterial, allowed: Optional[list[str]] = None
+) -> list[str]:
     """Frases cobertas: da 1ª frase do trecho com a palavra ("mostra o que é dito") ou do lugar do momento
-    ("mostra o lugar"), seguindo enquanto o fim da frase cabe na duração do momento (+ `COVERAGE_EXTEND_SEC`)."""
+    ("mostra o lugar"), seguindo enquanto o fim da frase cabe na duração do momento (+ `COVERAGE_EXTEND_SEC`).
+    `allowed`: só essas frases podem ser cobertas (as ditas para a câmera); a cobertura para na primeira fora."""
     ids = trecho.sentence_ids
+    ok = set(ids if allowed is None else allowed) or set(ids)
     moment = material.moments[candidate.moment_id]
-    start = 0
+    start = next((k for k, sid in enumerate(ids) if sid in ok), 0)
     for k, sid in enumerate(ids):
+        if sid not in ok:
+            continue
         sentence = material.sentences[sid]
         if candidate.kind == COVERAGE_PLACE:
             where = material.moments.get(sentence.moment_ids[0]) if sentence.moment_ids else None
@@ -436,7 +613,7 @@ def coverage_span(trecho: Trecho, candidate: Candidate, word: str, material: Edi
     first = material.sentences[ids[start]]
     span = [ids[start]]
     for sid in ids[start + 1:]:
-        if material.sentences[sid].end_sec - first.start_sec > moment.duration + COVERAGE_EXTEND_SEC:
+        if sid not in ok or material.sentences[sid].end_sec - first.start_sec > moment.duration + COVERAGE_EXTEND_SEC:
             break
         span.append(sid)
     return span
@@ -492,7 +669,8 @@ def validate_coverages(
         if not content_words(word):
             check.drop("cobertura", raw, f"sem a palavra em comum (copie uma de: {', '.join(candidate.words)})")
             continue
-        speech = " ".join(material.sentences[s].text for s in trecho.sentence_ids)
+        talking = talking_sentences(trecho, material) or trecho.sentence_ids
+        speech = " ".join(material.sentences[s].text for s in talking)
         if candidate.kind == COVERAGE_PLACE:
             places = " ".join(speech_places(trecho, material))
             missing = _missing(word, moment.place) or _missing(word, places)
@@ -505,15 +683,15 @@ def validate_coverages(
             if not_said:
                 check.drop("cobertura", raw, f"palavra {word!r} não está na fala do trecho {number}: {', '.join(not_said)}")
                 continue
-            not_shown = _missing(word, moment_text(moment))
+            not_shown = _missing(word, moment_visible_text(moment))
             if not_shown:
-                check.drop("cobertura", raw, f"palavra {word!r} não está na descrição/lugar/tags da imagem "
+                check.drop("cobertura", raw, f"palavra {word!r} não está na descrição/lugar da imagem "
                                              f"{raw.letra}: {', '.join(not_shown)}")
                 continue
         if moment.id in state.moments or state.conflict(moment.clip_id, moment.start_sec, moment.end_sec):
             check.drop("cobertura", raw, f"a imagem {raw.letra} ({moment.id}) já está no vídeo")
             continue
-        span = coverage_span(trecho, candidate, word, material)
+        span = coverage_span(trecho, candidate, word, material, talking)
         covered = [s for s in span if s in state.covered]
         if covered:
             check.drop("cobertura", raw, f"frase já coberta: {', '.join(covered[:3])}")

@@ -12,11 +12,22 @@ Meta de cada clipe na 2a (aritmética, sem decisão): a meta do bloco repartida 
 proporção da fala livre de cada um (`meta do clipe = meta do bloco × fala do clipe / fala do bloco`); um
 clipe dividido em partes reparte a sua meta do mesmo jeito.
 
-Nova tentativa (uma, com a lista de erros): estrutura sem bloco válido ou com clipe com fala esquecido;
-qualquer pergunta da passada 2 com metade ou mais dos itens inválida; 2a com todas as frases cortadas ou
+A estrutura não precisa usar todos os clipes: um clipe com fala que a IA não pôs em bloco nem em "fora"
+conta como fora ("não escolhido pela IA"), sem nova tentativa e sem bloco extra.
+
+2b (medida, sem decisão): sobra do bloco = alvo do bloco − fala mantida depois da 2a. Bloco com fala sem
+sobra (ou sem alvo) não tem pergunta 2b. Com sobra, o pedido informa a sobra, as posições medidas
+(`validate.insert_positions`: respiro só no começo de um bloco que não é o 1º, ou numa troca de lugar, nunca
+onde a fala continua) e até `INSERT_CANDIDATES` imagens: primeiro as sem fala do próprio bloco, depois as do
+acervo com afinidade medida com os trechos vizinhos das posições de respiro (`material.breath_affinity`),
+depois o resto. 2c: só trechos ditos para a câmera (`validate.talking_sentences`) recebem candidatos.
+
+Nova tentativa (uma, com a lista de erros): estrutura sem bloco válido; qualquer pergunta da passada 2 com
+metade ou mais dos itens inválida; 2a com todas as frases cortadas sem `fora: true` (`validate.ALL_CUT`) ou
 com a duração fora da meta ± `DURATION_TOLERANCE` (a nova tentativa mostra os números); 2b de bloco sem fala
 que não escolhe nada. Depois dela, a última resposta aproveitável é aceita com os itens válidos (duração
-fora da meta é registrada). Fallback neutro (com aviso) só sem resposta aproveitável: 2a = nada cortado;
+fora da meta é registrada; tudo cortado de novo = a IA tirou o clipe do bloco, registrado). Fallback neutro
+(com aviso) só sem resposta aproveitável: 2a = nada cortado;
 2b = nada a mais (bloco sem fala: todas as imagens dele, em ordem); 2c = sem cobertura. Depois de
 `MAX_CONSECUTIVE_FAILURES` erros seguidos da API (não de validação), a IA não é mais chamada nesta execução
 e o resto vai pelos fallbacks. Erro de autenticação interrompe tudo.
@@ -34,7 +45,13 @@ from pydantic import BaseModel
 
 from ai_video_editor.editor.budget import Budget, tokens
 from ai_video_editor.editor.ids import IdResolver
-from ai_video_editor.editor.material import EditorMaterial, coverage_matches, library_ranking
+from ai_video_editor.editor.material import (
+    EditorMaterial,
+    asks_landscape_opening,
+    breath_affinity,
+    coverage_matches,
+    library_ranking,
+)
 from ai_video_editor.editor.prompt import (
     COVERAGE_PROMPT_VERSION,
     CUTS_PROMPT_VERSION,
@@ -81,6 +98,7 @@ from ai_video_editor.editor.schema import (
     InsertsAnswer,
     KeepRange,
     RequestRecord,
+    Skipped,
     StructureAnswer,
     StructureRun,
     SubpassRun,
@@ -88,15 +106,19 @@ from ai_video_editor.editor.schema import (
     Trecho,
 )
 from ai_video_editor.editor.validate import (
+    NOT_CHOSEN,
+    RESPIRO_MAX_SEC,
     Usage,
     build_trechos,
+    insert_positions,
     letters,
     neutral_inserts,
     neutral_structure,
-    place_forgotten,
     sentences_sec,
     speech_places,
     take_sentences,
+    talking_sentences,
+    trecho_place,
     validate_coverages,
     validate_cuts,
     validate_inserts,
@@ -122,6 +144,13 @@ MAX_CONSECUTIVE_FAILURES = 3
 DURATION_TOLERANCE = 0.35
 # Candidatos de cobertura listados por trecho na 2c.
 COVERAGE_CANDIDATES = 4
+# Candidatos com letra na 2b de um bloco com fala (imagens do bloco primeiro, depois o acervo). Num bloco sem
+# fala, as imagens do próprio bloco vão todas (elas são o bloco) e o acervo só preenche até este número.
+INSERT_CANDIDATES = 6
+# Descrição de um candidato da 2b: até tantas palavras.
+CANDIDATE_WORDS = 14
+# Motivo de um trecho sem pergunta de cobertura.
+NOT_TALKING = "imagem não é fala para câmera"
 # Texto de um trecho na 2c: até tantas palavras (a palavra em comum é conferida na fala inteira).
 COVERAGE_TRECHO_WORDS = 60
 
@@ -329,7 +358,8 @@ class EditorService:
             sum(1 for c in b.clip_ids if material.has_speech(c)) + 2 for b in run.structure.blocks
         )
         for block in run.structure.blocks:
-            detail = self._block(block, run.structure, usage)
+            first_block = not any(d.keep for d in run.details)  # o vídeo ainda não começou
+            detail = self._block(block, run.structure, usage, first_block)
             run.details.append(detail)
             for cut_run in detail.cut_runs:
                 run.cuts_stats.add(cut_run.stats)
@@ -499,14 +529,8 @@ class EditorService:
         if result.origin != "fallback":
             result.normalized_ids = check.normalized
         result.notes = answer.notas
-        if check.forgotten:
-            result.blocks = place_forgotten(check.blocks, check.forgotten, material)
-            message = (
-                f"estrutura: clipe(s) com fala esquecido(s) pela IA ({', '.join(check.forgotten)}) entraram em bloco "
-                "próprio, na ordem do catálogo"
-            )
-            result.warnings.append(message)
-            self._notice(message)
+        if check.not_chosen:
+            self._notice(f"estrutura: fora do vídeo ({NOT_CHOSEN}): {', '.join(check.not_chosen)}")
         if check.discarded and result.origin != "fallback":
             result.warnings.append(f"estrutura: {len(check.discarded)} item(ns) descartado(s) na validação")
         placed = {c for b in result.blocks for c in b.clip_ids} | {o.clipe for o in result.out}
@@ -519,8 +543,11 @@ class EditorService:
 
     # --- E11: passada 2 de um bloco ---
 
-    def _block(self, block: Block, structure: StructureRun, usage: Usage) -> DetailRun:
-        """2a por clipe → trechos → 2b → 2c; a faixa principal do bloco montada pelo código. Atualiza `usage`."""
+    def _block(self, block: Block, structure: StructureRun, usage: Usage, first_block: bool = False) -> DetailRun:
+        """2a por clipe → trechos → 2b → 2c; a faixa principal do bloco montada pelo código. Atualiza `usage`.
+
+        `first_block`: nenhum bloco anterior pôs nada no vídeo (o vídeo começa aqui: sem respiro na posição 0,
+        a não ser que o pedido peça abertura com paisagem)."""
         material = self.material
         header = BlockHeader(
             block_id=block.id, title=block.title, subject=block.subject, context=self.context,
@@ -540,7 +567,9 @@ class EditorService:
 
         # 2a: cortes, um pedido por clipe com fala (clipe grande por partes).
         kept: list[str] = []
+        removed: list[str] = []
         for clip_id in speaking:
+            runs_before = len(detail.cut_runs)
             clip_sec = sentences_sec(material, free[clip_id])
             target = round(block.target_sec * clip_sec / whole, 1) if block.target_sec and whole > 0 else None
             parts = self._cut_parts(header, clip_id, free[clip_id], target, len(speaking))
@@ -552,14 +581,21 @@ class EditorService:
                 cut_run = self._cuts(header, unit_id, clip_id, moment_ids, ids, part_target, k, len(parts), len(speaking))
                 detail.cut_runs.append(cut_run)
                 kept += cut_run.kept_ids
+            if all(r.removed for r in detail.cut_runs[runs_before:]):
+                removed.append(clip_id)
+                if len(parts) > 1:  # um clipe só já tem o aviso do próprio pedido (com o motivo)
+                    detail.warnings.append(f"IA tirou o clipe {clip_id} (todas as partes)")
+        if removed:
+            detail.removed_clip_ids = removed
+            detail.clip_ids = [c for c in block.clip_ids if c not in removed]
         take_sentences(usage, kept, material)
-        trechos = build_trechos(block.clip_ids, set(kept), material)
+        trechos = build_trechos(detail.clip_ids, set(kept), material)
         detail.trechos = trechos
         detail.speech_sec = round(sum(t.seconds for t in trechos), 3)
 
         # 2b: inclusões e respiros; 2c: coberturas.
-        detail.inserts = self._inserts(header, block, trechos, structure, usage, detail)
-        detail.coverage = self._coverage(header, block, trechos, structure, usage)
+        detail.inserts = self._inserts(header, block, trechos, structure, usage, detail, first_block)
+        detail.coverage = self._coverage(header, detail.clip_ids, trechos, structure, usage)
 
         by_after: dict[int, list] = {}
         for choice in detail.inserts.inserts:
@@ -570,7 +606,7 @@ class EditorService:
                 moment = material.moments[choice.moment_id]
                 detail.keep.append(KeepRange(
                     kind="momento", clip_id=moment.clip_id, moment_id=moment.id, duration_sec=choice.duration_sec,
-                    breath=choice.breath,
+                    start_sec=choice.start_sec, breath=choice.breath,
                 ))
 
         emit(0)
@@ -586,6 +622,7 @@ class EditorService:
             for c in detail.inserts.inserts
         )
         detail.result_sec = round(detail.speech_sec + inserted, 3)
+        detail.breath_sec = round(sum(c.duration_sec or 0.0 for c in detail.inserts.inserts if c.breath), 3)
         usage.used_sec += detail.result_sec
         detail.library_offered = [c.moment_id for c in detail.inserts.candidates if c.source == "acervo"]
         if not detail.keep:
@@ -684,7 +721,7 @@ class EditorService:
                 target_sec=target,
             ),
             call=self.ai.cuts, check_of=lambda answer: validate_cuts(answer, ids, material), stats=run.stats,
-            extra_problem=lambda check: self._duration_problem(check, target),
+            extra_problem=lambda check: None if check.removed else self._duration_problem(check, target),
         )
         self.calls_done += 1
         run.estimated_tokens, run.attempts = decision.estimated, decision.attempts
@@ -709,6 +746,15 @@ class EditorService:
             if decision.problem:
                 run.duration_off = True
                 run.warnings.append(f"fora da meta depois da nova tentativa, aceito assim ({decision.problem})")
+            if check.removed:
+                run.removed = True
+                why = "fora: true" if check.out else "todas as frases cortadas de novo na nova tentativa"
+                if parts > 1:
+                    run.warnings.append(f"IA tirou a parte {unit_id} do clipe {clip_id} ({why})")
+                else:
+                    run.warnings.append(f"IA tirou o clipe {clip_id} ({why})")
+        if run.removed:
+            check.kept, check.result_sec = [], 0.0
         run.cuts, run.kept_ids, run.result_sec = check.cuts, check.kept, check.result_sec
         run.discarded = check.discarded
         run.warnings += [f"cortar descartado ({d.item}): {d.reason}" for d in check.discarded]
@@ -724,39 +770,74 @@ class EditorService:
 
     def _inserts(
         self, header: BlockHeader, block: Block, trechos: list[Trecho], structure: StructureRun, usage: Usage,
-        detail: DetailRun,
+        detail: DetailRun, first_block: bool = False,
     ) -> SubpassRun:
+        """2b do bloco: mede a sobra, as posições e os candidatos (informação); a IA escolhe, e "nenhum" vale."""
         material = self.material
         sub = SubpassRun(origin="ia")
+        spare = round(block.target_sec - detail.speech_sec, 3) if block.target_sec else None
+        sub.spare_sec = spare
+        has_time = spare is not None and spare > 0
+        if trechos and not has_time:
+            sub.no_question = "sem sobra para respiro" if spare is not None else "sem alvo do bloco: sem sobra medida"
+            self.calls_done += 1
+            return sub
+        positions = insert_positions(trechos, material, first_block, asks_landscape_opening(self.context.request))
+        breath_positions = positions.breath if has_time else []
+        sub.breath_positions, sub.own_positions = list(breath_positions), list(positions.own)
+        sub.skipped = list(positions.refused)
+        if not has_time and positions.breath:
+            sub.skipped += [Skipped(number=p, reason="sem sobra para respiro") for p in positions.breath]
+
         own = [
-            m for c in block.clip_ids for m in material.clip_moments.get(c, [])
+            m for c in detail.clip_ids for m in material.clip_moments.get(c, [])
             if not m.sentence_ids and self._free_moment(m, usage)
         ]
-        pool = [
-            m for c in structure.library_clip_ids for m in material.clip_moments.get(c, [])
-            if not m.sentence_ids and self._free_moment(m, usage)
-        ]
-        library = library_ranking(material, block.clip_ids, pool)
+        if trechos:
+            own = own[:INSERT_CANDIDATES]
+        library: list[tuple[Moment, list[str]]] = []
+        if breath_positions and (trechos or own):
+            pool = [
+                m for c in structure.library_clip_ids for m in material.clip_moments.get(c, [])
+                if not m.sentence_ids and self._free_moment(m, usage)
+            ]
+            neighbors: list[Trecho] = []
+            for p in breath_positions:
+                neighbors += [t for t in trechos if t.number in (p, p + 1) and t not in neighbors]
+            text = " ".join(material.sentences[s].text for t in neighbors for s in t.sentence_ids)
+            places = [trecho_place(t, material, end) for t in neighbors for end in (False, True)]
+            places = [p for p in places if p]
+            related, rest = [], []
+            for moment in library_ranking(material, detail.clip_ids, pool):
+                found = breath_affinity(moment, text, places)
+                (related if found else rest).append((moment, found))
+            library = (related + rest)[: max(0, INSERT_CANDIDATES - len(own))]
         trecho_lines = [_trecho_line(t, material, TRECHO_WORDS) for t in trechos]
 
-        def make(moments: list[tuple[Moment, str]]) -> list[Candidate]:
+        def make(moments: list[tuple[Moment, str, list[str]]]) -> list[Candidate]:
             return [
-                Candidate(letter=letter, moment_id=m.id, clip_id=m.clip_id, duration_sec=round(m.duration, 3), source=source)
-                for letter, (m, source) in zip(letters(len(moments)), moments)
+                Candidate(
+                    letter=letter, moment_id=m.id, clip_id=m.clip_id, source=source, words=found,
+                    duration_sec=round(m.duration if source == "bloco" else min(m.duration, RESPIRO_MAX_SEC), 3),
+                    description=short_text(m.description, CANDIDATE_WORDS) if m.description else "", place=m.place,
+                )
+                for letter, (m, source, found) in zip(letters(len(moments)), moments)
             ]
 
         def data_for(candidates: list[Candidate], left: int) -> InsertsPromptInput:
             return InsertsPromptInput(
                 header=header, trecho_lines=trecho_lines, candidate_lines=[_insert_line(c, material) for c in candidates],
-                current_sec=detail.speech_sec, library_left=left,
+                current_sec=detail.speech_sec, library_left=left, spare_sec=spare, own_positions=positions.own,
+                breath_position_lines=[f"{p} ({positions.notes[p]})" for p in breath_positions],
+                breath_max_sec=RESPIRO_MAX_SEC,
             )
 
-        chosen = [(m, "bloco") for m in own]
-        for n, moment in enumerate(library):
-            trial = make(chosen + [(moment, "acervo")])
+        chosen = [(m, "bloco", []) for m in own]
+        for n, (moment, found) in enumerate(library):
+            trial = make(chosen + [(moment, "acervo", found)])
             if tokens(build_inserts_prompt(data_for(trial, len(library) - n - 1))) > self.budget.inserts_available:
                 break
-            chosen.append((moment, "acervo"))
+            chosen.append((moment, "acervo", found))
         candidates = make(chosen)
         sub.candidates = candidates
         left = len(own) + len(library) - len(candidates)
@@ -765,26 +846,37 @@ class EditorService:
         if not candidates:
             if not trechos:
                 sub.warnings.append("bloco sem fala e sem imagens livres")
+            sub.no_question = (
+                "nenhuma posição de respiro e nenhuma imagem do bloco" if not breath_positions and not own
+                else "nenhuma imagem livre para oferecer"
+            )
             self.calls_done += 1
             return sub
         data = data_for(candidates, left)
+        limit = spare if spare is not None else None
         self._progress(f"inclusões {block.id}")
+
+        def check_of(answer):
+            return validate_inserts(
+                answer, trechos, candidates, material, usage, spare_sec=limit,
+                breath_positions=breath_positions, own_positions=positions.own,
+            )
+
         decision = self._decide(
             "insercoes", INSERTS_PROMPT_VERSION, block.id, InsertsAnswer,
             build=lambda errors: build_inserts_prompt(data, errors),
             make_request=lambda prompt: InsertsRequest(
                 unit_id=block.id, prompt=prompt, material=material, trechos=trechos, candidates=candidates,
-                block_target_sec=block.target_sec, current_sec=detail.speech_sec,
+                block_target_sec=block.target_sec, current_sec=detail.speech_sec, spare_sec=spare,
+                breath_positions=list(breath_positions), own_positions=list(positions.own),
             ),
-            call=self.ai.inserts,
-            check_of=lambda answer: validate_inserts(answer, trechos, candidates, material, usage),
-            stats=sub.stats,
+            call=self.ai.inserts, check_of=check_of, stats=sub.stats,
         )
         self.calls_done += 1
         sub.requests, sub.estimated_tokens, sub.attempts = 1, decision.estimated, decision.attempts
         check = decision.check
         if check is None:
-            check = validate_inserts(neutral_inserts(trechos, candidates), trechos, candidates, material, usage)
+            check = check_of(neutral_inserts(trechos, candidates))
             sub.origin = "fallback"
             message = (
                 f"INCLUSÕES {block.id} PELO FALLBACK NEUTRO (a IA falhou de vez): "
@@ -801,24 +893,31 @@ class EditorService:
         _replace_usage(usage, check.usage)
         return sub
 
+
     # --- 2c ---
 
     def _coverage(
-        self, header: BlockHeader, block: Block, trechos: list[Trecho], structure: StructureRun, usage: Usage
+        self, header: BlockHeader, clip_ids: list[str], trechos: list[Trecho], structure: StructureRun, usage: Usage
     ) -> SubpassRun:
+        """Só trechos ditos para a câmera têm pergunta: nos outros, a própria imagem já mostra o assunto."""
         material = self.material
         sub = SubpassRun(origin="ia")
-        pool_clips = [*block.clip_ids, *structure.library_clip_ids]
+        pool_clips = [*clip_ids, *structure.library_clip_ids]
         pool = [m for c in pool_clips for m in material.clip_moments.get(c, []) if self._free_moment(m, usage)]
-        pool = library_ranking(material, block.clip_ids, pool)
+        pool = library_ranking(material, clip_ids, pool)
         letter_of: dict[str, str] = {}
         questions: dict[int, list[Candidate]] = {}
         texts: dict[int, CoverageQuestion] = {}
         for trecho in trechos:
-            speech = " ".join(material.sentences[s].text for s in trecho.sentence_ids)
+            talking = talking_sentences(trecho, material)
+            if not talking:
+                sub.skipped.append(Skipped(number=trecho.number, reason=NOT_TALKING))
+                continue
+            spoken = trecho.model_copy(update={"sentence_ids": talking})
+            speech = " ".join(material.sentences[s].text for s in talking)
             options = [m for m in pool if m.clip_id != trecho.clip_id]
             matches = coverage_matches(
-                speech, speech_places(trecho, material), options, COVERAGE_CANDIDATES, COVERAGE_SAYS, COVERAGE_PLACE,
+                speech, speech_places(spoken, material), options, COVERAGE_CANDIDATES, COVERAGE_SAYS, COVERAGE_PLACE,
             )
             if not matches:
                 continue
@@ -842,6 +941,8 @@ class EditorService:
                 unique.setdefault(candidate.letter, candidate)
         sub.candidates = list(unique.values())
         if not questions:
+            if trechos and len(sub.skipped) == len(trechos):
+                sub.no_question = "nenhum trecho dito para a câmera"
             self.calls_done += 1
             return sub
 
@@ -859,7 +960,7 @@ class EditorService:
 
         origins = []
         for k, group in enumerate(groups, start=1):
-            unit = block.id + (_suffix(k - 1) if len(groups) > 1 else "")
+            unit = header.block_id + (_suffix(k - 1) if len(groups) > 1 else "")
             asked = {n: questions[n] for n in group}
             data = CoveragePromptInput(header=header, questions=[texts[n] for n in group], part=k, parts=len(groups))
             self._progress(f"coberturas {unit}")
@@ -921,15 +1022,18 @@ def _trecho_line(trecho: Trecho, material: EditorMaterial, words: int) -> str:
 
 
 def _insert_line(candidate: Candidate, material: EditorMaterial) -> str:
-    """`A: descrição · lugar: lago · 9,0s · B004 (acervo) [problemas]`"""
+    """`- A: descrição curta · lugar: lago · 6,0s · B004 (acervo; em comum: lago) [problemas]` (respiro: a duração
+    que entra, no máximo `RESPIRO_MAX_SEC`)."""
     moment = material.moments[candidate.moment_id]
-    parts = [moment.description or "(sem descrição)"]
-    if moment.place:
-        parts.append(f"lugar: {moment.place}")
-    parts.append(_fmt_sec(moment.duration))
+    parts = [candidate.description or "(sem descrição)"]
+    if candidate.place:
+        parts.append(f"lugar: {candidate.place}")
+    parts.append(_fmt_sec(candidate.duration_sec))
     where = "do bloco" if candidate.source == "bloco" else "acervo"
+    if candidate.words:
+        where += f"; em comum: {', '.join(candidate.words)}"
     parts.append(f"{moment.clip_id} ({where})")
-    return f"{candidate.letter}: {' · '.join(parts)}{_issues(moment)}"
+    return f"- {candidate.letter}: {' · '.join(parts)}{_issues(moment)}"
 
 
 def _coverage_trecho_line(trecho: Trecho, material: EditorMaterial) -> str:

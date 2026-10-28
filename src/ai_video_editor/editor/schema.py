@@ -10,12 +10,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_serializer, model_validator
 
 from ai_video_editor.llm.schema import ModelSwitch
 
 # Sobe quando o formato do editor_run.json / editor_plano.json muda.
-EDITOR_SCHEMA_VERSION = 4
+EDITOR_SCHEMA_VERSION = 5
 
 MAX_HIGHLIGHTS = 3
 MAX_PROBLEMS = 3
@@ -249,10 +249,19 @@ class CutItem(BaseModel):
 
 
 class CutsAnswer(BaseModel):
-    """Resposta da 2a para um clipe (ou parte): as frases que saem; o resto fica."""
+    """Resposta da 2a para um clipe (ou parte): as frases que saem; o resto fica. `fora` = o clipe (ou a
+    parte) inteiro sai do bloco (decisão da IA)."""
 
     cortar: list[CutItem] = Field(default_factory=list)
+    fora: bool = False
     notas: str = ""
+
+    @field_validator("fora", mode="before")
+    @classmethod
+    def _out(cls, value):
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "sim", "yes", "1", "verdadeiro"}
+        return bool(value) if value is not None else False
 
     @field_validator("notas", mode="before")
     @classmethod
@@ -382,7 +391,7 @@ class RequestRecord(BaseModel):
 class Discarded(BaseModel):
     """Item da resposta recusado pela validação (só segurança), com o motivo."""
 
-    kind: str = Field(..., description="bloco, fora, faltando, cortar, inserir, cobertura")
+    kind: str = Field(..., description="bloco, fora, cortar, inserir, cobertura")
     item: str = Field(..., description="O item como a IA mandou, resumido")
     reason: str
 
@@ -425,6 +434,7 @@ class KeepRange(BaseModel):
     sentence_ids: list[str] = Field(default_factory=list)
     moment_id: Optional[str] = None
     duration_sec: Optional[float] = Field(default=None, description="Pedida pela IA (momento); None = inteiro")
+    start_sec: Optional[float] = Field(default=None, description="Início no clipe (respiro centrado); None = início do momento")
     breath: bool = Field(default=False, description="Momento do acervo entre as falas (respiro: som mais baixo)")
 
     @property
@@ -457,8 +467,24 @@ class Candidate(BaseModel):
     clip_id: str
     duration_sec: float
     source: Literal["bloco", "acervo", "outro clipe"] = "acervo"
+    description: str = Field(default="", description="Descrição curta do momento (como vai no pedido)")
+    place: str = ""
     kind: Optional[CoverageKind] = Field(default=None, description="2c: por que é candidato")
-    words: list[str] = Field(default_factory=list, description="2c: palavras em comum (fala × imagem, ou lugar × lugar)")
+    words: list[str] = Field(
+        default_factory=list,
+        description="Palavras em comum medidas (2c: fala × imagem ou lugar × lugar; 2b: com os trechos vizinhos)",
+    )
+
+    @model_serializer(mode="wrap")
+    def _drop_empty(self, handler):
+        """Sem `words` vazio nem `kind` nulo no JSON (a lista vazia não informa nada)."""
+        data = handler(self)
+        if isinstance(data, dict):
+            if not data.get("words"):
+                data.pop("words", None)
+            if data.get("kind") is None:
+                data.pop("kind", None)
+        return data
 
 
 class InsertChoice(BaseModel):
@@ -468,6 +494,7 @@ class InsertChoice(BaseModel):
     letter: str
     moment_id: str
     duration_sec: Optional[float] = None
+    start_sec: Optional[float] = Field(default=None, description="Respiro: início no clipe (centrado no momento)")
     breath: bool = Field(..., description="True = momento do acervo (respiro); False = do próprio bloco")
 
 
@@ -500,6 +527,7 @@ class CutRun(BaseModel):
     target_sec: Optional[float] = Field(default=None, description="Meta: a do bloco repartida pela fala disponível")
     result_sec: float = 0.0
     duration_off: bool = Field(default=False, description="Fora da meta ± DURATION_TOLERANCE depois da nova tentativa")
+    removed: bool = Field(default=False, description="A IA tirou o clipe (ou a parte) do bloco: fora: true ou tudo cortado")
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)
     attempts: list[str] = Field(default_factory=list)
@@ -509,11 +537,25 @@ class CutRun(BaseModel):
     normalized_ids: list[str] = Field(default_factory=list)
 
 
+class Skipped(BaseModel):
+    """Posição de respiro (2b) ou trecho (2c) que o código NÃO perguntou, com o motivo medido."""
+
+    number: int = Field(..., description="2b: depois_do_trecho; 2c: o número do trecho")
+    reason: str
+
+
 class SubpassRun(BaseModel):
     """2b ou 2c de um bloco (em um ou mais pedidos): candidatos com letra, escolhas aceitas e descartes."""
 
     origin: Origin
     requests: int = 0
+    spare_sec: Optional[float] = Field(default=None, description="2b: meta do bloco − fala mantida (None = sem meta)")
+    breath_positions: list[int] = Field(default_factory=list, description="2b: posições de respiro oferecidas")
+    own_positions: list[int] = Field(default_factory=list, description="2b: posições para as imagens do bloco")
+    skipped: list[Skipped] = Field(
+        default_factory=list, description="2b: posições de respiro recusadas; 2c: trechos sem pergunta"
+    )
+    no_question: str = Field(default="", description="Por que não houve pergunta (ex.: sem sobra para respiro)")
     candidates: list[Candidate] = Field(default_factory=list)
     inserts: list[InsertChoice] = Field(default_factory=list)
     coverages: list[CoverageChoice] = Field(default_factory=list)
@@ -545,6 +587,8 @@ class DetailRun(BaseModel):
     target_sec: Optional[float] = None
     used_before_sec: float = Field(default=0.0, description="Duração já usada pelos blocos anteriores (estimada)")
     library_offered: list[str] = Field(default_factory=list, description="Momentos do acervo listados na 2b")
+    removed_clip_ids: list[str] = Field(default_factory=list, description="Clipes que a IA tirou do bloco na 2a")
+    breath_sec: float = Field(default=0.0, description="Respiros do bloco (segundos)")
     warnings: list[str] = Field(default_factory=list)
 
     @property
