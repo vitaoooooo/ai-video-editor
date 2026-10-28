@@ -88,9 +88,9 @@ DEFAULT_EDITOR_MODELS = {"ollama": "qwen2.5:7b"}
 DEFAULT_EDITOR_PROVIDER = "ollama"
 
 # Versões de formato que entram nos fingerprints (sobem quando a saída da etapa muda).
-EDITOR_FORMAT = "editor-v2"
+EDITOR_FORMAT = "editor-v3"
 TIMELINE_FORMAT = "editor-timeline-v1"
-REPORT_FORMAT = "editor-report-v2"
+REPORT_FORMAT = "editor-report-v3"
 # Regras do código que mudam o resultado do editor (entram no fingerprint da etapa).
 EDITOR_RULES = (
     editor_validate.OVERLAP_TOLERANCE_SEC, editor_validate.DURATION_TOLERANCE_SEC, editor_validate.RETRY_INVALID_RATIO,
