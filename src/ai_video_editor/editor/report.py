@@ -31,11 +31,16 @@ def _short(text: str, limit: int = 90) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
-def _stats_row(name: str, stats: CallStats) -> str:
+def _stats_row(name: str, stats: CallStats, normalized: int) -> str:
     return (
         f"| {name} | {stats.calls} | {stats.cached} | {stats.api_calls} | {_tokens(stats.input_tokens)} | "
-        f"{_tokens(stats.output_tokens)} | {format_duration(stats.seconds)} |"
+        f"{_tokens(stats.output_tokens)} | {format_duration(stats.seconds)} | {normalized} |"
     )
+
+
+def _normalized(ids: list[str], limit: int = 4) -> str:
+    more = f" (+{len(ids) - limit})" if len(ids) > limit else ""
+    return f"IDs normalizados: {len(ids)} ({'; '.join(ids[:limit])}{more})"
 
 
 def build_plan_markdown(plan: EditorPlan, material: EditorMaterial) -> str:
@@ -122,6 +127,8 @@ def build_editor_report(
     )]
     if structure.notes:
         lines.append(f"Notas da IA: {_cell(structure.notes)}")
+    if structure.normalized_ids:
+        lines.append(_cell(_normalized(structure.normalized_ids)))
     lines += ["", "| Bloco | Título | Clipes | Alvo | No plano | Origem |", "| --- | --- | --- | --- | --- | --- |"]
     by_id = {b.id: b for b in plan.blocks}
     for block in structure.blocks:
@@ -149,6 +156,8 @@ def build_editor_report(
         lines.append(
             f"Pedido: ~{_tokens(detail.estimated_tokens)} tokens · acervo oferecido: {len(detail.library_offered)} momento(s)"
         )
+        if detail.normalized_ids:
+            lines.append(_cell(_normalized(detail.normalized_ids)))
         if detail.clip_order and detail.clip_order != detail.clip_ids:
             lines.append(f"Ordem dos clipes (da IA): {', '.join(detail.clip_order)}")
         for keep in detail.keep:
@@ -194,15 +203,23 @@ def build_editor_report(
     lines += [f"- {_cell(w)}" for w in warnings] if warnings else ["Nenhum."]
     lines.append("")
 
+    normalized = {
+        "summary": sum(len(s.normalized_ids) for s in run.summaries),
+        "structure": len(structure.normalized_ids),
+        "detail": sum(len(d.normalized_ids) for d in run.details),
+    }
     lines += [
         "## Chamadas e tokens",
         "",
-        "| Passada | Pedidos | Do cache | Chamadas à API | Tokens de entrada | Tokens de saída | Tempo |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
-        _stats_row("Resumos (E9)", run.summary_stats),
-        _stats_row("Estrutura (E10)", structure.stats),
-        _stats_row("Detalhe (E11)", run.detail_stats),
-        _stats_row("**Total**", run.total_stats),
+        "IDs normalizados: escritos pela IA fora do formato do roteiro (ex.: frase com o clipe na frente) e trocados "
+        "pelo código antes da validação. Muitos = o pedido ainda induz o formato errado.",
+        "",
+        "| Passada | Pedidos | Do cache | Chamadas à API | Tokens de entrada | Tokens de saída | Tempo | IDs normalizados |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        _stats_row("Resumos (E9)", run.summary_stats, normalized["summary"]),
+        _stats_row("Estrutura (E10)", structure.stats, normalized["structure"]),
+        _stats_row("Detalhe (E11)", run.detail_stats, normalized["detail"]),
+        _stats_row("**Total**", run.total_stats, sum(normalized.values())),
         "",
     ]
     report = "\n".join(lines)

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from ai_video_editor.llm.schema import ModelSwitch
 
 # Sobe quando o formato do editor_run.json / editor_plano.json muda.
-EDITOR_SCHEMA_VERSION = 2
+EDITOR_SCHEMA_VERSION = 3
 
 MAX_HIGHLIGHTS = 3
 MAX_PROBLEMS = 3
@@ -107,6 +107,9 @@ class ClipSummary(BaseModel):
     cached_parts: int = 0
     error: str = ""
     warnings: list[str] = Field(default_factory=list)
+    normalized_ids: list[str] = Field(
+        default_factory=list, description="IDs da resposta aceita trocados pelo formato do roteiro (\"bruto → ID\")"
+    )
 
 
 # --- E10: passada 1 (estrutura) ---
@@ -387,6 +390,9 @@ class StructureRun(BaseModel):
     prompt_mode: Literal["completo", "compacto"] = "completo"
     warnings: list[str] = Field(default_factory=list)
     stats: CallStats = Field(default_factory=CallStats)
+    normalized_ids: list[str] = Field(
+        default_factory=list, description="IDs da resposta aceita trocados pelo formato do roteiro (\"bruto → ID\")"
+    )
 
 
 class KeepRange(BaseModel):
@@ -465,6 +471,9 @@ class DetailRun(BaseModel):
     estimated_tokens: int = 0
     warnings: list[str] = Field(default_factory=list)
     stats: CallStats = Field(default_factory=CallStats)
+    normalized_ids: list[str] = Field(
+        default_factory=list, description="IDs da resposta aceita trocados pelo formato do roteiro (\"bruto → ID\")"
+    )
 
 
 class BudgetInfo(BaseModel):

@@ -24,6 +24,7 @@ from typing import Callable, Optional
 from pydantic import BaseModel
 
 from ai_video_editor.editor.budget import LIBRARY_MIN_TOKENS, Budget, tokens
+from ai_video_editor.editor.ids import IdResolver
 from ai_video_editor.editor.material import EditorMaterial, library_ranking
 from ai_video_editor.editor.prompt import (
     DETAIL_PROMPT_VERSION,
@@ -277,7 +278,7 @@ class EditorService:
                 errors_seen += errors if answer is None else []
             self.calls_done += 1
             if answer is not None:
-                answers.append(self._clean_summary(clip_id, answer))
+                answers.append(self._clean_summary(clip_id, answer, summary))
             elif len(parts) > 1:
                 summary.warnings.append(f"pedaço {k}/{len(parts)} sem resumo")
         if not answers:
@@ -287,20 +288,24 @@ class EditorService:
         summary.origin = "cache" if summary.cached_parts == len(parts) else "ia"
         return summary
 
-    def _clean_summary(self, clip_id: str, answer: ClipSummaryAnswer) -> ClipSummaryAnswer:
-        """Tira dos destaques/problemas os IDs que não são do clipe (só informação para a estrutura)."""
+    def _clean_summary(self, clip_id: str, answer: ClipSummaryAnswer, summary: ClipSummary) -> ClipSummaryAnswer:
+        """Normaliza os IDs dos destaques/problemas (`editor/ids.py`) e tira os que não são do clipe (só
+        informação para a estrutura); as trocas vão para `summary.normalized_ids`."""
         material = self.material
         known = {s.id for s in material.clip_sentences.get(clip_id, [])} | {m.id for m in material.clip_moments.get(clip_id, [])}
+        resolver = IdResolver(material)
 
         def clean(notes: list[SummaryNote]) -> list[SummaryNote]:
             result = []
             for note in notes:
-                ids = [i for i in note.ids if i in known]
+                ids = [i for i in (resolver.anchor(raw) for raw in note.ids) if i in known]
                 if ids or note.motivo:
                     result.append(note.model_copy(update={"ids": ids}))
             return result
 
-        return answer.model_copy(update={"destaques": clean(answer.destaques), "problemas": clean(answer.problemas)})
+        cleaned = answer.model_copy(update={"destaques": clean(answer.destaques), "problemas": clean(answer.problemas)})
+        summary.normalized_ids += resolver.fixed
+        return cleaned
 
     # --- E10: estrutura ---
 
@@ -365,6 +370,8 @@ class EditorService:
             self._notice(result.warnings[-1])
         result.blocks, result.out = check.blocks, check.out
         result.discarded = check.discarded
+        if result.origin != "fallback":
+            result.normalized_ids = check.normalized
         result.notes = answer.notas
         if check.forgotten:
             result.blocks = place_forgotten(check.blocks, check.forgotten, material)
@@ -580,6 +587,8 @@ class EditorService:
         detail.keep, detail.coverages, detail.breaths = check.keep, check.coverages, check.breaths
         detail.cuts, detail.clip_order, detail.result_sec = check.cuts, check.clip_order, check.result_sec
         detail.discarded = check.discarded
+        if detail.origin != "fallback":
+            detail.normalized_ids = check.normalized
         detail.warnings += check.warnings
         for item in check.discarded:
             detail.warnings.append(f"{item.kind} descartado ({item.item}): {item.reason}")
