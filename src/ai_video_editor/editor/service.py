@@ -4,12 +4,17 @@ Cada chamada aceita vai para um cache em disco assim que termina (um Ctrl+C no m
 foi feito), em `<projects>/_cache/editor_ia/<passada>/<fingerprint>.json`, com fingerprint = o pedido
 exato (sem a lista de erros de uma nova tentativa) + versão do pedido da passada + provedor, cadeia de
 modelos e raciocínio. Como o pedido do resumo só contém a seção do clipe no roteiro, mudar o pedido de
-outra passada não refaz os resumos. Respostas recusadas não vão para o cache (a próxima execução pede de
-novo).
+outra passada não refaz os resumos. Respostas inaproveitáveis não vão para o cache (a próxima execução pede
+de novo).
 
-Falha de vez (nova tentativa também recusada, erro da API) → o fallback neutro (`validate.neutral_*`), com
-aviso. Depois de `MAX_CONSECUTIVE_FAILURES` erros seguidos da API (não de validação), a IA não é mais
-chamada nesta execução e o resto vai pelos fallbacks. Erro de autenticação interrompe tudo.
+Nova tentativa (uma, com a lista de erros): estrutura sem bloco válido ou com clipe com fala esquecido;
+detalhe com metade ou mais dos itens inválida, sem nada no bloco ou com a duração resultante fora do alvo
+do pedaço ± `DURATION_TOLERANCE` (a nova tentativa mostra os números). Depois dela, a última resposta
+aproveitável é aceita com os itens válidos (os inválidos saem com aviso; duração fora do alvo é registrada);
+clipe com fala ainda esquecido vai para um bloco próprio. Fallback neutro (`validate.neutral_*`, com aviso)
+só sem resposta aproveitável (erro da API, fora do formato, nenhum item válido, nada no bloco). Depois de
+`MAX_CONSECUTIVE_FAILURES` erros seguidos da API (não de validação), a IA não é mais chamada nesta execução
+e o resto vai pelos fallbacks. Erro de autenticação interrompe tudo.
 """
 
 import time
@@ -30,9 +35,11 @@ from ai_video_editor.editor.prompt import (
     build_detail_prompt,
     build_structure_prompt,
     build_summary_prompt,
+    duration_retry_line,
 )
 from ai_video_editor.editor.provider import DetailRequest, EditorAI, StructureRequest, SummaryRequest
 from ai_video_editor.editor.schema import (
+    Block,
     BlockAnswer,
     CallStats,
     ClipSummary,
@@ -48,6 +55,8 @@ from ai_video_editor.editor.validate import (
     Usage,
     neutral_detail,
     neutral_structure,
+    place_forgotten,
+    sentences_sec,
     validate_detail,
     validate_structure,
 )
@@ -66,6 +75,9 @@ MAX_ATTEMPTS = 2
 MAX_CONSECUTIVE_FAILURES = 3
 # Frases do bloco anterior que vão como continuidade.
 CONTINUITY_SENTENCES = 2
+# Faixa aceita da duração resultante de um pedaço: alvo ± 35%. Fora dela, UMA nova tentativa com os números;
+# se ainda ficar fora, aceita e registra (a duração é informação para a IA, não uma decisão do código).
+DURATION_TOLERANCE = 0.35
 
 Notice = Callable[[str], None]
 Progress = Callable[[StageProgress], None]
@@ -294,12 +306,20 @@ class EditorService:
 
     def _structure(self, summaries: dict[str, ClipSummary]) -> StructureRun:
         material, context = self.material, self.context
-        clips = [StructureClip(c, material.clip_line(c), summaries.get(c)) for c in material.clip_ids]
+        clips = [
+            StructureClip(c, material.clip_line(c), summaries.get(c), tokens(material.section(c) + "\n"))
+            for c in material.clip_ids
+        ]
+        block_tokens = max(0, self._content_budget(Block(id="B01", clip_ids=[])))
         result = StructureRun(origin="ia")
-        prompt = build_structure_prompt(context, clips)
+
+        def prompt_for(errors: Optional[list[str]] = None) -> str:
+            return build_structure_prompt(context, clips, result.prompt_mode == "compacto", errors, block_tokens)
+
+        prompt = prompt_for()
         if tokens(prompt) > self.budget.structure_available:
-            prompt = build_structure_prompt(context, clips, compact=True)
             result.prompt_mode = "compacto"
+            prompt = prompt_for()
             result.warnings.append(
                 "a lista de clipes com os resumos completos não coube no contexto; a estrutura recebeu os resumos encurtados"
             )
@@ -318,22 +338,21 @@ class EditorService:
                     result.stats.cached += 1
             errors: list[str] = []
             for _ in range(0 if answer is not None else MAX_ATTEMPTS):
-                request = StructureRequest(
-                    prompt=build_structure_prompt(context, clips, result.prompt_mode == "compacto", errors),
-                    material=material, context=context, summaries=summaries,
-                )
+                request = StructureRequest(prompt=prompt_for(errors), material=material, context=context, summaries=summaries)
                 raw, error = self._ask(self.ai.structure, request, result.stats)
                 if raw is not None:
-                    check = validate_structure(raw, material)
-                    if check.blocks:
-                        answer = raw
-                        self.cache.save("estrutura", key, raw)
+                    trial = validate_structure(raw, material)
+                    if trial.blocks:  # aproveitável: a última aproveitável vale se a nova tentativa não resolver
+                        answer, check = raw, trial
+                    if trial.refused is None:
                         break
-                    error = "; ".join(check.errors[:10]) or "nenhum bloco na resposta"
+                    error = f"{trial.refused}: " + "; ".join(trial.errors[:12])
                 errors.append(error)
                 result.attempts.append(error)
                 if self.gave_up:
                     break
+            if answer is not None and result.origin != "cache":
+                self.cache.save("estrutura", key, answer)
         self.calls_done += 1
         if answer is None:
             answer = neutral_structure(material)
@@ -347,6 +366,14 @@ class EditorService:
         result.blocks, result.out = check.blocks, check.out
         result.discarded = check.discarded
         result.notes = answer.notas
+        if check.forgotten:
+            result.blocks = place_forgotten(check.blocks, check.forgotten, material)
+            message = (
+                f"estrutura: clipe(s) com fala esquecido(s) pela IA ({', '.join(check.forgotten)}) entraram em bloco "
+                "próprio, na ordem do catálogo"
+            )
+            result.warnings.append(message)
+            self._notice(message)
         if check.discarded and result.origin != "fallback":
             result.warnings.append(f"estrutura: {len(check.discarded)} item(ns) descartado(s) na validação")
         placed = {c for b in result.blocks for c in b.clip_ids} | {o.clipe for o in result.out}
@@ -418,6 +445,34 @@ class EditorService:
             chunks.append(current)
         return chunks
 
+    def _unit_target(self, unit: Unit) -> Optional[float]:
+        """Alvo do pedaço: o do bloco; dividido, proporcional à duração das frases (sem fala: dos momentos)."""
+        target = unit.block.target_sec
+        if target is None or unit.parts == 1:
+            return target
+        material = self.material
+        block_sentences = [s.id for c in unit.block.clip_ids for s in material.clip_sentences.get(c, [])]
+        whole = sentences_sec(material, block_sentences)
+        part = sentences_sec(material, unit.sentence_ids(material))
+        if whole <= 0:
+            whole = sum(m.duration for c in unit.block.clip_ids for m in material.clip_moments.get(c, []))
+            part = sum(m.duration for m in unit.moments(material))
+        return round(target * part / whole, 1) if whole > 0 else target
+
+    def _duration_problem(self, check, target: Optional[float], free_silent: int) -> Optional[str]:
+        """Resultado fora de alvo ± `DURATION_TOLERANCE` (só informação; None = dentro ou sem alvo).
+
+        Abaixo do alvo sem nada cortado e sem momento sem fala livre, não há o que ajustar: não pede de novo.
+        """
+        if target is None or target <= 0:
+            return None
+        low, high = target * (1 - DURATION_TOLERANCE), target * (1 + DURATION_TOLERANCE)
+        if low <= check.result_sec <= high:
+            return None
+        if check.result_sec < low and not check.cuts and free_silent == 0:
+            return None
+        return duration_retry_line(check.result_sec, target, low, high)
+
     def _detail(self, unit: Unit, structure: StructureRun, usage: Usage) -> tuple[DetailRun, Usage]:
         material, context = self.material, self.context
         block = unit.block
@@ -428,12 +483,17 @@ class EditorService:
         self._progress(f"bloco {unit.unit_id} ({', '.join(unit.clip_ids)})")
         sentence_ids = [s for s in unit.sentence_ids(material) if s not in usage.sentences]
         moments = [m for m in unit.moments(material) if m.id not in usage.moments]
+        silent = unit.silent_moments(material, usage)
+        detail.available_sec = round(sentences_sec(material, sentence_ids), 3)
+        detail.target_sec = self._unit_target(unit)
         data = DetailPromptInput(
             unit_id=unit.unit_id, block_id=block.id, title=block.title, subject=block.subject, context=context,
             target_total_sec=structure.target_total_sec, block_target_sec=block.target_sec,
             used_before_sec=usage.used_sec, part=unit.part, parts=unit.parts,
             previous_sentences=self._continuity(usage),
             sections=[material.section(c, unit.moment_ids) for c in unit.clip_ids],
+            silent_lines=[material.moment_line(m) for m in silent], available_sec=detail.available_sec,
+            unit_target_sec=detail.target_sec, clip_ids=list(unit.clip_ids),
         )
         library_budget = self.budget.detail_available - tokens(build_detail_prompt(data))
         if library_budget < 0:
@@ -465,34 +525,47 @@ class EditorService:
 
         key = self.key("detalhe", DETAIL_PROMPT_VERSION, prompt)
         check = None
+        accepted: Optional[BlockAnswer] = None
+        duration_problem: Optional[str] = None
         cached = self.cache.load("detalhe", key, BlockAnswer)
         if cached is not None:
             trial = validate_detail(cached, unit, material, detail.library_offered, usage)
-            if trial.refused is None:
-                check, detail.origin = trial, "cache"
+            if trial.unusable is None:
+                check, accepted, detail.origin = trial, cached, "cache"
+                duration_problem = self._duration_problem(trial, detail.target_sec, len(silent))
                 detail.stats.cached += 1
         errors: list[str] = []
         for _ in range(0 if check is not None else MAX_ATTEMPTS):
             request = DetailRequest(
                 unit_id=unit.unit_id, prompt=build_detail_prompt(data, errors), material=material, context=context,
                 clip_ids=list(unit.clip_ids), sentence_ids=sentence_ids, moments=moments, library=offered,
-                target_sec=structure.target_total_sec,
+                target_sec=structure.target_total_sec, block_target_sec=detail.target_sec, silent=silent,
             )
             raw, error = self._ask(self.ai.detail, request, detail.stats)
             if raw is not None:
                 trial = validate_detail(raw, unit, material, detail.library_offered, usage)
-                if trial.refused is None:
-                    check = trial
-                    detail.notes = raw.notas
-                    self.cache.save("detalhe", key, raw)
+                if trial.unusable is None:  # aproveitável: vale se a nova tentativa não resolver
+                    check, accepted = trial, raw
+                    duration_problem = self._duration_problem(trial, detail.target_sec, len(silent))
+                problems = [p for p in (trial.refused, duration_problem if trial.unusable is None else None) if p]
+                if not problems:
                     break
-                error = f"{trial.refused}: " + "; ".join(trial.errors[:12])
+                error = "; ".join(problems) + (": " + "; ".join(trial.errors[:12]) if trial.errors else "")
             errors.append(error)
             detail.attempts.append(error)
             if self.gave_up:
                 break
-        if check is not None and detail.origin == "cache":
-            detail.notes = cached.notas
+        if accepted is not None:
+            detail.notes = accepted.notas
+            if detail.origin != "cache":
+                self.cache.save("detalhe", key, accepted)
+            if detail.attempts and check.discarded:
+                detail.warnings.append(
+                    f"aceitos os itens válidos da resposta; {len(check.discarded)} item(ns) inválido(s) descartado(s)"
+                )
+            if duration_problem:
+                detail.duration_off = True
+                detail.warnings.append(f"fora do alvo depois da nova tentativa, aceito assim ({duration_problem})")
         if check is None:
             check = validate_detail(neutral_detail(unit, material, usage), unit, material, [], usage)
             detail.origin = "fallback"
@@ -505,6 +578,7 @@ class EditorService:
             self._notice(message)
         self.calls_done += 1
         detail.keep, detail.coverages, detail.breaths = check.keep, check.coverages, check.breaths
+        detail.cuts, detail.clip_order, detail.result_sec = check.cuts, check.clip_order, check.result_sec
         detail.discarded = check.discarded
         detail.warnings += check.warnings
         for item in check.discarded:

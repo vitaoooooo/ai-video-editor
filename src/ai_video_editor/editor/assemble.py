@@ -5,8 +5,8 @@
   palavra), limitado à janela da faixa (no máximo `EDGE_SEC` antes da 1ª e depois da última frase, nunca
   dentro das frases vizinhas). Cada trecho vira um item de `video_main` com o som do clipe; os micro fades
   são os da Timeline (`audio_fade_sec`).
-- Momento em `manter`: um item da base com o som da própria imagem; a duração pedida, limitada ao momento
-  (sem pedido, o momento inteiro).
+- Momento incluído (`incluir`, só momento sem fala): um item da base com o som da própria imagem; a duração
+  pedida, limitada ao momento (sem pedido, o momento inteiro).
 - Respiro: item da base logo depois do item indicado (com o som da imagem, rótulo `respiro ...`); depois de
   uma frase no meio de uma faixa, a faixa é dividida entre o fim dessa frase e o início da seguinte (nunca
   dentro de uma palavra).

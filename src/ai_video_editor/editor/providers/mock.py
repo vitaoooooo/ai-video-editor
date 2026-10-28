@@ -4,9 +4,10 @@
   com problema.
 - Estrutura: um bloco por clipe com fala, na ordem do catálogo; os sem fala ficam no acervo (sem nenhum
   clipe com fala: um bloco só, com todos).
-- Detalhe: cada clipe com fala vira uma faixa (todas as frases livres); sem fala, todos os momentos livres.
-  A 1ª faixa ganha uma cobertura com o primeiro momento do acervo que divide uma palavra com a fala
-  (essa palavra é a evidência) e, depois dela, um respiro com o momento seguinte do acervo, de até 2 s.
+- Detalhe: nada cortado (todas as frases livres ficam); um clipe sem fala entra com todos os momentos sem
+  fala livres (`incluir`, no lugar do clipe). A 1ª faixa ganha uma cobertura "mostra o que é dito" com o
+  primeiro momento do acervo que divide uma palavra com a fala (essa palavra é as duas evidências) e, depois
+  dela, um respiro com o momento seguinte do acervo, de até 2 s.
 
 `responses` = respostas fixas por passada (`"summary"`, `"structure"`, `"detail"`), uma por chamada, na
 ordem; um item pode ser a resposta (modelo ou dict), uma exceção (lançada) ou uma função do pedido.
@@ -17,7 +18,7 @@ from typing import Any, Callable, Optional, Union
 
 from ai_video_editor.editor.material import matched_words, moment_text
 from ai_video_editor.editor.provider import DetailRequest, EditorAI, StructureRequest, SummaryRequest
-from ai_video_editor.editor.schema import BlockAnswer, ClipSummaryAnswer, StructureAnswer
+from ai_video_editor.editor.schema import COVERAGE_SAYS, BlockAnswer, ClipSummaryAnswer, StructureAnswer
 
 MockEditorResponse = Union[dict, Exception, Callable[[Any], Any], Any]
 MOCK_BREATH_SEC = 2.0
@@ -84,7 +85,9 @@ class MockEditorAI(EditorAI):
         blocks = []
         for n, clip_ids in enumerate(groups, start=1):
             seconds = sum(s.end_sec - s.start_sec for c in clip_ids for s in material.clip_sentences.get(c, []))
-            if not seconds:
+            if seconds:
+                seconds += MOCK_BREATH_SEC  # o detalhe simulado põe um respiro por bloco com fala
+            else:
                 seconds = sum(material.clips[c].duration_sec for c in clip_ids)
             blocks.append({"id": f"B{n:02d}", "titulo": f"Parte {n}", "clipes": clip_ids, "duracao_alvo_sec": round(seconds, 1)})
         total = request.context.target_sec or round(sum(b["duracao_alvo_sec"] for b in blocks), 1)
@@ -96,15 +99,19 @@ class MockEditorAI(EditorAI):
             return fixed
         material = request.material
         free = set(request.sentence_ids)
-        keep: list[dict] = []
+        includes: list[dict] = []
         faixas: list[list[str]] = []
+        anchor = None
         for clip_id in request.clip_ids:
             sentences = [s.id for s in material.clip_sentences.get(clip_id, []) if s.id in free]
             if sentences:
-                keep.append({"de": sentences[0], "ate": sentences[-1]})
                 faixas.append(sentences)
+                anchor = sentences[-1]
             elif not material.clip_sentences.get(clip_id):
-                keep += [{"momento": m.id} for m in request.moments if m.clip_id == clip_id]
+                for moment in request.silent:
+                    if moment.clip_id == clip_id:
+                        includes.append({"momento": moment.id, "depois_de": anchor})
+                        anchor = moment.id
         coverages, breaths = [], []
         library = list(request.library)
         if faixas:
@@ -114,7 +121,8 @@ class MockEditorAI(EditorAI):
                 found = matched_words(moment_text(moment), speech)
                 if found:
                     coverages.append({
-                        "de": first[0], "ate": first[-1], "momentos": [moment.id], "evidencia_fala": found[0],
+                        "de": first[0], "ate": first[-1], "momentos": [moment.id], "tipo": COVERAGE_SAYS,
+                        "evidencia_fala": found[0],
                         "evidencia_imagem": found[0], "motivo": "a imagem mostra o que é dito",
                     })
                     library.remove(moment)
@@ -125,4 +133,6 @@ class MockEditorAI(EditorAI):
                     "depois_de": first[-1], "momento": free_breath.id,
                     "duracao_sec": round(min(MOCK_BREATH_SEC, free_breath.duration), 2), "motivo": "respiro simulado",
                 })
-        return BlockAnswer(manter=keep, coberturas=coverages, respiros=breaths, notas="detalhe simulado")
+        return BlockAnswer.model_validate({
+            "incluir": includes, "coberturas": coverages, "respiros": breaths, "notas": "detalhe simulado",
+        })

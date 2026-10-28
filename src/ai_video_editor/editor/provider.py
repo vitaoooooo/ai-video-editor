@@ -44,6 +44,8 @@ class DetailRequest:
     moments: list[Moment]  # momentos do pedaço ainda não usados, em ordem
     library: list[Moment]  # pré-seleção do acervo
     target_sec: Optional[float] = None
+    block_target_sec: Optional[float] = None  # alvo do pedaço (o do bloco; proporcional se dividido)
+    silent: list[Moment] = field(default_factory=list)  # momentos sem fala livres do pedaço (os de `incluir`)
 
 
 class EditorAI(ABC):

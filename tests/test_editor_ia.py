@@ -2,6 +2,7 @@
 nova tentativa e fallbacks neutros, caches por passada, montagem (IDs → Timeline) e ponta a ponta com
 clipes sintéticos (render curto marcado `slow`). Sem rede: IA simulada (`MockEditorAI`)."""
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -17,7 +18,7 @@ from ai_video_editor.editor import service as editor_service
 from ai_video_editor.editor.assemble import ClipSource, assemble_plan, faixa_ranges
 from ai_video_editor.editor.budget import Budget, resolve_budget, tokens
 from ai_video_editor.editor.material import library_ranking, matched_words
-from ai_video_editor.editor.prompt import build_summary_prompt
+from ai_video_editor.editor.prompt import DetailPromptInput, build_detail_prompt, build_structure_prompt, build_summary_prompt
 from ai_video_editor.editor.providers.llm import LLMEditorAI
 from ai_video_editor.editor.providers.mock import MockEditorAI
 from ai_video_editor.editor.provider import SummaryRequest
@@ -29,13 +30,21 @@ from ai_video_editor.editor.schema import (
     CoverageChoice,
     DetailRun,
     EditorRun,
-    KeepAnswer,
+    CutAnswer,
+    IncludeAnswer,
     KeepRange,
     StructureAnswer,
     StructureRun,
 )
 from ai_video_editor.editor.service import CallCache, EditorService
-from ai_video_editor.editor.validate import Unit, Usage, neutral_detail, validate_detail, validate_structure
+from ai_video_editor.editor.validate import (
+    Unit,
+    Usage,
+    neutral_detail,
+    place_forgotten,
+    validate_detail,
+    validate_structure,
+)
 from ai_video_editor.intelligence.exceptions import AIAuthenticationError, AIProviderError
 from ai_video_editor.llm.chain import ModelChain
 from ai_video_editor.llm.providers.mock import MockLLMClient
@@ -126,9 +135,16 @@ def _service(material, tmp_path, ai=None, num_ctx=32768, context=None) -> Editor
 
 
 def test_answers_are_tolerant_and_trimmed():
-    keep = KeepAnswer.model_validate({"de": " s012 ", "ate": "s015", "duracao_sec": "3,5s"})
-    assert (keep.de, keep.ate, keep.duracao_sec) == ("S012", "S015", 3.5)
-    assert KeepAnswer.model_validate({"momento": "p001.m02", "duracao_sec": "auto"}).duracao_sec is None
+    cut = CutAnswer.model_validate({"de": " s012 ", "ate": "s015", "motivo": " recomeço "})
+    assert (cut.de, cut.ate, cut.motivo) == ("S012", "S015", "recomeço")
+    assert (CutAnswer.model_validate("s020").de, CutAnswer.model_validate("s020").ate) == ("S020", "S020")
+    assert CutAnswer.model_validate({"frase": "S021"}).de == "S021"
+    include = IncludeAnswer.model_validate({"momento": "p001.m02", "depois_de": "início", "duracao_sec": "3,5s"})
+    assert (include.momento, include.depois_de, include.duracao_sec) == ("P001.M02", None, 3.5)
+    assert IncludeAnswer.model_validate({"momento": "p001.m02", "duracao_sec": "auto"}).duracao_sec is None
+    answer = BlockAnswer.model_validate({"ordem": "p002; p001", "coberturas": [{"tipo": "Mostra o lugar"}, {"tipo": "x"}]})
+    assert answer.ordem == ["P002", "P001"]
+    assert [c.tipo for c in answer.coberturas] == ["mostra o lugar", None]
     summary = ClipSummaryAnswer.model_validate({
         "resumo": "  Um clipe.  ", "destaques": [{"ids": "S001, S002", "motivo": "x"}] * 5, "problemas": [],
     })
@@ -193,88 +209,173 @@ def test_detail_validation_item_by_item(material):
     usage.sentences.add("S005")  # já no vídeo (bloco anterior)
     usage.moments.add("B001.M02")
     answer = BlockAnswer.model_validate({
-        "manter": [
-            {"de": "S000", "ate": "S001"},  # válido
+        "cortar": [
+            {"de": "S002", "ate": "S002", "motivo": "recomeço"},  # válido
             {"de": "S999", "ate": "S999"},  # ID inexistente
             {"de": "S004", "ate": "S004"},  # fora do bloco (P002)
-            {"de": "S001", "ate": "S002"},  # S001 de novo: sobreposição / frase repetida
             {"de": "S003", "ate": "S002"},  # fora de ordem
-            {"momento": "P001.M02", "duracao_sec": 99},  # duração fora do momento
-            {"momento": "P001.M02", "duracao_sec": 2},  # momento com fala já mantida? não: S002/S003 estão livres
         ],
-        "coberturas": [
-            {"de": "S000", "ate": "S000", "momentos": ["P001.M01"], "evidencia_fala": "praia", "evidencia_imagem": "praia"},
-            {"de": "S001", "ate": "S001", "momentos": ["D001.M01"], "evidencia_fala": "montanha", "evidencia_imagem": "mar"},
-            {"de": "S001", "ate": "S001", "momentos": ["D001.M01", "D001.M02"], "evidencia_fala": "mar azul",
-             "evidencia_imagem": "mar"},
-            {"de": "S002", "ate": "S002", "momentos": ["D001.M02"], "evidencia_fala": "trilha", "evidencia_imagem": "mata"},
+        "incluir": [
+            {"momento": "D001.M02", "depois_de": "S001", "duracao_sec": 2},  # válido: sem fala, depois de S001
+            {"momento": "P001.M02"},  # tem fala: recusado
+            {"momento": "D001.M01", "duracao_sec": 99},  # duração fora do momento
+            {"momento": "D001.M01", "depois_de": "S002"},  # S002 foi cortada
         ],
         "respiros": [
             {"depois_de": "S001", "momento": "B001.M02"},  # momento repetido (já usado)
-            {"depois_de": "S001", "momento": "B001.M01", "duracao_sec": 5},  # duração > momento
-            {"depois_de": "S000", "momento": "B001.M01", "duracao_sec": 0.5},  # no meio de nada coberto: ok
+            {"depois_de": "S002", "momento": "B001.M01"},  # S002 foi cortada
+            {"depois_de": "S000", "momento": "B001.M01", "duracao_sec": 0.5},  # válido
         ],
     })
-    check = validate_detail(answer, _unit("P001"), material, ["D001.M01", "D001.M02", "B001.M01", "B001.M02"], usage)
-    reasons = {d.item: d.reason for d in check.discarded}
+    check = validate_detail(answer, _unit("P001", "D001"), material, ["B001.M01", "B001.M02"], usage)
     joined = " | ".join(f"{d.kind}: {d.reason}" for d in check.discarded)
-    assert [k.key for k in check.keep] == ["S001", "P001.M02"]
     assert "frase S999 não existe" in joined
     assert "S004 é do clipe P002, fora deste bloco" in joined
-    assert "frase já no vídeo: S001" in joined
     assert "S003 vem depois de S002" in joined
-    assert "duracao_sec 99 maior que o momento P001.M02" in joined
+    assert "momento P001.M02 tem fala (S002, S003)" in joined
+    assert "duracao_sec 99 maior que o momento D001.M01" in joined
+    assert "depois_de S002 não é uma frase que ficou" in joined
     assert "momento B001.M02 já usado no vídeo" in joined
-    assert "duracao_sec 5 maior que o momento B001.M01" in joined
-    assert "nenhum momento válido na cobertura" in joined  # P001.M01 = o clipe que está falando
-    assert "evidencia_fala ('montanha') não aparece" in joined
-    assert "cobertura sobre frase não mantida neste bloco: S002" in joined  # S002 não está em manter
-    assert len(reasons) == len(check.discarded)
-    # A cobertura válida perde só o momento sem evidência (D001.M02 não fala de mar) e guarda as palavras achadas.
-    [coverage] = check.coverages
-    assert coverage.moment_ids == ["D001.M01"] and coverage.matched_speech == ["mar", "azul"]
-    assert any("D001.M02 retirado" in w for w in check.warnings)
+    assert "respiro: depois_de S002 não é uma frase que ficou" in joined
+    assert len(check.discarded) == 8
+    # Fica tudo menos S002, na ordem do roteiro; o incluído quebra a faixa depois de S001.
+    assert [(k.kind, k.key, k.sentence_ids) for k in check.keep] == [
+        ("frases", "S001", ["S000", "S001"]), ("momento", "D001.M02", []), ("frases", "S003", ["S003"]),
+    ]
+    assert [(c.sentence_ids, c.reason) for c in check.cuts] == [(["S002"], "recomeço")]
     assert [(b.after, b.moment_id) for b in check.breaths] == [("S000", "B001.M01")]
+    # Duração resultante: frases que ficaram (2 + 2,5 + 2) + incluído (2) + respiro (0,5).
+    assert check.result_sec == pytest.approx(9.0)
     # O uso original não muda; o do resultado tem o que foi aceito.
-    assert usage.sentences == {"S005"} and {"S000", "S001", "S005"} <= check.usage.sentences
+    assert usage.sentences == {"S005"} and {"S000", "S001", "S003", "S005"} <= check.usage.sentences
 
 
-def test_moment_overlapping_kept_speech_and_coverage_of_the_speaking_clip_are_refused(material):
-    answer = BlockAnswer.model_validate({
-        "manter": [{"de": "S000", "ate": "S001"}, {"momento": "P001.M01"}],  # mesmo trecho do arquivo
-        "coberturas": [{"de": "S000", "ate": "S001", "momentos": ["P002.M01"], "evidencia_fala": "praia",
-                        "evidencia_imagem": "restaurante"}],  # evidência da fala não está... está: "praia"
-    })
+def test_cut_by_range_and_by_id_keeps_the_rest_in_order_and_optional_clip_order(material):
+    answer = BlockAnswer.model_validate({"cortar": ["S001", {"de": "S002", "ate": "S003"}], "ordem": ["P002", "P001"]})
     check = validate_detail(answer, _unit("P001", "P002"), material, [], Usage())
-    joined = " | ".join(d.reason for d in check.discarded)
-    assert "o trecho de P001.M01 já está no vídeo (frases S000–S001)" in joined
-    # P002.M01 é de outro clipe do bloco e não está no vídeo: vale como cobertura.
-    assert [c.moment_ids for c in check.coverages] == [["P002.M01"]]
+    assert check.clip_order == ["P002", "P001"] and not check.discarded
+    assert [(k.clip_id, k.sentence_ids) for k in check.keep] == [("P002", ["S004", "S005"]), ("P001", ["S000"])]
+    assert check.usage.kept_order == ["S004", "S005", "S000"]
+    # Sem ordem (ou com clipe de fora do bloco): a ordem da estrutura.
+    bad = validate_detail(BlockAnswer.model_validate({"ordem": ["D001"]}), _unit("P001", "P002"), material, [], Usage())
+    assert bad.clip_order == ["P001", "P002"] and "clipes fora deste bloco: D001" in bad.errors[0]
+    assert [k.sentence_ids for k in bad.keep] == [["S000", "S001", "S002", "S003"], ["S004", "S005"]]
 
 
-def test_respiro_inside_a_coverage_and_half_invalid_answer_is_refused(material):
+def test_include_only_moments_without_speech_at_the_start_or_after_another_include(material):
+    answer = BlockAnswer.model_validate({"incluir": [
+        {"momento": "D001.M01"}, {"momento": "D001.M02", "depois_de": "D001.M01", "duracao_sec": 1.5},
+        {"momento": "P001.M01", "depois_de": "S003"},  # tem fala: recusado
+    ]})
+    check = validate_detail(answer, _unit("D001", "P001"), material, [], Usage())
+    assert [k.key for k in check.keep] == ["D001.M01", "D001.M02", "S003"]
+    assert check.keep[1].duration_sec == 1.5
+    assert [d.reason for d in check.discarded] == ["momento P001.M01 tem fala (S000, S001): só entram momentos sem fala"]
+
+
+def test_coverage_inside_a_respiro_and_half_invalid_answer_is_refused(material):
     answer = BlockAnswer.model_validate({
-        "manter": [{"de": "S000", "ate": "S002"}],
+        "cortar": ["S003"],
         "respiros": [{"depois_de": "S000", "momento": "B001.M02"}],
-        "coberturas": [{"de": "S000", "ate": "S001", "momentos": ["D001.M01"], "evidencia_fala": "mar",
-                        "evidencia_imagem": "mar"}],
+        "coberturas": [{"de": "S000", "ate": "S001", "momentos": ["D001.M01"], "tipo": "mostra o que é dito",
+                        "evidencia_fala": "mar", "evidencia_imagem": "mar"}],
     })
     check = validate_detail(answer, _unit("P001"), material, ["D001.M01", "B001.M02"], Usage())
     assert "há um respiro no meio das frases cobertas" in check.discarded[0].reason
     assert check.refused is None  # 1 de 3 inválido
-    bad = BlockAnswer.model_validate({"manter": [{"de": "S000", "ate": "S000"}, {"de": "S999"}, {"momento": "X.M01"}]})
-    assert "2 de 3 itens inválidos" in validate_detail(bad, _unit("P001"), material, [], Usage()).refused
-    assert validate_detail(BlockAnswer(), _unit("P001"), material, [], Usage()).refused == "nada válido em manter"
+    bad = BlockAnswer.model_validate({"cortar": ["S000", "S999", {"de": "S004"}], "incluir": [{"momento": "X.M01"}]})
+    check = validate_detail(bad, _unit("P001"), material, [], Usage())
+    assert "3 de 4 itens inválidos" in check.refused and check.unusable is None  # 1 válido: aproveitável
+    assert validate_detail(BlockAnswer.model_validate({"cortar": ["S999"]}), _unit("P001"), material, [], Usage()).unusable == "nenhum item válido"
+    everything = BlockAnswer.model_validate({"cortar": [{"de": "S000", "ate": "S003"}]})
+    assert "nada fica no bloco" in validate_detail(everything, _unit("P001"), material, [], Usage()).refused
+    # Resposta vazia = nada cortado: aceita.
+    assert validate_detail(BlockAnswer(), _unit("P001"), material, [], Usage()).refused is None
 
 
-def test_neutral_detail_keeps_every_free_sentence_and_moments_of_silent_clips(material):
+def test_neutral_detail_cuts_nothing_and_includes_the_moments_of_silent_clips(material):
     usage = Usage()
     usage.sentences.add("S001")
     answer = neutral_detail(_unit("P001", "D001"), material, usage)
-    assert [(k.de, k.ate, k.momento) for k in answer.manter] == [
-        ("S000", "S000", None), ("S002", "S003", None), (None, None, "D001.M01"), (None, None, "D001.M02"),
+    assert not answer.cortar and not answer.coberturas and not answer.respiros
+    assert [(i.momento, i.depois_de) for i in answer.incluir] == [("D001.M01", "S003"), ("D001.M02", "D001.M01")]
+    check = validate_detail(answer, _unit("P001", "D001"), material, [], usage)
+    assert [k.key for k in check.keep] == ["S000", "S003", "D001.M01", "D001.M02"]
+
+
+# --- cobertura: tipo e evidência ---
+
+
+def make_evidence_material(tmp_path: Path) -> EditorMaterial:
+    """P001 fala no terminal (ómnibus, cachorros); D001 = drone com ônibus, cachorro e a fachada do terminal."""
+    clips = [_clip("P001", "principal", 1, 12.0, True), _clip("D001", "drone", 2, 12.0, False, audio=False),
+             _clip("P002", "principal", 3, 6.0, True)]
+    moments = [
+        _moment("P001", 1, 0.0, 12.0, "pessoa falando no saguão", "terminal de ônibus", ["pessoa"], ["S000", "S001"]),
+        _moment("D001", 1, 0.0, 4.0, "ônibus na estrada", "estrada", ["ônibus", "estrada"]),
+        _moment("D001", 2, 4.0, 8.0, "cachorro na praia", "praia", ["cachorro", "areia"]),
+        _moment("D001", 3, 8.0, 12.0, "fachada do terminal rodoviário", "terminal rodoviário", ["fachada"]),
+        _moment("P002", 1, 0.0, 6.0, "rua com carros e montanhas", "rua", ["rua", "carros"], ["S002"]),
     ]
-    assert not answer.coberturas and not answer.respiros
+    sentences = [
+        _sentence(0, "P001", 0.5, 4.0, "Pegamos o ómnibus para Bariloche.", "P001.M01"),
+        _sentence(1, "P001", 5.0, 8.0, "Olha os cachorros correndo.", "P001.M01"),
+        _sentence(2, "P002", 0.5, 3.0, "Chegamos na cidade.", "P002.M01"),
+    ]
+    roteiro = ProjectRoteiro(project_dir=tmp_path, source=tmp_path, kind="pasta", interval_sec=2.0, clips=clips,
+                             moments=moments, sentences=sentences)
+    return EditorMaterial.from_roteiro(roteiro)
+
+
+def _cover(material, **coverage):
+    answer = BlockAnswer.model_validate({"coberturas": [coverage]})
+    return validate_detail(answer, _unit("P001", "P002"), material, ["D001.M01", "D001.M02", "D001.M03"], Usage())
+
+
+def test_coverage_shows_what_is_said_needs_a_common_word_with_accents_and_plural(tmp_path):
+    material = make_evidence_material(tmp_path)
+    says = "mostra o que é dito"
+    bus = _cover(material, de="S000", ate="S000", momentos=["D001.M01"], tipo=says,
+                 evidencia_fala="ómnibus para Bariloche", evidencia_imagem="ônibus na estrada")
+    [coverage] = bus.coverages
+    assert coverage.kind == says and coverage.common_words == ["omnibus"] and coverage.matched_image == {"D001.M01": ["onibus", "estrada"]}
+    dogs = _cover(material, de="S001", ate="S001", momentos=["D001.M02"], tipo=says,
+                  evidencia_fala="cachorros correndo", evidencia_imagem="cachorro na praia")
+    assert dogs.coverages[0].common_words == ["cachorros"]
+    # Sem palavra em comum entre as duas evidências: recusada (a imagem não mostra o que é dito).
+    nothing = _cover(material, de="S000", ate="S000", momentos=["D001.M02"], tipo=says,
+                     evidencia_fala="ómnibus", evidencia_imagem="cachorro na praia")
+    assert not nothing.coverages and "sem palavra em comum" in nothing.discarded[0].reason
+    # Sem tipo: recusada.
+    untyped = _cover(material, de="S000", ate="S000", momentos=["D001.M01"], evidencia_fala="ómnibus", evidencia_imagem="ônibus")
+    assert "tipo ausente" in untyped.discarded[0].reason
+    # Evidência da fala com texto da imagem (não está nas frases cobertas): recusada.
+    wrong = _cover(material, de="S000", ate="S000", momentos=["D001.M01"], tipo=says,
+                   evidencia_fala="ómnibus na estrada", evidencia_imagem="ônibus na estrada")
+    assert "evidencia_fala cita palavras que não estão em S000–S000: estrada" in wrong.discarded[0].reason
+
+
+def test_coverage_image_evidence_must_come_from_the_moment_used(tmp_path):
+    material = make_evidence_material(tmp_path)
+    # "rua", "carros" são da imagem de quem fala (P002.M01), não do drone: o código não aceita.
+    check = _cover(material, de="S000", ate="S000", momentos=["D001.M01"], tipo="mostra o que é dito",
+                   evidencia_fala="ómnibus", evidencia_imagem="ônibus rua carros")
+    assert not check.coverages
+    reason = check.discarded[0].reason
+    assert "não estão nos momentos usados (D001.M01): rua, carros" in reason and "P002.M01" in reason
+
+
+def test_coverage_shows_the_place_needs_the_same_or_similar_place(tmp_path):
+    material = make_evidence_material(tmp_path)
+    place = "mostra o lugar"
+    ok = _cover(material, de="S000", ate="S001", momentos=["D001.M03"], tipo=place,
+                evidencia_fala="Bariloche", evidencia_imagem="fachada do terminal")
+    [coverage] = ok.coverages
+    assert coverage.kind == place and coverage.common_words == ["terminal"]
+    beach = _cover(material, de="S000", ate="S000", momentos=["D001.M02"], tipo=place,
+                   evidencia_fala="Bariloche", evidencia_imagem="cachorro na praia")
+    assert not beach.coverages and "nenhum momento válido" in beach.discarded[0].reason
+    assert any("lugar 'praia' diferente do lugar da fala ('terminal de ônibus')" in w for w in beach.warnings)
 
 
 # --- passadas: nova tentativa, fallbacks, cache ---
@@ -287,17 +388,20 @@ def test_full_run_with_mock_produces_blocks_coverage_and_breath(material, tmp_pa
     assert run.structure.library_clip_ids == ["D001", "B001"]
     first, second = run.details
     assert [k.key for k in first.keep] == ["S003"] and first.keep[0].sentence_ids == ["S000", "S001", "S002", "S003"]
-    assert first.coverages[0].moment_ids == ["D001.M01"]  # "praia" na fala e no momento
+    assert first.coverages[0].moment_ids == ["D001.M01"]  # "mar" na fala e no momento
     assert first.breaths and first.breaths[0].moment_id not in first.coverages[0].moment_ids
     assert second.coverages and second.coverages[0].moment_ids == ["B001.M01"]  # "comida"
     assert run.summary_stats.calls == 4 and run.structure.stats.calls == 1 and run.detail_stats.calls == 2
+    assert not any(d.duration_off for d in run.details)
 
 
 def test_retry_with_the_errors_and_neutral_fallbacks(material, tmp_path):
-    good = lambda request: {"manter": [{"de": request.sentence_ids[0], "ate": request.sentence_ids[-1]}]}  # noqa: E731
     ai = MockEditorAI({
         "structure": [{"blocos": []}, {"blocos": [{"clipes": ["X999"]}]}],
-        "detail": [{"manter": [{"de": "S999"}]}, good, {"manter": []}, {"manter": [{"momento": "Q.M01"}]}],
+        "detail": [
+            {"cortar": ["S999"]}, {"cortar": ["S000"]},  # bloco 1: nenhum item válido → nova tentativa aceita
+            {"cortar": [{"de": "S004", "ate": "S005"}]}, {"cortar": ["S998"]},  # bloco 2: nada fica; nenhum válido
+        ],
     })
     run = _service(material, tmp_path, ai).run()
     # Estrutura: 2 respostas sem bloco válido → fallback neutro (um bloco por clipe com fala), com aviso grande.
@@ -306,12 +410,91 @@ def test_retry_with_the_errors_and_neutral_fallbacks(material, tmp_path):
     assert any("ESTRUTURA PELO FALLBACK NEUTRO" in w for w in run.warnings)
     second_prompt = ai.calls["structure"][1].prompt
     assert "Sua resposta anterior foi recusada" in second_prompt
-    # Bloco 1: recusado e refeito com a lista de erros; bloco 2: recusado duas vezes → todas as frases, sem cobertura.
+    # Bloco 1: recusado e refeito com a lista de erros; bloco 2: inaproveitável duas vezes → nada cortado.
     first, second = run.details
     assert first.origin == "ia" and first.attempts and "S999 não existe" in ai.calls["detail"][1].prompt
+    assert [c.sentence_ids for c in first.cuts] == [["S000"]]
     assert second.origin == "fallback" and [k.sentence_ids for k in second.keep] == [["S004", "S005"]]
-    assert not second.coverages and not second.breaths
+    assert not second.coverages and not second.breaths and not second.cuts
     assert any("BLOCO B02 PELO FALLBACK NEUTRO" in w for w in run.warnings)
+
+
+def test_valid_items_are_accepted_after_the_retry(material, tmp_path):
+    ai = MockEditorAI({
+        "structure": [{"blocos": [{"clipes": ["P001"]}, {"clipes": ["P002"]}]}],
+        "detail": [
+            {"cortar": ["S999", "S998", "S001"]},  # 2 de 3 inválidos: nova tentativa
+            {"cortar": ["S997", "S002"], "notas": "segunda"},  # 1 de 2 inválido: ainda recusada, mas aproveitável
+        ],
+    })
+    run = _service(material, tmp_path, ai).run()
+    first = run.details[0]
+    assert len(ai.calls["detail"]) == 3 and first.origin == "ia" and first.notes == "segunda"
+    assert [c.sentence_ids for c in first.cuts] == [["S002"]]
+    assert [k.sentence_ids for k in first.keep] == [["S000", "S001"], ["S003"]]
+    assert any("aceitos os itens válidos" in w for w in first.warnings)
+    assert any("frase S997 não existe" in w for w in first.warnings)
+
+
+def test_duration_out_of_the_target_retries_once_with_the_numbers_and_is_registered(material, tmp_path):
+    ai = MockEditorAI({
+        "structure": [{"blocos": [{"clipes": ["P001"], "duracao_alvo_sec": 4}], "fora": [{"clipe": "P002", "motivo": "repetido"}]}],
+        "detail": [{}, {"notas": "mantive tudo"}],  # nada cortado: 9 s de frases contra 4 s de alvo
+    })
+    run = _service(material, tmp_path, ai).run()
+    [detail] = run.details
+    assert len(ai.calls["detail"]) == 2
+    assert "ficou 9 s, o alvo deste bloco é 4 s (aceito de 3 a 5 s); ajuste os cortes: corte mais" in ai.calls["detail"][1].prompt
+    assert "Duração total das frases deste bloco: 0:09 (9 s); alvo deste bloco: 0:04 (4 s)" in ai.calls["detail"][0].prompt
+    assert detail.origin == "ia" and detail.duration_off and detail.notes == "mantive tudo"
+    assert (detail.available_sec, detail.result_sec, detail.target_sec) == (9.0, 9.0, 4.0)
+    assert any("fora do alvo depois da nova tentativa" in w for w in run.warnings)
+    # Dentro do alvo ± 35%: sem nova tentativa.
+    ai = MockEditorAI({
+        "structure": [{"blocos": [{"clipes": ["P001"], "duracao_alvo_sec": 7}], "fora": [{"clipe": "P002", "motivo": "x"}]}],
+        "detail": [{"cortar": ["S003"]}],
+    })
+    run = _service(material, tmp_path / "b", ai).run()
+    assert len(ai.calls["detail"]) == 1 and not run.details[0].duration_off and run.details[0].result_sec == 7.0
+
+
+def test_structure_completeness_forgotten_speaking_clip_retry_then_own_block(material, tmp_path):
+    forgot = {"blocos": [{"clipes": ["P002"]}], "fora": [{"clipe": "B001"}]}  # P001 esquecido; fora sem motivo
+    ai = MockEditorAI({"structure": [forgot, forgot]})
+    run = _service(material, tmp_path, ai).run()
+    retry = ai.calls["structure"][1].prompt
+    assert "clipes com fala esquecidos" in retry and "P001" in retry and "em fora sem motivo" in retry
+    # Persistiu: P001 vai para um bloco próprio, na ordem do catálogo (antes do bloco de P002), com aviso.
+    assert run.structure.origin == "ia" and [b.clip_ids for b in run.structure.blocks] == [["P001"], ["P002"]]
+    assert [b.id for b in run.structure.blocks] == ["B01", "B02"]
+    assert any("esquecido(s) pela IA (P001)" in w for w in run.warnings)
+    # Clipes sem fala podem ficar no acervo; B001 (fora sem motivo) também.
+    assert run.structure.library_clip_ids == ["D001", "B001"]
+
+
+def test_forgotten_clip_goes_after_the_block_with_the_previous_clip_in_the_catalog(material):
+    blocks = [Block(id="B01", clip_ids=["P001"]), Block(id="B02", clip_ids=["B001"])]
+    placed = place_forgotten(blocks, ["D001"], material)
+    assert [(b.id, b.clip_ids) for b in placed] == [("B01", ["P001"]), ("B02", ["D001"]), ("B03", ["B001"])]
+    assert [b.clip_ids for b in place_forgotten([Block(id="B01", clip_ids=["B001"])], ["P002"], material)] == [["P002"], ["B001"]]
+
+
+# Formato dos IDs reais do roteiro: clipe (P/D/B/V/X + 3 dígitos), momento (P007.M04) e frase (S + 3 dígitos).
+REAL_ID = re.compile(r"(?<![A-Za-z0-9.])(?:[PDBVX]\d{3}(?:\.M\d{2,})?|S\d{3,})(?![A-Za-z0-9])")
+
+
+def test_prompt_examples_never_use_ids_in_the_real_format():
+    context = EditorContext(request="vlog", target_sec=300)
+    structure = build_structure_prompt(context, [], block_tokens=4000)
+    detail = build_detail_prompt(DetailPromptInput(
+        unit_id="B01", block_id="B01", title="t", subject="s", context=context, target_total_sec=300,
+        block_target_sec=60, used_before_sec=0.0, part=1, parts=2, available_sec=90, unit_target_sec=30,
+    ))
+    for prompt in (structure, detail):
+        assert not REAL_ID.findall(prompt), REAL_ID.findall(prompt)
+    assert "X01.S900" in detail and "X02.M90" in detail and '"X01"' in structure
+    # O padrão pega os IDs que vazaram no plano real.
+    assert REAL_ID.findall("S012–S015, D002.M05, B004.M01, P007") == ["S012", "S015", "D002.M05", "B004.M01", "P007"]
 
 
 def test_stops_calling_after_consecutive_api_errors_and_auth_error_stops_everything(material, tmp_path):

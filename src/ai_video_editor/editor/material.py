@@ -30,6 +30,10 @@ STOPWORDS = frozenset(
 MIN_CONTENT_CHARS = 3
 # Radical em comum (uma palavra começa com a outra) a partir de tantas letras: praia/praias, verde/verdes.
 MIN_STEM_CHARS = 4
+# Uma letra a mais no meio vale como a mesma palavra a partir de tantas letras (ônibus/ómnibus, pt/es).
+MIN_INSERTION_CHARS = 6
+# Plural → singular (sem acento), na ordem: ões/ães → ão, ais → al, eis → el, ns → m, res/zes/ses → r/z/s, s → nada.
+_PLURALS = (("oes", "ao"), ("aes", "ao"), ("ais", "al"), ("eis", "el"), ("ois", "ol"), ("ns", "m"))
 
 _WORD = re.compile(r"[a-z0-9]+")
 
@@ -53,17 +57,46 @@ def content_words(text: str) -> list[str]:
     return seen
 
 
-def _same_word(a: str, b: str) -> bool:
+def stem(word: str) -> str:
+    """Radical simples de uma palavra já sem acento: só tira o plural (cachorros → cachorro, animais → animal)."""
+    for suffix, singular in _PLURALS:
+        if word.endswith(suffix) and len(word) > len(suffix) + 2:
+            return word[: -len(suffix)] + singular
+    if word.endswith(("res", "zes", "ses")) and len(word) > 5:
+        return word[:-2]
+    if word.endswith("s") and not word.endswith("ss") and len(word) > MIN_CONTENT_CHARS:
+        return word[:-1]
+    return word
+
+
+def _one_insertion(short: str, long_: str) -> bool:
+    return len(long_) == len(short) + 1 and any(long_[:i] + long_[i + 1:] == short for i in range(len(long_)))
+
+
+def same_word(a: str, b: str) -> bool:
+    """Mesma palavra para a evidência: igual sem o plural, uma começa com a outra (≥ `MIN_STEM_CHARS` letras)
+    ou, com ≥ `MIN_INSERTION_CHARS` letras, uma letra a mais (ônibus/ómnibus). Recebe palavras sem acento."""
+    if a == b:
+        return True
+    a, b = stem(a), stem(b)
     if a == b:
         return True
     short, long_ = sorted((a, b), key=len)
-    return len(short) >= MIN_STEM_CHARS and long_.startswith(short)
+    if len(short) >= MIN_STEM_CHARS and long_.startswith(short):
+        return True
+    return len(long_) >= MIN_INSERTION_CHARS and _one_insertion(short, long_)
 
 
 def matched_words(evidence: str, target: str) -> list[str]:
     """Palavras de conteúdo da evidência que aparecem no texto (sem acento/caixa; vale o mesmo radical)."""
     target_words = set(words(target))
-    return [w for w in content_words(evidence) if any(_same_word(w, t) for t in target_words)]
+    return [w for w in content_words(evidence) if any(same_word(w, t) for t in target_words)]
+
+
+def common_words(a: str, b: str) -> list[str]:
+    """Palavras de conteúdo de `a` que também são palavras de conteúdo de `b` (mesma regra de `same_word`)."""
+    other = content_words(b)
+    return [w for w in content_words(a) if any(same_word(w, t) for t in other)]
 
 
 def moment_text(moment: Moment) -> str:
