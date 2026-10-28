@@ -1,13 +1,14 @@
 """Material da cobertura, sem IA: tomadas do `visual.json`, frases mantidas na espinha e o que está na
-tela por baixo de cada uma, janelas com imagem ruim (e quais exigem cobertura) e tomadas candidatas."""
+tela por baixo de cada uma (e se a pessoa fala para a câmera), trechos com imagem ruim medidos em frames e
+tomadas candidatas."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Iterable
 
 from ai_video_editor.core.timeline import Timeline
 from ai_video_editor.coverage.schema import (
+    BadSpan,
     CoverageSentence,
-    MandatoryWindow,
     VisualMaterial,
     VisualShot,
     sentence_label,
@@ -21,11 +22,13 @@ if TYPE_CHECKING:  # `visual` e `catalog` importam o pipeline (ciclo): só para 
 
 # Papéis que podem ser cobertura. Do principal, só tomadas sem fala (`has_speech=False`).
 COVERAGE_ROLES = ("drone", "broll", "pov", "principal")
-# Problemas da IA que tornam a imagem do principal inaceitável por baixo da fala.
+# Problemas da IA mostrados ao lado do que está na tela (contexto; só os graves viram trecho ruim).
 BAD_ISSUES = ("obstruida", "borrao_movimento")
 # Como no `visual.md` (`visual/schema.py: ISSUE_LABELS`).
 BAD_ISSUE_LABELS = {"obstruida": "obstruída/parede", "borrao_movimento": "borrão de movimento"}
-# Quanto da frase (parte mantida) precisa cair na tomada ruim para a frase entrar na janela.
+# Margem em volta da imagem ruim (o tapa não começa nem termina em cima do defeito) e o mínimo de imagem
+# ruim (parte mantida da fala) para virar um trecho.
+BAD_MARGIN_SEC = 0.25
 MIN_BAD_OVERLAP_SEC = 0.3
 
 
@@ -118,7 +121,7 @@ def coverage_sentences(sentences: list[Sentence], removed: set[int], spine: Time
 
 
 def bad_shot_reasons(shot: VisualShot) -> list[str]:
-    """Por que a imagem desta tomada do principal não pode ficar por baixo da fala (vazio = pode)."""
+    """Problemas da imagem desta tomada do principal (vazio = nenhum); contexto para o prompt."""
     reasons = []
     if shot.usable == "nao":
         reasons.append("imagem inutilizável")
@@ -129,9 +132,21 @@ def bad_shot_reasons(shot: VisualShot) -> list[str]:
 
 
 def is_severe(shot: VisualShot) -> bool:
-    """Imagem que não dá para manter por baixo da fala: tela uniforme (parede, tampa), inutilizável pela IA
-    ou borrão de movimento confirmado pela medida `borrão alto`."""
+    """Imagem ruim de verdade: tela uniforme (parede, tampa), inutilizável pela IA ou borrão de movimento
+    confirmado pela medida `borrão alto`. "Parcial" é a IA dizendo que a imagem serve (a pessoa no ônibus com
+    os bancos na frente): não vira trecho ruim."""
     return shot.uniform or shot.usable == "nao" or ("borrao_movimento" in shot.issues and shot.blurry)
+
+
+def severe_reasons(shot: VisualShot) -> list[str]:
+    reasons = []
+    if shot.uniform:
+        reasons.append("tela uniforme")
+    if shot.usable == "nao":
+        reasons.append("imagem inutilizável")
+    if "borrao_movimento" in shot.issues and shot.blurry:
+        reasons.append("borrão de movimento (medido)")
+    return reasons
 
 
 def _overlap(kept: list[tuple[float, float]], start: float, end: float) -> float:
@@ -140,7 +155,8 @@ def _overlap(kept: list[tuple[float, float]], start: float, end: float) -> float
 
 def annotate_screen(sentences: list[CoverageSentence], material: VisualMaterial) -> list[VisualShot]:
     """Preenche `screen` de cada frase (tomadas do clipe que fala por baixo da parte mantida, mais tempo
-    primeiro) e devolve essas tomadas, na ordem em que aparecem."""
+    primeiro) e `to_camera` (a tomada principal tem rosto e é utilizável); devolve essas tomadas, na ordem em
+    que aparecem."""
     by_clip: dict[str, list[VisualShot]] = {}
     for shot in material.shots:
         by_clip.setdefault(shot.clip_id, []).append(shot)
@@ -149,52 +165,77 @@ def annotate_screen(sentences: list[CoverageSentence], material: VisualMaterial)
         hits = [(_overlap(sentence.kept, s.start_sec, s.end_sec), s) for s in by_clip.get(sentence.clip_id, [])]
         hits = sorted((h for h in hits if h[0] > 0), key=lambda h: (-h[0], h[1].start_sec))
         sentence.screen = [s.id for _, s in hits]
+        sentence.to_camera = bool(hits) and hits[0][1].face_to_camera is True and hits[0][1].usable == "sim"
         for _, shot in hits:
             used.setdefault(shot.id, shot)
     return list(used.values())
 
 
-def find_mandatory_windows(
-    sentences: list[CoverageSentence], material: VisualMaterial, spine_clip_ids: Iterable[str]
-) -> list[MandatoryWindow]:
-    """Janelas com imagem ruim: frases mantidas seguidas, do mesmo clipe, com imagem ruim por baixo.
+def _spine_frame(sentence: CoverageSentence, t: float, fps: int) -> int:
+    """Tempo do clipe dentro da frase → frame da espinha (os cortes no meio da frase não ocupam frames)."""
+    offset = sum(max(0.0, min(t, hi) - lo) for lo, hi in sentence.kept)
+    return min(sentence.end_frame, sentence.start_frame + round(offset * fps))
 
-    Uma frase entra se pelo menos `MIN_BAD_OVERLAP_SEC` da parte mantida dela cai numa tomada ruim
-    do clipe que está falando. Tomadas sem análise da IA ainda contam pela medida `tela uniforme`.
-    A janela exige cobertura (`required`) só quando todas as tomadas ruins dela são graves (`is_severe`);
-    senão, a IA decide entre cobrir e manter (ex.: obstruída "parcial" pelos bancos do ônibus).
+
+def find_bad_spans(
+    sentences: list[CoverageSentence], material: VisualMaterial, spine_clip_ids: Iterable[str], fps: int
+) -> list[BadSpan]:
+    """Trechos com imagem ruim de verdade, em frames da espinha: parte mantida das frases ∩ tomadas graves
+    (`is_severe`) do clipe que fala, com `BAD_MARGIN_SEC` de cada lado (sem sair da frase). Pedaços seguidos
+    do mesmo clipe e do mesmo tipo (tela uniforme ou não) viram um trecho; trecho com menos de
+    `MIN_BAD_OVERLAP_SEC` de imagem ruim é ignorado. Tomadas sem análise da IA contam pela medida `tela uniforme`.
     """
-    spine = set(spine_clip_ids)
-    bad: dict[str, list[tuple[VisualShot, list[str]]]] = {}
+    margin = round(BAD_MARGIN_SEC * fps)
+    spine_ids = set(spine_clip_ids)
+    severe: dict[str, list[VisualShot]] = {}
     for shot in material.shots:
-        reasons = bad_shot_reasons(shot)
-        if shot.clip_id in spine and reasons:
-            bad.setdefault(shot.clip_id, []).append((shot, reasons))
+        if shot.clip_id in spine_ids and is_severe(shot):
+            severe.setdefault(shot.clip_id, []).append(shot)
 
-    windows: list[MandatoryWindow] = []
-    previous: Optional[int] = None
-    for idx, sentence in enumerate(sentences):
-        hits = [
-            (shot, reasons) for shot, reasons in bad.get(sentence.clip_id, [])
-            if _overlap(sentence.kept, shot.start_sec, shot.end_sec) >= MIN_BAD_OVERLAP_SEC - 1e-9
-        ]
-        if not hits:
-            continue
-        current = windows[-1] if windows else None
-        if current is not None and previous == idx - 1 and current.clip_id == sentence.clip_id:
-            current.sentence_ids.append(sentence.id)
+    # (início, fim, frames ruins, clipe, tela uniforme, tomada, frase)
+    pieces: list[tuple[int, int, int, str, bool, VisualShot, CoverageSentence]] = []
+    for sentence in sentences:
+        for shot in severe.get(sentence.clip_id, []):
+            for lo, hi in sentence.kept:
+                a, b = max(lo, shot.start_sec), min(hi, shot.end_sec)
+                if b <= a:
+                    continue
+                start, end = _spine_frame(sentence, a, fps), _spine_frame(sentence, b, fps)
+                if end <= start:
+                    continue
+                pieces.append((
+                    max(sentence.start_frame, start - margin), min(sentence.end_frame, end + margin), end - start,
+                    sentence.clip_id, shot.uniform, shot, sentence,
+                ))
+    pieces.sort(key=lambda p: (p[0], p[1]))
+
+    groups: list[list] = []
+    for piece in pieces:
+        last = groups[-1] if groups else None
+        if last and last[3] == piece[3] and last[4] == piece[4] and piece[0] <= last[1] + 2 * margin:
+            last[1] = max(last[1], piece[1])
+            last[2] += piece[2]
+            last[5].append(piece[5])
+            last[6].append(piece[6])
         else:
-            current = MandatoryWindow(id=f"O{len(windows) + 1}", clip_id=sentence.clip_id, sentence_ids=[sentence.id])
-            windows.append(current)
-        for shot, reasons in hits:
-            if shot.id not in current.shot_ids:
-                current.shot_ids.append(shot.id)
-            current.reasons += [r for r in reasons if r not in current.reasons]
-        previous = idx
-    shots = material.by_id()
-    for window in windows:
-        window.required = all(is_severe(shots[s]) for s in window.shot_ids)
-    return windows
+            groups.append([piece[0], piece[1], piece[2], piece[3], piece[4], [piece[5]], [piece[6]]])
+
+    spans: list[BadSpan] = []
+    for start, end, bad_frames, clip_id, uniform, shots, _ in groups:
+        if bad_frames < MIN_BAD_OVERLAP_SEC * fps - 1e-9:
+            continue
+        touched = [s.id for s in sentences if s.start_frame < end and start < s.end_frame]
+        shot_ids = list(dict.fromkeys(s.id for s in shots))
+        reasons = list(dict.fromkeys(r for s in shots for r in severe_reasons(s)))
+        if not uniform:
+            reasons = [r for r in reasons if r != "tela uniforme"]
+        spans.append(
+            BadSpan(
+                id=f"O{len(spans) + 1}", clip_id=clip_id, sentence_ids=touched, shot_ids=shot_ids, reasons=reasons,
+                uniform=uniform, start_frame=start, end_frame=end,
+            )
+        )
+    return spans
 
 
 def is_candidate(shot: VisualShot, roles: Iterable[str]) -> bool:

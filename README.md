@@ -232,7 +232,7 @@ src/ai_video_editor/
 ├── director/     frases a partir da transcrição, prompt, validação e Diretor (LLM e mock)
 ├── roteiro/     roteiro unificado: fotos, descrição por IA de visão, ritmo das frases e momentos, com IDs
 ├── editor/       Editor de IA em passadas (resumos, estrutura, detalhe por bloco), orçamento de contexto, validação por item e montagem por IDs
-├── coverage/     Diretor de cobertura: janelas com imagem ruim, b-roll relacionado por cima da fala e respiros, por IDs (LLM e mock)
+├── coverage/     Diretor de cobertura: mapa de assuntos e b-roll que mostra o que é falado (evidências conferidas pelo código), respiros entre assuntos (LLM e mock)
 ├── revision/     revisor de pedidos em linguagem natural (LLM e mock)
 ├── llm/          StructuredLLMClient, provedores gemini/openai/ollama/mock, cadeia de modelos, chaves e erros
 ├── planning/     corte de silêncio, aplicação dos cortes de frase e regra do pedaço de palavra
@@ -250,7 +250,7 @@ src/ai_video_editor/
 
 ## Limitações conhecidas
 
-- **Foco em vídeo falado** (aula, tutorial, pessoa falando). De um vlog, o `edit <pasta>` monta a espinha falada (clipes principais com fala, em ordem) e, com a análise visual feita, a cobertura de drone/b-roll/POV por cima da fala e respiros entre as falas; ainda sem música, transições e revisão multitrilha. Gameplay não é tratado.
+- **Foco em vídeo falado** (aula, tutorial, pessoa falando). De um vlog, o `edit <pasta>` monta a espinha falada (clipes principais com fala, em ordem) e, com a análise visual feita, a cobertura de drone/b-roll/POV por cima da fala onde a imagem mostra o que é dito e respiros entre os assuntos; ainda sem música, transições e revisão multitrilha. Gameplay não é tratado.
 - **O Diretor e o revisor dependem de um modelo de IA**: uma API (Gemini ou OpenAI), com custo e latência de rede, ou um modelo local pelo Ollama (sem custo, mas lento numa GPU de 6 GB e ainda sem medição de qualidade). Sem nenhum, o editor faz só corte de silêncio; a decisão pode variar entre execuções.
 - **Palavras curtas**: o tempo que o Whisper atribui a "Um" ou "By" inclui a pausa ao redor, então o corte às vezes tira só o silêncio e a palavra fica (aparece como remoção parcial no relatório).
 - **Nomes e termos em outro idioma** saem errados na transcrição e, portanto, na legenda. Na palestra, transcrita com `--language en`, "gnu.org" virou "canoe org", "software livre" virou "software leave me" e "Pato Branco" virou "Patu".

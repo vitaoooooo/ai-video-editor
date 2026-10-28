@@ -174,3 +174,5 @@ class SpineResult(EditPipelineResult):
     clips_unused: int = 0
     timeline_path: Optional[Path] = Field(default=None, description="Timeline renderizada (com cobertura, se houve)")
     coverage: Optional[CoverageRun] = None
+    plan_only: bool = Field(default=False, description="`--so-plano`: parou depois da cobertura, sem render")
+    plan_path: Optional[Path] = Field(default=None, description="`coverage_plan.md` (plano por bloco de assunto)")

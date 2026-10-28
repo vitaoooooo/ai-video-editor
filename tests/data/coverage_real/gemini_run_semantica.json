@@ -1,0 +1,1599 @@
+{
+  "provider": "gemini",
+  "model_id": "gemini-3.8-flash",
+  "thinking": "low (thinking_level=LOW)",
+  "model_chain": [
+    "gemini:gemini-3.8-flash",
+    "gemini:gemini-3.6-flash",
+    "gemini:gemini-3.5-flash-lite"
+  ],
+  "effective_provider": "gemini",
+  "effective_model_id": "gemini-3.6-flash",
+  "model_switches": [
+    {
+      "from_model": "gemini:gemini-3.8-flash",
+      "to_model": "gemini:gemini-3.6-flash",
+      "reason": "com a cota esgotada (429)",
+      "status_code": 429,
+      "api_attempts": 1
+    }
+  ],
+  "attempts": [
+    {
+      "provider": "gemini",
+      "model_id": "gemini-3.6-flash",
+      "frames_sent": 0,
+      "latency_sec": 12.382,
+      "input_tokens": 15467,
+      "output_tokens": 2402,
+      "api_attempts": 2,
+      "success": true,
+      "error_type": null
+    }
+  ],
+  "responses": [
+    {
+      "coverages": [
+        {
+          "from_sentence": "S000",
+          "to_sentence": "S001",
+          "shot_ids": [
+            "D002.T15",
+            "D002.T14",
+            "D001.T14"
+          ],
+          "reason": "Cobre a imagem obstruída da van mostrando vista aérea do deslocamento e da cidade a caminho.",
+          "windows": [
+            "O1"
+          ]
+        },
+        {
+          "from_sentence": "S021",
+          "to_sentence": "S023",
+          "shot_ids": [
+            "P008.T01",
+            "D001.T10",
+            "D001.T04"
+          ],
+          "reason": "Cobre o borrão de movimento e a imagem ruim do quarto mostrando a rua do hotel e a vista da cidade.",
+          "windows": [
+            "O2"
+          ]
+        },
+        {
+          "from_sentence": "S036",
+          "to_sentence": "S036",
+          "shot_ids": [
+            "B009.T01",
+            "B006.T01"
+          ],
+          "reason": "Ilustra os pássaros e os peixes/águas do rio mencionados na fala.",
+          "windows": []
+        },
+        {
+          "from_sentence": "S042",
+          "to_sentence": "S043",
+          "shot_ids": [
+            "B005.T01",
+            "D001.T01",
+            "D001.T07"
+          ],
+          "reason": "Mostra a ilha La Islita e a praia mencionadas antes de iniciarem a caminhada.",
+          "windows": []
+        },
+        {
+          "from_sentence": "S052",
+          "to_sentence": "S054",
+          "shot_ids": [
+            "B007.T03"
+          ],
+          "reason": "Cobre o borrão de movimento com uma tomada tranquila de animal na região.",
+          "windows": [
+            "O3"
+          ]
+        },
+        {
+          "from_sentence": "S056",
+          "to_sentence": "S057",
+          "shot_ids": [
+            "B007.T01",
+            "B007.T02"
+          ],
+          "reason": "Cobre a imagem ruim da câmera pela estrada de terra com imagens de b-roll da estrada e ambiente rural.",
+          "windows": [
+            "O4"
+          ]
+        },
+        {
+          "from_sentence": "S126",
+          "to_sentence": "S126",
+          "shot_ids": [
+            "B003.T01",
+            "B001.T01",
+            "B001.T02",
+            "B003.T02"
+          ],
+          "reason": "Cobre os movimentos bruscos da câmera gravando o cachorro no lago com tomadas B-roll perfeitas do cachorro e pessoa na beira do lago.",
+          "windows": [
+            "O5"
+          ]
+        },
+        {
+          "from_sentence": "S129",
+          "to_sentence": "S130",
+          "shot_ids": [
+            "P011.T01",
+            "P010.T01"
+          ],
+          "reason": "Cobre os giros rápidos e borrões de câmera mostrando a trilha que leva às áreas de quiosque/acampamento.",
+          "windows": [
+            "O6"
+          ]
+        },
+        {
+          "from_sentence": "S132",
+          "to_sentence": "S132",
+          "shot_ids": [
+            "P025.T08",
+            "P025.T05"
+          ],
+          "reason": "Cobre o borrão de movimento enquanto fala sobre encontrar o rapaz para ajudar na caminhada.",
+          "windows": [
+            "O7"
+          ]
+        },
+        {
+          "from_sentence": "S135",
+          "to_sentence": "S136",
+          "shot_ids": [
+            "P012.T01"
+          ],
+          "reason": "Cobre a perda de foco ao atravessar o tronco mostrando pessoas caminhando equilibradas na trilha.",
+          "windows": [
+            "O8"
+          ]
+        },
+        {
+          "from_sentence": "S140",
+          "to_sentence": "S140",
+          "shot_ids": [
+            "P026.T01"
+          ],
+          "reason": "Cobre o balanço forte da câmera mostrando plano limpo da caminhada na clareira.",
+          "windows": [
+            "O9"
+          ]
+        },
+        {
+          "from_sentence": "S156",
+          "to_sentence": "S158",
+          "shot_ids": [
+            "P012.T02"
+          ],
+          "reason": "Cobre o movimento brusco de câmera mostrando a caminhada pacífica na mata.",
+          "windows": [
+            "O10"
+          ]
+        }
+      ],
+      "breaths": [
+        {
+          "after_sentence": "S003",
+          "shot_id": "P003.T01",
+          "size": "long",
+          "reason": "Pausa contemplativa revelando a beleza das montanhas e lago espelhado após a menção na van."
+        },
+        {
+          "after_sentence": "S023",
+          "shot_id": "D002.T01",
+          "size": "medium",
+          "reason": "Respiro mostrando a transição da hospedagem para a cidade e o ambiente externo."
+        },
+        {
+          "after_sentence": "S044",
+          "shot_id": "P012.T04",
+          "size": "short",
+          "reason": "Transição visual marcando o início efetivo da caminhada na trilha."
+        },
+        {
+          "after_sentence": "S116",
+          "shot_id": "B006.T02",
+          "size": "short",
+          "reason": "Pausa para mostrar o detalhe da água límpida do lago antes do toque das mãos."
+        },
+        {
+          "after_sentence": "S125",
+          "shot_id": "V001.T01",
+          "size": "medium",
+          "reason": "Plano POV imersivo submergindo na água do lago logo após falarem da temperatura."
+        },
+        {
+          "after_sentence": "S128",
+          "shot_id": "B002.T01",
+          "size": "short",
+          "reason": "Respiro mostrando o movimento na praia antes da próxima parada."
+        },
+        {
+          "after_sentence": "S165",
+          "shot_id": "P027.T03",
+          "size": "long",
+          "reason": "Respiro de chegada e contemplação da paisagem espetacular antes do desfecho."
+        }
+      ],
+      "window_decisions": [
+        {
+          "window": "O1",
+          "action": "cover",
+          "reason": "Imagem da van obstruída por bancos, coberta com imagens aéreas do trajeto e cidade."
+        },
+        {
+          "window": "O2",
+          "action": "cover",
+          "reason": "Borrão severo de movimento e imagem ruim no quarto, coberta por b-rolls da fachada/rua e drone da cidade."
+        },
+        {
+          "window": "O3",
+          "action": "cover",
+          "reason": "Borrão de movimento ao filmar cerca e casas, coberta com vaca/área rural."
+        },
+        {
+          "window": "O4",
+          "action": "cover",
+          "reason": "Borrão e câmera obstruída na estrada de terra, coberta com takes B-roll da estrada e gado."
+        },
+        {
+          "window": "O5",
+          "action": "cover",
+          "reason": "Movimento brusco de câmera ao focar no cachorro, coberto por lindas tomadas B-roll de interação com o cão."
+        },
+        {
+          "window": "O6",
+          "action": "cover",
+          "reason": "Giro rápido e instável de câmera, coberto por planos estáveis de caminhada na trilha."
+        },
+        {
+          "window": "O7",
+          "action": "cover",
+          "reason": "Borrão de movimento corrigido com plano de caminhada na floresta."
+        },
+        {
+          "window": "O8",
+          "action": "cover",
+          "reason": "Perda de foco e instabilidade no tronco, coberta com apoio de b-roll de caminhada."
+        },
+        {
+          "window": "O9",
+          "action": "cover",
+          "reason": "Movimento brusco de câmera no final do take coberto com plano limpo na trilha."
+        },
+        {
+          "window": "O10",
+          "action": "cover",
+          "reason": "Câmera muito rápida e tremida na floresta coberta com tomada estável da mata."
+        }
+      ],
+      "summary": "Todas as janelas com problemas de câmera ou borrões foram cobertas com imagens contextuais de b-roll, drone e planos de apoio de trilha e animais. Foram adicionados respiros em momentos de transição de cenários e momentos contemplativos do vlog."
+    }
+  ],
+  "origin": "ia",
+  "origin_reason": "",
+  "ai_items": 29,
+  "discarded": [],
+  "kept_windows": {},
+  "window_outcomes": [
+    {
+      "window": "O1",
+      "status": "coberta",
+      "by": [
+        "C1"
+      ],
+      "reason": "Cobre a imagem obstruída da van mostrando vista aérea do deslocamento e da cidade a caminho.",
+      "origin": "ia"
+    },
+    {
+      "window": "O2",
+      "status": "coberta",
+      "by": [
+        "C2"
+      ],
+      "reason": "Cobre o borrão de movimento e a imagem ruim do quarto mostrando a rua do hotel e a vista da cidade.",
+      "origin": "ia-ajustada"
+    },
+    {
+      "window": "O3",
+      "status": "coberta",
+      "by": [
+        "C5"
+      ],
+      "reason": "Cobre o borrão de movimento com uma tomada tranquila de animal na região.",
+      "origin": "ia-ajustada"
+    },
+    {
+      "window": "O4",
+      "status": "coberta",
+      "by": [
+        "C6"
+      ],
+      "reason": "Cobre a imagem ruim da câmera pela estrada de terra com imagens de b-roll da estrada e ambiente rural.",
+      "origin": "ia-ajustada"
+    },
+    {
+      "window": "O5",
+      "status": "coberta",
+      "by": [
+        "C7"
+      ],
+      "reason": "Cobre os movimentos bruscos da câmera gravando o cachorro no lago com tomadas B-roll perfeitas do cachorro e pessoa na beira do lago.",
+      "origin": "ia-ajustada"
+    },
+    {
+      "window": "O6",
+      "status": "coberta",
+      "by": [
+        "C8"
+      ],
+      "reason": "Cobre os giros rápidos e borrões de câmera mostrando a trilha que leva às áreas de quiosque/acampamento.",
+      "origin": "ia-ajustada"
+    },
+    {
+      "window": "O7",
+      "status": "coberta",
+      "by": [
+        "C9"
+      ],
+      "reason": "Cobre o borrão de movimento enquanto fala sobre encontrar o rapaz para ajudar na caminhada.",
+      "origin": "ia"
+    },
+    {
+      "window": "O8",
+      "status": "coberta",
+      "by": [
+        "C10"
+      ],
+      "reason": "Cobre a perda de foco ao atravessar o tronco mostrando pessoas caminhando equilibradas na trilha.",
+      "origin": "ia"
+    },
+    {
+      "window": "O9",
+      "status": "coberta",
+      "by": [
+        "C11"
+      ],
+      "reason": "Cobre o balanço forte da câmera mostrando plano limpo da caminhada na clareira.",
+      "origin": "ia-ajustada"
+    },
+    {
+      "window": "O10",
+      "status": "coberta",
+      "by": [
+        "C12"
+      ],
+      "reason": "Cobre o movimento brusco de câmera mostrando a caminhada pacífica na mata.",
+      "origin": "ia"
+    }
+  ],
+  "instructions": [],
+  "roles": [
+    "drone",
+    "broll",
+    "pov",
+    "principal"
+  ],
+  "candidates": 90,
+  "windows": [
+    {
+      "id": "O1",
+      "clip_id": "P001",
+      "sentence_ids": [
+        "S000",
+        "S001"
+      ],
+      "shot_ids": [
+        "P001.T01",
+        "P001.T02",
+        "P001.T03"
+      ],
+      "reasons": [
+        "obstruída/parede"
+      ],
+      "required": false
+    },
+    {
+      "id": "O2",
+      "clip_id": "P007",
+      "sentence_ids": [
+        "S021",
+        "S022",
+        "S023"
+      ],
+      "shot_ids": [
+        "P007.T04",
+        "P007.T05",
+        "P007.T07",
+        "P007.T08"
+      ],
+      "reasons": [
+        "borrão de movimento",
+        "imagem inutilizável",
+        "tela uniforme"
+      ],
+      "required": false
+    },
+    {
+      "id": "O3",
+      "clip_id": "P015",
+      "sentence_ids": [
+        "S052",
+        "S054"
+      ],
+      "shot_ids": [
+        "P015.T03"
+      ],
+      "reasons": [
+        "borrão de movimento"
+      ],
+      "required": false
+    },
+    {
+      "id": "O4",
+      "clip_id": "P016",
+      "sentence_ids": [
+        "S056",
+        "S057"
+      ],
+      "shot_ids": [
+        "P016.T01",
+        "P016.T02"
+      ],
+      "reasons": [
+        "obstruída/parede",
+        "borrão de movimento"
+      ],
+      "required": false
+    },
+    {
+      "id": "O5",
+      "clip_id": "P021",
+      "sentence_ids": [
+        "S126"
+      ],
+      "shot_ids": [
+        "P021.T03",
+        "P021.T04"
+      ],
+      "reasons": [
+        "borrão de movimento"
+      ],
+      "required": false
+    },
+    {
+      "id": "O6",
+      "clip_id": "P023",
+      "sentence_ids": [
+        "S129",
+        "S130"
+      ],
+      "shot_ids": [
+        "P023.T02"
+      ],
+      "reasons": [
+        "borrão de movimento"
+      ],
+      "required": false
+    },
+    {
+      "id": "O7",
+      "clip_id": "P024",
+      "sentence_ids": [
+        "S132"
+      ],
+      "shot_ids": [
+        "P024.T03"
+      ],
+      "reasons": [
+        "borrão de movimento"
+      ],
+      "required": false
+    },
+    {
+      "id": "O8",
+      "clip_id": "P025",
+      "sentence_ids": [
+        "S135",
+        "S136"
+      ],
+      "shot_ids": [
+        "P025.T03"
+      ],
+      "reasons": [
+        "borrão de movimento"
+      ],
+      "required": false
+    },
+    {
+      "id": "O9",
+      "clip_id": "P025",
+      "sentence_ids": [
+        "S140"
+      ],
+      "shot_ids": [
+        "P025.T08"
+      ],
+      "reasons": [
+        "borrão de movimento"
+      ],
+      "required": false
+    },
+    {
+      "id": "O10",
+      "clip_id": "P025",
+      "sentence_ids": [
+        "S156",
+        "S157",
+        "S158"
+      ],
+      "shot_ids": [
+        "P025.T13"
+      ],
+      "reasons": [
+        "borrão de movimento"
+      ],
+      "required": false
+    }
+  ],
+  "window_cover": {
+    "O1": [
+      "C1"
+    ],
+    "O2": [
+      "C2"
+    ],
+    "O3": [
+      "C5"
+    ],
+    "O4": [
+      "C6"
+    ],
+    "O5": [
+      "C7"
+    ],
+    "O6": [
+      "C8"
+    ],
+    "O7": [
+      "C9"
+    ],
+    "O8": [
+      "C10"
+    ],
+    "O9": [
+      "C11"
+    ],
+    "O10": [
+      "C12"
+    ]
+  },
+  "summary": "Todas as janelas com problemas de câmera ou borrões foram cobertas com imagens contextuais de b-roll, drone e planos de apoio de trilha e animais. Foram adicionados respiros em momentos de transição de cenários e momentos contemplativos do vlog.",
+  "coverages": [
+    {
+      "from_sentence": "S000",
+      "to_sentence": "S001",
+      "shot_ids": [
+        "D002.T15",
+        "D002.T14",
+        "D001.T14"
+      ],
+      "reason": "Cobre a imagem obstruída da van mostrando vista aérea do deslocamento e da cidade a caminho.",
+      "windows": [
+        "O1"
+      ],
+      "origin": "ia",
+      "added_shots": [],
+      "adjustments": []
+    },
+    {
+      "from_sentence": "S021",
+      "to_sentence": "S023",
+      "shot_ids": [
+        "P008.T01",
+        "D001.T10",
+        "D001.T04",
+        "D002.T11",
+        "D001.T03",
+        "D002.T13",
+        "D001.T05",
+        "D002.T22",
+        "D001.T09"
+      ],
+      "reason": "Cobre o borrão de movimento e a imagem ruim do quarto mostrando a rua do hotel e a vista da cidade.",
+      "windows": [
+        "O2"
+      ],
+      "origin": "ia-ajustada",
+      "added_shots": [
+        "D002.T11",
+        "D001.T03",
+        "D002.T13",
+        "D001.T05",
+        "D002.T22",
+        "D001.T09"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 2 (S021–S023): 58,9s com 3 tomada(s); completada com D002.T11, D001.T03, D002.T13, D001.T05, D002.T22, D001.T09"
+        }
+      ]
+    },
+    {
+      "from_sentence": "S036",
+      "to_sentence": "S036",
+      "shot_ids": [
+        "B009.T01",
+        "B006.T01"
+      ],
+      "reason": "Ilustra os pássaros e os peixes/águas do rio mencionados na fala.",
+      "windows": [],
+      "origin": "ia",
+      "added_shots": [],
+      "adjustments": []
+    },
+    {
+      "from_sentence": "S042",
+      "to_sentence": "S043",
+      "shot_ids": [
+        "B005.T01",
+        "D001.T01",
+        "D001.T07"
+      ],
+      "reason": "Mostra a ilha La Islita e a praia mencionadas antes de iniciarem a caminhada.",
+      "windows": [],
+      "origin": "ia-ajustada",
+      "added_shots": [],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 4 (S042–S043): encurtada; as tomadas cobrem 20,4s de 20,6s (fora de janela com imagem ruim o código não acrescenta tomadas)"
+        }
+      ]
+    },
+    {
+      "from_sentence": "S052",
+      "to_sentence": "S054",
+      "shot_ids": [
+        "B007.T03",
+        "B008.T02"
+      ],
+      "reason": "Cobre o borrão de movimento com uma tomada tranquila de animal na região.",
+      "windows": [
+        "O3"
+      ],
+      "origin": "ia-ajustada",
+      "added_shots": [
+        "B008.T02"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 5 (S052–S054): 5,9s com 1 tomada(s); completada com B008.T02"
+        }
+      ]
+    },
+    {
+      "from_sentence": "S056",
+      "to_sentence": "S057",
+      "shot_ids": [
+        "B007.T01",
+        "B007.T02",
+        "B008.T01"
+      ],
+      "reason": "Cobre a imagem ruim da câmera pela estrada de terra com imagens de b-roll da estrada e ambiente rural.",
+      "windows": [
+        "O4"
+      ],
+      "origin": "ia-ajustada",
+      "added_shots": [
+        "B008.T01"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 6 (S056–S057): 13,6s com 2 tomada(s); completada com B008.T01"
+        }
+      ]
+    },
+    {
+      "from_sentence": "S126",
+      "to_sentence": "S126",
+      "shot_ids": [
+        "B003.T01",
+        "B001.T01",
+        "B001.T02",
+        "B003.T02",
+        "B001.T03",
+        "B006.T03"
+      ],
+      "reason": "Cobre os movimentos bruscos da câmera gravando o cachorro no lago com tomadas B-roll perfeitas do cachorro e pessoa na beira do lago.",
+      "windows": [
+        "O5"
+      ],
+      "origin": "ia-ajustada",
+      "added_shots": [
+        "B001.T03",
+        "B006.T03"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 7 (S126): 26,0s com 4 tomada(s); completada com B001.T03, B006.T03"
+        }
+      ]
+    },
+    {
+      "from_sentence": "S129",
+      "to_sentence": "S130",
+      "shot_ids": [
+        "P011.T01",
+        "P010.T01",
+        "P012.T05"
+      ],
+      "reason": "Cobre os giros rápidos e borrões de câmera mostrando a trilha que leva às áreas de quiosque/acampamento.",
+      "windows": [
+        "O6"
+      ],
+      "origin": "ia-ajustada",
+      "added_shots": [
+        "P012.T05"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 8 (S129–S130): 15,7s com 2 tomada(s); completada com P012.T05"
+        }
+      ]
+    },
+    {
+      "from_sentence": "S132",
+      "to_sentence": "S132",
+      "shot_ids": [
+        "P025.T08",
+        "P025.T05"
+      ],
+      "reason": "Cobre o borrão de movimento enquanto fala sobre encontrar o rapaz para ajudar na caminhada.",
+      "windows": [
+        "O7"
+      ],
+      "origin": "ia",
+      "added_shots": [],
+      "adjustments": []
+    },
+    {
+      "from_sentence": "S135",
+      "to_sentence": "S136",
+      "shot_ids": [
+        "P012.T01"
+      ],
+      "reason": "Cobre a perda de foco ao atravessar o tronco mostrando pessoas caminhando equilibradas na trilha.",
+      "windows": [
+        "O8"
+      ],
+      "origin": "ia",
+      "added_shots": [],
+      "adjustments": []
+    },
+    {
+      "from_sentence": "S139",
+      "to_sentence": "S140",
+      "shot_ids": [
+        "P026.T01"
+      ],
+      "reason": "Cobre o balanço forte da câmera mostrando plano limpo da caminhada na clareira.",
+      "windows": [
+        "O9"
+      ],
+      "origin": "ia-ajustada",
+      "added_shots": [],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 11 (S140): 1,1s é menos que o mínimo; estendida para S139–S140 (3,8s)"
+        }
+      ]
+    },
+    {
+      "from_sentence": "S156",
+      "to_sentence": "S158",
+      "shot_ids": [
+        "P012.T02"
+      ],
+      "reason": "Cobre o movimento brusco de câmera mostrando a caminhada pacífica na mata.",
+      "windows": [
+        "O10"
+      ],
+      "origin": "ia",
+      "added_shots": [],
+      "adjustments": []
+    }
+  ],
+  "breaths": [
+    {
+      "after_sentence": "S003",
+      "shot_id": "P003.T01",
+      "size": "long",
+      "reason": "Pausa contemplativa revelando a beleza das montanhas e lago espelhado após a menção na van.",
+      "origin": "ia",
+      "adjustments": []
+    },
+    {
+      "after_sentence": "S023",
+      "shot_id": "D002.T01",
+      "size": "medium",
+      "reason": "Respiro mostrando a transição da hospedagem para a cidade e o ambiente externo.",
+      "origin": "ia",
+      "adjustments": []
+    },
+    {
+      "after_sentence": "S044",
+      "shot_id": "P012.T04",
+      "size": "short",
+      "reason": "Transição visual marcando o início efetivo da caminhada na trilha.",
+      "origin": "ia",
+      "adjustments": []
+    },
+    {
+      "after_sentence": "S116",
+      "shot_id": "B006.T02",
+      "size": "short",
+      "reason": "Pausa para mostrar o detalhe da água límpida do lago antes do toque das mãos.",
+      "origin": "ia",
+      "adjustments": []
+    },
+    {
+      "after_sentence": "S125",
+      "shot_id": "V001.T01",
+      "size": "medium",
+      "reason": "Plano POV imersivo submergindo na água do lago logo após falarem da temperatura.",
+      "origin": "ia",
+      "adjustments": []
+    },
+    {
+      "after_sentence": "S128",
+      "shot_id": "B002.T01",
+      "size": "short",
+      "reason": "Respiro mostrando o movimento na praia antes da próxima parada.",
+      "origin": "ia",
+      "adjustments": []
+    },
+    {
+      "after_sentence": "S165",
+      "shot_id": "P027.T03",
+      "size": "long",
+      "reason": "Respiro de chegada e contemplação da paisagem espetacular antes do desfecho.",
+      "origin": "ia",
+      "adjustments": []
+    }
+  ],
+  "placed_coverages": [
+    {
+      "id": "C1",
+      "from_sentence": "S000",
+      "to_sentence": "S001",
+      "shot_id": "D002.T15",
+      "shot_ids": [
+        "D002.T15",
+        "D002.T14",
+        "D001.T14"
+      ],
+      "reason": "Cobre a imagem obstruída da van mostrando vista aérea do deslocamento e da cidade a caminho.",
+      "origin": "ia",
+      "windows": [
+        "O1"
+      ],
+      "adjustments": [],
+      "timeline_start": 0.733,
+      "timeline_end": 23.633,
+      "pieces": [
+        {
+          "shot_id": "D002.T15",
+          "clip_id": "D002",
+          "source_in": 108.492333,
+          "source_out": 116.125666,
+          "timeline_start": 0.733333,
+          "timeline_end": 8.366667,
+          "chained": false
+        },
+        {
+          "shot_id": "D002.T14",
+          "clip_id": "D002",
+          "source_in": 100.730667,
+          "source_out": 108.397334,
+          "timeline_start": 8.366667,
+          "timeline_end": 16.033333,
+          "chained": false
+        },
+        {
+          "shot_id": "D001.T14",
+          "clip_id": "D001",
+          "source_in": 98.8,
+          "source_out": 106.4,
+          "timeline_start": 16.033333,
+          "timeline_end": 23.633333,
+          "chained": false
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "from_sentence": "S021",
+      "to_sentence": "S023",
+      "shot_id": "P008.T01",
+      "shot_ids": [
+        "P008.T01",
+        "D001.T10",
+        "D001.T04",
+        "D002.T11",
+        "D001.T03",
+        "D002.T13",
+        "D001.T05",
+        "D002.T22",
+        "D001.T09"
+      ],
+      "reason": "Cobre o borrão de movimento e a imagem ruim do quarto mostrando a rua do hotel e a vista da cidade.",
+      "origin": "ia-ajustada",
+      "windows": [
+        "O2"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 2 (S021–S023): 58,9s com 3 tomada(s); completada com D002.T11, D001.T03, D002.T13, D001.T05, D002.T22, D001.T09"
+        }
+      ],
+      "timeline_start": 86.4,
+      "timeline_end": 145.3,
+      "pieces": [
+        {
+          "shot_id": "P008.T01",
+          "clip_id": "P008",
+          "source_in": 0.007667,
+          "source_out": 3.441,
+          "timeline_start": 86.4,
+          "timeline_end": 89.833333,
+          "chained": false
+        },
+        {
+          "shot_id": "D001.T10",
+          "clip_id": "D001",
+          "source_in": 68.733333,
+          "source_out": 75.666666,
+          "timeline_start": 89.833333,
+          "timeline_end": 96.766667,
+          "chained": false
+        },
+        {
+          "shot_id": "D001.T04",
+          "clip_id": "D001",
+          "source_in": 23.133333,
+          "source_out": 30.066666,
+          "timeline_start": 96.766667,
+          "timeline_end": 103.7,
+          "chained": false
+        },
+        {
+          "shot_id": "D002.T11",
+          "clip_id": "D002",
+          "source_in": 77.860333,
+          "source_out": 84.793666,
+          "timeline_start": 103.7,
+          "timeline_end": 110.633333,
+          "chained": true
+        },
+        {
+          "shot_id": "D001.T03",
+          "clip_id": "D001",
+          "source_in": 15.533333,
+          "source_out": 22.466666,
+          "timeline_start": 110.633333,
+          "timeline_end": 117.566667,
+          "chained": true
+        },
+        {
+          "shot_id": "D002.T13",
+          "clip_id": "D002",
+          "source_in": 93.351333,
+          "source_out": 100.284666,
+          "timeline_start": 117.566667,
+          "timeline_end": 124.5,
+          "chained": true
+        },
+        {
+          "shot_id": "D001.T05",
+          "clip_id": "D001",
+          "source_in": 30.733333,
+          "source_out": 37.666666,
+          "timeline_start": 124.5,
+          "timeline_end": 131.433333,
+          "chained": true
+        },
+        {
+          "shot_id": "D002.T22",
+          "clip_id": "D002",
+          "source_in": 163.060333,
+          "source_out": 169.993666,
+          "timeline_start": 131.433333,
+          "timeline_end": 138.366667,
+          "chained": true
+        },
+        {
+          "shot_id": "D001.T09",
+          "clip_id": "D001",
+          "source_in": 61.133333,
+          "source_out": 68.066666,
+          "timeline_start": 138.366667,
+          "timeline_end": 145.3,
+          "chained": true
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "from_sentence": "S036",
+      "to_sentence": "S036",
+      "shot_id": "B009.T01",
+      "shot_ids": [
+        "B009.T01",
+        "B006.T01"
+      ],
+      "reason": "Ilustra os pássaros e os peixes/águas do rio mencionados na fala.",
+      "origin": "ia",
+      "windows": [],
+      "adjustments": [],
+      "timeline_start": 176.4,
+      "timeline_end": 184.833,
+      "pieces": [
+        {
+          "shot_id": "B009.T01",
+          "clip_id": "B009",
+          "source_in": 0.0705,
+          "source_out": 4.2705,
+          "timeline_start": 176.4,
+          "timeline_end": 180.6,
+          "chained": false
+        },
+        {
+          "shot_id": "B006.T01",
+          "clip_id": "B006",
+          "source_in": 0.973333,
+          "source_out": 5.206666,
+          "timeline_start": 180.6,
+          "timeline_end": 184.833333,
+          "chained": false
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "from_sentence": "S042",
+      "to_sentence": "S043",
+      "shot_id": "B005.T01",
+      "shot_ids": [
+        "B005.T01",
+        "D001.T01",
+        "D001.T07"
+      ],
+      "reason": "Mostra a ilha La Islita e a praia mencionadas antes de iniciarem a caminhada.",
+      "origin": "ia-ajustada",
+      "windows": [],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 4 (S042–S043): encurtada; as tomadas cobrem 20,4s de 20,6s (fora de janela com imagem ruim o código não acrescenta tomadas)"
+        }
+      ],
+      "timeline_start": 203.433,
+      "timeline_end": 224.033,
+      "pieces": [
+        {
+          "shot_id": "B005.T01",
+          "clip_id": "B005",
+          "source_in": 0.021667,
+          "source_out": 5.255,
+          "timeline_start": 203.433333,
+          "timeline_end": 208.666667,
+          "chained": false
+        },
+        {
+          "shot_id": "D001.T01",
+          "clip_id": "D001",
+          "source_in": 0.0,
+          "source_out": 7.6,
+          "timeline_start": 208.666667,
+          "timeline_end": 216.266667,
+          "chained": false
+        },
+        {
+          "shot_id": "D001.T07",
+          "clip_id": "D001",
+          "source_in": 45.6,
+          "source_out": 53.2,
+          "timeline_start": 216.266667,
+          "timeline_end": 223.866667,
+          "chained": false
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "from_sentence": "S052",
+      "to_sentence": "S054",
+      "shot_id": "B007.T03",
+      "shot_ids": [
+        "B007.T03",
+        "B008.T02"
+      ],
+      "reason": "Cobre o borrão de movimento com uma tomada tranquila de animal na região.",
+      "origin": "ia-ajustada",
+      "windows": [
+        "O3"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 5 (S052–S054): 5,9s com 1 tomada(s); completada com B008.T02"
+        }
+      ],
+      "timeline_start": 268.833,
+      "timeline_end": 274.767,
+      "pieces": [
+        {
+          "shot_id": "B007.T03",
+          "clip_id": "B007",
+          "source_in": 11.867667,
+          "source_out": 14.834334,
+          "timeline_start": 268.833333,
+          "timeline_end": 271.8,
+          "chained": false
+        },
+        {
+          "shot_id": "B008.T02",
+          "clip_id": "B008",
+          "source_in": 7.284667,
+          "source_out": 10.251334,
+          "timeline_start": 271.8,
+          "timeline_end": 274.766667,
+          "chained": true
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "from_sentence": "S056",
+      "to_sentence": "S057",
+      "shot_id": "B007.T01",
+      "shot_ids": [
+        "B007.T01",
+        "B007.T02",
+        "B008.T01"
+      ],
+      "reason": "Cobre a imagem ruim da câmera pela estrada de terra com imagens de b-roll da estrada e ambiente rural.",
+      "origin": "ia-ajustada",
+      "windows": [
+        "O4"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 6 (S056–S057): 13,6s com 2 tomada(s); completada com B008.T01"
+        }
+      ],
+      "timeline_start": 283.3,
+      "timeline_end": 296.933,
+      "pieces": [
+        {
+          "shot_id": "B007.T01",
+          "clip_id": "B007",
+          "source_in": 0.806667,
+          "source_out": 5.34,
+          "timeline_start": 283.3,
+          "timeline_end": 287.833333,
+          "chained": false
+        },
+        {
+          "shot_id": "B007.T02",
+          "clip_id": "B007",
+          "source_in": 5.743833,
+          "source_out": 10.277166,
+          "timeline_start": 287.833333,
+          "timeline_end": 292.366667,
+          "chained": false
+        },
+        {
+          "shot_id": "B008.T01",
+          "clip_id": "B008",
+          "source_in": 0.639167,
+          "source_out": 5.205834,
+          "timeline_start": 292.366667,
+          "timeline_end": 296.933333,
+          "chained": true
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "from_sentence": "S126",
+      "to_sentence": "S126",
+      "shot_id": "B003.T01",
+      "shot_ids": [
+        "B003.T01",
+        "B001.T01",
+        "B001.T02",
+        "B003.T02",
+        "B001.T03",
+        "B006.T03"
+      ],
+      "reason": "Cobre os movimentos bruscos da câmera gravando o cachorro no lago com tomadas B-roll perfeitas do cachorro e pessoa na beira do lago.",
+      "origin": "ia-ajustada",
+      "windows": [
+        "O5"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 7 (S126): 26,0s com 4 tomada(s); completada com B001.T03, B006.T03"
+        }
+      ],
+      "timeline_start": 520.7,
+      "timeline_end": 546.7,
+      "pieces": [
+        {
+          "shot_id": "B003.T01",
+          "clip_id": "B003",
+          "source_in": 0.0,
+          "source_out": 4.233333,
+          "timeline_start": 520.7,
+          "timeline_end": 524.933333,
+          "chained": false
+        },
+        {
+          "shot_id": "B001.T01",
+          "clip_id": "B001",
+          "source_in": 0.762,
+          "source_out": 5.162,
+          "timeline_start": 524.933333,
+          "timeline_end": 529.333333,
+          "chained": false
+        },
+        {
+          "shot_id": "B001.T02",
+          "clip_id": "B001",
+          "source_in": 6.6855,
+          "source_out": 11.0855,
+          "timeline_start": 529.333333,
+          "timeline_end": 533.733333,
+          "chained": false
+        },
+        {
+          "shot_id": "B003.T02",
+          "clip_id": "B003",
+          "source_in": 4.278667,
+          "source_out": 8.412,
+          "timeline_start": 533.733333,
+          "timeline_end": 537.866667,
+          "chained": false
+        },
+        {
+          "shot_id": "B001.T03",
+          "clip_id": "B001",
+          "source_in": 11.847,
+          "source_out": 16.247,
+          "timeline_start": 537.866667,
+          "timeline_end": 542.266667,
+          "chained": true
+        },
+        {
+          "shot_id": "B006.T03",
+          "clip_id": "B006",
+          "source_in": 13.232333,
+          "source_out": 17.665666,
+          "timeline_start": 542.266667,
+          "timeline_end": 546.7,
+          "chained": true
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "from_sentence": "S129",
+      "to_sentence": "S130",
+      "shot_id": "P011.T01",
+      "shot_ids": [
+        "P011.T01",
+        "P010.T01",
+        "P012.T05"
+      ],
+      "reason": "Cobre os giros rápidos e borrões de câmera mostrando a trilha que leva às áreas de quiosque/acampamento.",
+      "origin": "ia-ajustada",
+      "windows": [
+        "O6"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 8 (S129–S130): 15,7s com 2 tomada(s); completada com P012.T05"
+        }
+      ],
+      "timeline_start": 562.1,
+      "timeline_end": 577.833,
+      "pieces": [
+        {
+          "shot_id": "P011.T01",
+          "clip_id": "P011",
+          "source_in": 0.003667,
+          "source_out": 2.737,
+          "timeline_start": 562.1,
+          "timeline_end": 564.833333,
+          "chained": false
+        },
+        {
+          "shot_id": "P010.T01",
+          "clip_id": "P010",
+          "source_in": 0.142,
+          "source_out": 6.642,
+          "timeline_start": 564.833333,
+          "timeline_end": 571.333333,
+          "chained": false
+        },
+        {
+          "shot_id": "P012.T05",
+          "clip_id": "P012",
+          "source_in": 27.853,
+          "source_out": 34.353,
+          "timeline_start": 571.333333,
+          "timeline_end": 577.833333,
+          "chained": true
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "from_sentence": "S132",
+      "to_sentence": "S132",
+      "shot_id": "P025.T08",
+      "shot_ids": [
+        "P025.T08",
+        "P025.T05"
+      ],
+      "reason": "Cobre o borrão de movimento enquanto fala sobre encontrar o rapaz para ajudar na caminhada.",
+      "origin": "ia",
+      "windows": [
+        "O7"
+      ],
+      "adjustments": [],
+      "timeline_start": 582.433,
+      "timeline_end": 592.267,
+      "pieces": [
+        {
+          "shot_id": "P025.T08",
+          "clip_id": "P025",
+          "source_in": 54.581,
+          "source_out": 59.481,
+          "timeline_start": 582.433333,
+          "timeline_end": 587.333333,
+          "chained": false
+        },
+        {
+          "shot_id": "P025.T05",
+          "clip_id": "P025",
+          "source_in": 32.621333,
+          "source_out": 37.554666,
+          "timeline_start": 587.333333,
+          "timeline_end": 592.266667,
+          "chained": false
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "from_sentence": "S135",
+      "to_sentence": "S136",
+      "shot_id": "P012.T01",
+      "shot_ids": [
+        "P012.T01"
+      ],
+      "reason": "Cobre a perda de foco ao atravessar o tronco mostrando pessoas caminhando equilibradas na trilha.",
+      "origin": "ia",
+      "windows": [
+        "O8"
+      ],
+      "adjustments": [],
+      "timeline_start": 611.433,
+      "timeline_end": 614.467,
+      "pieces": [
+        {
+          "shot_id": "P012.T01",
+          "clip_id": "P012",
+          "source_in": 1.964833,
+          "source_out": 4.998166,
+          "timeline_start": 611.433333,
+          "timeline_end": 614.466667,
+          "chained": false
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "from_sentence": "S139",
+      "to_sentence": "S140",
+      "shot_id": "P026.T01",
+      "shot_ids": [
+        "P026.T01"
+      ],
+      "reason": "Cobre o balanço forte da câmera mostrando plano limpo da caminhada na clareira.",
+      "origin": "ia-ajustada",
+      "windows": [
+        "O9"
+      ],
+      "adjustments": [
+        {
+          "kind": "duração",
+          "message": "cobertura 11 (S140): 1,1s é menos que o mínimo; estendida para S139–S140 (3,8s)"
+        }
+      ],
+      "timeline_start": 633.7,
+      "timeline_end": 637.533,
+      "pieces": [
+        {
+          "shot_id": "P026.T01",
+          "clip_id": "P026",
+          "source_in": 0.685833,
+          "source_out": 4.519166,
+          "timeline_start": 633.7,
+          "timeline_end": 637.533333,
+          "chained": false
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "from_sentence": "S156",
+      "to_sentence": "S158",
+      "shot_id": "P012.T02",
+      "shot_ids": [
+        "P012.T02"
+      ],
+      "reason": "Cobre o movimento brusco de câmera mostrando a caminhada pacífica na mata.",
+      "origin": "ia",
+      "windows": [
+        "O10"
+      ],
+      "adjustments": [],
+      "timeline_start": 669.333,
+      "timeline_end": 673.4,
+      "pieces": [
+        {
+          "shot_id": "P012.T02",
+          "clip_id": "P012",
+          "source_in": 8.411167,
+          "source_out": 12.477834,
+          "timeline_start": 669.333333,
+          "timeline_end": 673.4,
+          "chained": false
+        }
+      ]
+    }
+  ],
+  "placed_breaths": [
+    {
+      "id": "R1",
+      "after_sentence": "S003",
+      "shot_id": "P003.T01",
+      "clip_id": "P003",
+      "size": "long",
+      "reason": "Pausa contemplativa revelando a beleza das montanhas e lago espelhado após a menção na van.",
+      "origin": "ia",
+      "source_in": 0.02,
+      "source_out": 5.02,
+      "timeline_start": 47.167,
+      "duration_sec": 5.0,
+      "audio": true
+    },
+    {
+      "id": "R2",
+      "after_sentence": "S023",
+      "shot_id": "D002.T01",
+      "clip_id": "D002",
+      "size": "medium",
+      "reason": "Respiro mostrando a transição da hospedagem para a cidade e o ambiente externo.",
+      "origin": "ia",
+      "source_in": 0.574,
+      "source_out": 4.074,
+      "timeline_start": 146.167,
+      "duration_sec": 3.5,
+      "audio": true
+    },
+    {
+      "id": "R3",
+      "after_sentence": "S044",
+      "shot_id": "P012.T04",
+      "clip_id": "P012",
+      "size": "short",
+      "reason": "Transição visual marcando o início efetivo da caminhada na trilha.",
+      "origin": "ia",
+      "source_in": 23.3715,
+      "source_out": 25.3715,
+      "timeline_start": 224.133,
+      "duration_sec": 2.0,
+      "audio": true
+    },
+    {
+      "id": "R4",
+      "after_sentence": "S116",
+      "shot_id": "B006.T02",
+      "clip_id": "B006",
+      "size": "short",
+      "reason": "Pausa para mostrar o detalhe da água límpida do lago antes do toque das mãos.",
+      "origin": "ia",
+      "source_in": 8.2695,
+      "source_out": 10.2695,
+      "timeline_start": 495.167,
+      "duration_sec": 2.0,
+      "audio": true
+    },
+    {
+      "id": "R5",
+      "after_sentence": "S125",
+      "shot_id": "V001.T01",
+      "clip_id": "V001",
+      "size": "medium",
+      "reason": "Plano POV imersivo submergindo na água do lago logo após falarem da temperatura.",
+      "origin": "ia",
+      "source_in": 2.1005,
+      "source_out": 5.6005,
+      "timeline_start": 516.433,
+      "duration_sec": 3.5,
+      "audio": true
+    },
+    {
+      "id": "R6",
+      "after_sentence": "S128",
+      "shot_id": "B002.T01",
+      "clip_id": "B002",
+      "size": "short",
+      "reason": "Respiro mostrando o movimento na praia antes da próxima parada.",
+      "origin": "ia",
+      "source_in": 2.0935,
+      "source_out": 4.0935,
+      "timeline_start": 560.1,
+      "duration_sec": 2.0,
+      "audio": true
+    },
+    {
+      "id": "R7",
+      "after_sentence": "S165",
+      "shot_id": "P027.T03",
+      "clip_id": "P027",
+      "size": "long",
+      "reason": "Respiro de chegada e contemplação da paisagem espetacular antes do desfecho.",
+      "origin": "ia",
+      "source_in": 13.944,
+      "source_out": 18.944,
+      "timeline_start": 682.833,
+      "duration_sec": 5.0,
+      "audio": true
+    }
+  ],
+  "spine_duration_sec": 684.533,
+  "final_duration_sec": 707.533,
+  "warnings": [
+    "cobertura da IA: 29 itens, 7 ajustados (duração); detalhes no edit_report.md"
+  ],
+  "notes": [
+    "cobertura 2 (S021–S023): 58,9s com 3 tomada(s); completada com D002.T11, D001.T03, D002.T13, D001.T05, D002.T22, D001.T09",
+    "cobertura 4 (S042–S043): encurtada; as tomadas cobrem 20,4s de 20,6s (fora de janela com imagem ruim o código não acrescenta tomadas)",
+    "cobertura 5 (S052–S054): 5,9s com 1 tomada(s); completada com B008.T02",
+    "cobertura 6 (S056–S057): 13,6s com 2 tomada(s); completada com B008.T01",
+    "cobertura 7 (S126): 26,0s com 4 tomada(s); completada com B001.T03, B006.T03",
+    "cobertura 8 (S129–S130): 15,7s com 2 tomada(s); completada com P012.T05",
+    "cobertura 11 (S140): 1,1s é menos que o mínimo; estendida para S139–S140 (3,8s)"
+  ]
+}

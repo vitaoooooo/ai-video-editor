@@ -87,5 +87,9 @@ def related_shots(candidates: Iterable[VisualShot], screens: list[VisualShot]) -
 
 
 def recording_note(shot: VisualShot, spine_clips: list[VisualShot]) -> Optional[str]:
-    """Proximidade de gravação com algum clipe que fala (para a lista de candidatas do prompt)."""
-    return next((n for s in spine_clips if (n := neighbor_note(shot, s))), None)
+    """Proximidade de gravação com algum clipe que fala (para a lista de candidatas do prompt), só quando as
+    duas datas vêm da gravação: com datas de exportação, a ordem do catálogo é a do nome do arquivo e
+    "gravada logo depois" seria um chute."""
+    if not shot.date_reliable:
+        return None
+    return next((n for s in spine_clips if s.date_reliable and (n := neighbor_note(shot, s))), None)
