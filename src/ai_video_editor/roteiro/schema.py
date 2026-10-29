@@ -174,6 +174,11 @@ class RoteiroClip(BaseModel):
     photos_before: int = Field(default=0, description="Fotos extraídas, antes do descarte")
     photos_kept: int = 0
     discarded: list[DiscardedPhoto] = Field(default_factory=list)
+    motion: list[tuple[float, float]] = Field(
+        default_factory=list,
+        description="Movimento por amostra do scan (MEASURE_FPS): (tempo em s, diferença de luma 0–1 desde a amostra "
+        "anterior); a 1ª amostra (sem anterior) fica de fora",
+    )
     estimated_tokens: int = Field(default=0, description="Tamanho da seção do clipe no roteiro.md (caracteres/4)")
     warnings: list[str] = Field(default_factory=list)
 

@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Optional
 
 from ai_video_editor.editor.material import EditorMaterial
-from ai_video_editor.editor.schema import CallStats, DetailRun, EditorPlan, EditorRun
+from ai_video_editor.editor.schema import CallStats, CutAttempt, DetailRun, EditorPlan, EditorRun, StructureRun
 from ai_video_editor.pipeline.schema import RunTimings
 from ai_video_editor.pipeline.timing import build_timings_section, format_duration
 from ai_video_editor.roteiro.report import clock
 
 _ORIGIN = {"ia": "IA", "cache": "IA (cache)", "fallback": "**fallback neutro**", "falha": "**falhou**"}
-_TARGET_ORIGIN = {"pedido": "do pedido", "ia": "escolhida pela IA", "nenhuma": "livre"}
+_TARGET_ORIGIN = {"pedido": "do pedido", "texto": "lida do texto do pedido", "ia": "escolhida pela IA", "nenhuma": "livre"}
 _PASSES = ("resumo", "estrutura", "cortes", "insercoes", "coberturas")
 
 
@@ -51,10 +51,16 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         f"Duração: fala livre {_sec(detail.available_sec)} → fala que ficou {_sec(detail.speech_sec)} → com as "
         f"inclusões {_sec(detail.result_sec)} → alvo {_sec(detail.target_sec)}"
     )
-    lines += ["", "**2a cortes** (meta do clipe = alvo do bloco × fala do clipe / fala do bloco)", ""]
+    lines += ["", "**2a cortes** (meta do clipe = alvo do bloco repartido pela fala de cada clipe, até a fala dele)", ""]
     if not detail.cut_runs:
         lines.append("- (nenhum clipe com fala)")
     for cut in detail.cut_runs:
+        if cut.no_question:
+            lines.append(
+                f"- {cut.unit_id}: sem pergunta de cortes ({cut.no_question}): entra inteiro, {_sec(cut.result_sec)} "
+                f"· meta {_sec(cut.target_sec)}"
+            )
+            continue
         off = " · **fora da meta**" if cut.duration_off else ""
         lines.append(
             f"- {cut.unit_id} ({_ORIGIN[cut.origin]}, ~{_tokens(cut.estimated_tokens)} tokens): {_sec(cut.available_sec)} "
@@ -68,6 +74,14 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
         if cut.normalized_ids:
             lines.append(f"  - {_cell(_normalized(cut.normalized_ids))}")
         lines += [f"  - tentativa recusada: {_cell(_short(a, 300))}" for a in cut.attempts]
+        if len(cut.tries) > 1 or cut.chosen_attempt == 0:
+            used = "usado o clipe inteiro (sem cortes)" if cut.chosen_attempt == 0 else f"usada a {cut.chosen_attempt}"
+            lines.append("  - tentativas: " + " · ".join(_try_text(t) for t in cut.tries) + f" → {used}")
+        if cut.target_limit:
+            lines.append(f"  - IA: a meta não dá sem prejudicar a fala — {_cell(cut.target_limit)}")
+        if cut.kept_whole:
+            lines.append("  - **IA cortou tudo sem dizer fora; mantido inteiro**")
+        lines += [f"  - {_cell(j)}" for j in cut.joined]
         if cut.removed:
             lines.append(f"  - **IA tirou o clipe {cut.clip_id}**" + (f" (parte {cut.unit_id})" if cut.moment_ids else ""))
     if detail.removed_clip_ids:
@@ -110,16 +124,79 @@ def _detail_lines(detail: DetailRun, material: EditorMaterial) -> list[str]:
                 f"~{_tokens(sub.estimated_tokens)} tokens"
             )
         for coverage in sub.coverages:
-            lines.append(
+            evidence = "correspondência explicada, fala" if coverage.semantic else "palavra"
+            line = (
                 f"- trecho {coverage.trecho} → {coverage.letter} → {', '.join(coverage.moment_ids)} · {coverage.kind} · "
-                f"palavra \"{_cell(coverage.word)}\" · cobre {coverage.from_sentence}–{coverage.to_sentence}"
+                f"{evidence} \"{_cell(coverage.word)}\" · cobre {coverage.from_sentence}–{coverage.to_sentence}"
             )
+            if coverage.image_evidence and coverage.image_evidence != coverage.word:
+                line += f" · mostra: {_cell(_short(coverage.image_evidence, 80))}"
+            if coverage.reason:
+                line += f" · porque: {_cell(_short(coverage.reason, 80))}"
+            lines.append(line)
         if sub.nones:
             lines.append(f"- \"nenhuma\" nos trechos {', '.join(str(n) for n in sub.nones)}")
         lines += [f"- tentativa recusada: {_cell(_short(a, 300))}" for a in sub.attempts]
     if detail.warnings:
         lines += ["", "Avisos:", *(f"- {_cell(_short(w, 300))}" for w in detail.warnings)]
     lines.append("")
+    return lines
+
+
+def _try_text(attempt: CutAttempt) -> str:
+    what = " (fora: true)" if attempt.out else " (cortou tudo)" if attempt.all_cut else ""
+    return f"{attempt.attempt}: {attempt.result_sec:.1f}s{what}".replace(".", ",", 1)
+
+
+def _target_cell(structure: StructureRun) -> str:
+    text = f"{_sec(structure.target_total_sec)} ({_TARGET_ORIGIN[structure.target_origin]}"
+    if structure.target_note:
+        text += f": {structure.target_note}"
+    return _cell(text + ")")
+
+
+def _share(speech: float, target: Optional[float]) -> str:
+    return f"{_sec(speech)}" + (f" ({100 * speech / target:.0f}% do alvo)" if target else "")
+
+
+def _structure_speech_lines(structure: StructureRun) -> list[str]:
+    """Fala dos clipes escolhidos × alvo (antes e depois da pergunta de acréscimo por falta de duração)."""
+    if structure.speech_sec is None:
+        return []
+    target = structure.target_total_sec
+    if structure.speech_sec_first is None:
+        return [f"Fala dos clipes escolhidos: {_share(structure.speech_sec, target)}"]
+    added = ", ".join(
+        f"{c} → {structure.added_blocks.get(c, '?')}" for c in structure.added_clip_ids
+    ) or "nenhum (a IA não acrescentou clipes)"
+    return [
+        f"Fala dos clipes escolhidos: {_share(structure.speech_sec_first, target)} → acréscimo "
+        f"({_cell(structure.shortfall)}) → {_share(structure.speech_sec, target)}",
+        f"Clipes acrescentados (→ bloco em que entraram): {added}",
+    ]
+
+
+def _structure_part_lines(structure: StructureRun) -> list[str]:
+    """Estrutura em partes (a lista inteira não coube no contexto): clipes, tokens, meta e blocos de cada parte,
+    junções na fronteira e a parte que caiu no fallback (e por quê)."""
+    if len(structure.parts) <= 1:
+        return []
+    lines = [
+        "",
+        f"Estrutura em {len(structure.parts)} partes (a lista inteira não cabe no contexto):",
+        "",
+        "| Parte | Clipes | Tokens (estim.) | Fala | Meta da parte | Origem | Blocos |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for part in structure.parts:
+        clips = f"{part.clip_ids[0]}–{part.clip_ids[-1]} ({len(part.clip_ids)})" if part.clip_ids else "—"
+        lines.append(
+            f"| {part.number} | {clips} | ~{_tokens(part.estimated_tokens)} | {_sec(part.speech_sec)} | "
+            f"{_sec(part.target_sec)} | {_ORIGIN[part.origin]} | {_cell('; '.join(part.block_titles) or '—')} |"
+        )
+    lines += [f"- parte {p.number} pelo fallback: {_cell(_short(p.fallback_reason, 300))}"
+              for p in structure.parts if p.origin == "fallback"]
+    lines += [f"- {_cell(j)}" for j in structure.joins] or ["- nenhuma junção na fronteira entre partes"]
     return lines
 
 
@@ -224,7 +301,7 @@ def build_editor_report(
         f"| Material | {len(material.clips)} clipe(s), {clock(material_sec)} · {len(material.sentences)} frases · "
         f"{len(material.moments)} momentos |",
         f"| Pedido | {_cell(run.request) if run.request.strip() else 'sem pedido'} |",
-        f"| Duração alvo | {_sec(structure.target_total_sec)} ({_TARGET_ORIGIN[structure.target_origin]}) |",
+        f"| Duração alvo | {_target_cell(structure)} |",
         f"| Duração do plano | {_sec(plan.duration_sec)} |",
         f"| IA | {_cell(' → '.join(run.model_chain) or run.provider)} (respondeu: {_cell(model)}) |",
         f"| Contexto | {run.budget.num_ctx} tokens ({run.budget.source}); estimativa caracteres/4 × {run.budget.token_factor:g} |",
@@ -249,13 +326,20 @@ def build_editor_report(
         lines.append(f"Notas da IA: {_cell(structure.notes)}")
     if structure.normalized_ids:
         lines.append(_cell(_normalized(structure.normalized_ids)))
+    lines += _structure_speech_lines(structure)
+    if structure.order:
+        lines.append(f"Ordem dos blocos: {structure.order}")
+    lines += _structure_part_lines(structure)
     lines += ["", "| Bloco | Título | Clipes | Alvo | No plano | Origem |", "| --- | --- | --- | --- | --- | --- |"]
     by_id = {b.id: b for b in plan.blocks}
     for block in structure.blocks:
         placed = by_id.get(block.id)
         final = f"{clock(placed.timeline_start)}–{clock(placed.timeline_end)}" if placed and placed.pieces else "—"
+        target = _sec(block.target_sec)
+        if block.ai_target_sec is not None and block.ai_target_sec != block.target_sec:
+            target += f" (IA: {block.ai_target_sec:.0f}s)"
         lines.append(
-            f"| {block.id} | {_cell(block.title or '—')} | {', '.join(block.clip_ids)} | {_sec(block.target_sec)} | "
+            f"| {block.id} | {_cell(block.title or '—')} | {', '.join(block.clip_ids)} | {target} | "
             f"{final} | {_ORIGIN.get(placed.origin if placed else 'ia', '—')} |"
         )
     lines.append("")

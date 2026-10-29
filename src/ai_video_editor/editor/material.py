@@ -13,6 +13,7 @@ as tags ficam de fora porque têm erros (ex.: "rio" nas tags de uma praça).
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from ai_video_editor.roteiro.report import clip_section, clock
@@ -126,7 +127,7 @@ def moment_visible_text(moment: Moment) -> str:
 
 def same_place(a: str, b: str) -> bool:
     """Mesmo lugar: iguais sem acento, caixa e espaços extras (vazio nunca é igual)."""
-    a, b = " ".join(plain(a).split()), " ".join(plain(b).split())
+    a, b = place_key(a), place_key(b)
     return bool(a) and a == b
 
 
@@ -141,8 +142,106 @@ def asks_landscape_opening(request: str) -> bool:
     return any(w.startswith(OPENING_STEMS) for w in found) and any(w.startswith(LANDSCAPE_STEMS) for w in found)
 
 
+# Pedido que pede outra ordem que não a de gravação (a ordem dos blocos da IA é mantida): uma destas expressões
+# no texto (sem acento, minúsculas), começando no início de uma palavra; o fim é livre ("por tema" pega "por
+# temas", "tematic" pega temático/temática, "nao cronologic" pega "não cronológica").
+FREE_ORDER_PHRASES = (
+    "por tema", "tematic", "por assunto", "por topico", "fora de ordem", "ordem livre", "qualquer ordem",
+    "sem ordem", "nao cronologic",
+)
+
+
+def asks_free_order(request: str) -> Optional[str]:
+    """A expressão do pedido que pede outra ordem (None = a ordem de gravação vale). Leitura do texto, sem decisão."""
+    text = " " + " ".join(words(request))
+    return next((p for p in FREE_ORDER_PHRASES if f" {p}" in text), None)
+
+
+# Duração escrita no pedido ("uns 8 minutos", "1 minuto e 30 segundos", "5:30", "oito minutos"): só leitura
+# do texto, sem decisão. Números por extenso (pt/es/en) até trinta.
+_NUMBER_WORDS = {
+    "um": 1, "uma": 1, "uno": 1, "one": 1, "dois": 2, "duas": 2, "dos": 2, "two": 2, "tres": 3, "three": 3,
+    "quatro": 4, "cuatro": 4, "four": 4, "cinco": 5, "five": 5, "seis": 6, "six": 6, "sete": 7, "siete": 7,
+    "seven": 7, "oito": 8, "ocho": 8, "eight": 8, "nove": 9, "nueve": 9, "nine": 9, "dez": 10, "diez": 10,
+    "ten": 10, "doze": 12, "doce": 12, "twelve": 12, "quinze": 15, "quince": 15, "fifteen": 15, "vinte": 20,
+    "veinte": 20, "twenty": 20, "trinta": 30, "treinta": 30, "thirty": 30,
+}
+_UNITS = {
+    3600: ("h", "hora", "horas", "hour", "hours"),
+    60: ("min", "mins", "minuto", "minutos", "minute", "minutes", "m"),
+    1: ("s", "seg", "segs", "segundo", "segundos", "second", "seconds", "sec", "secs"),
+}
+_NUM = r"(\d+(?:[.,]\d+)?|" + "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True)) + r")"
+_UNIT = r"(" + "|".join(sorted((u for units in _UNITS.values() for u in units), key=len, reverse=True)) + r")"
+_PART = _NUM + r"\s*" + _UNIT + r"(?![a-z])"
+_DURATION = re.compile(r"(?<![a-z0-9])" + _PART + r"(?:\s*(?:,|e|y|and)?\s*" + _PART + r")*")
+_CLOCK = re.compile(r"(?<![\d:])(\d{1,2}):([0-5]\d)(?![\d:])")
+
+
+def _number(token: str) -> float:
+    return float(_NUMBER_WORDS[token]) if token in _NUMBER_WORDS else float(token.replace(",", "."))
+
+
+def request_duration(request: str) -> Optional[tuple[float, str]]:
+    """A primeira duração escrita no pedido, em segundos, e o trecho lido (None = o pedido não diz).
+
+    Componentes seguidos somam ("1 minuto e 30 segundos" = 90); "5:30" = 5 min 30 s."""
+    text = plain(request)
+    found = _DURATION.search(text)
+    if found is not None:
+        total = 0.0
+        for number, unit in re.findall(_PART, found.group(0)):
+            total += _number(number) * next(f for f, units in _UNITS.items() if unit in units)
+        if total > 0:
+            return total, found.group(0).strip()
+    clock_found = _CLOCK.search(text)
+    if clock_found is not None:
+        total = int(clock_found.group(1)) * 60 + int(clock_found.group(2))
+        if total > 0:
+            return float(total), clock_found.group(0)
+    return None
+
+
+# Linha da estrutura: o resumo até tantos caracteres e o lugar até tantos (`EditorMaterial.structure_line`).
+STRUCTURE_SUMMARY_CHARS = 90
+STRUCTURE_PLACE_CHARS = 24
+# Abertura repetida dos resumos ("O clipe mostra uma..."), tirada da linha da estrutura.
+_SUMMARY_OPENING = re.compile(
+    r"^(?:o|a|este|esse|esta|essa)\s+(?:clipe|v[ií]deo|cena|trecho)\s+"
+    r"(?:mostra|apresenta|trata de|retrata|exibe|registra|traz|come[cç]a com)\s+",
+    re.IGNORECASE,
+)
+
+
+def place_key(place: Optional[str]) -> str:
+    """Lugar normalizado (sem acento, caixa e espaços extras): a régua de "mesmo lugar" (`same_place`)."""
+    return " ".join(plain(place or "").split())
+
+
+def _cut_text(text: str, limit: int) -> str:
+    """`text` até `limit` caracteres, cortado no fim de uma palavra (com "…")."""
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,.;:")
+    return (cut or text[: limit - 1]) + "…"
+
+
+def short_summary(summary: Optional[str], limit: int = STRUCTURE_SUMMARY_CHARS) -> str:
+    """Resumo de um clipe para uma linha: sem a abertura repetida ("O clipe mostra ..."), até `limit` caracteres."""
+    text = " ".join((summary or "").split())
+    if not text:
+        return "(sem resumo)"
+    text = _SUMMARY_OPENING.sub("", text, count=1)
+    return _cut_text(text[:1].upper() + text[1:], limit)
+
+
 def _fmt_sec(seconds: float) -> str:
     return f"{seconds:.1f}".replace(".", ",") + "s"
+
+
+def _utc(value: datetime) -> datetime:
+    """Data comparável: sem fuso vira UTC (o catálogo mistura as duas formas)."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 @dataclass
@@ -177,6 +276,15 @@ class EditorMaterial:
     def clip_ids(self) -> list[str]:
         return list(self.clips)
 
+    def chronology(self, clip_ids: Optional[Iterable[str]] = None) -> tuple[list[str], str]:
+        """Clipes em ordem de gravação e como ela foi medida: "data" (todos têm data de gravação confiável no
+        catálogo: por ela, empate pela ordem do catálogo) ou "catálogo" (falta data em algum: a ordem do catálogo,
+        que já ordena cada papel pela melhor data disponível). Sem `clip_ids`, todos os clipes."""
+        ids = list(self.clips) if clip_ids is None else [c for c in self.clips if c in set(clip_ids)]
+        if ids and all(self.clips[c].recorded_at is not None for c in ids):
+            return sorted(ids, key=lambda c: (_utc(self.clips[c].recorded_at), self.clips[c].order)), "data"
+        return sorted(ids, key=lambda c: self.clips[c].order), "catálogo"
+
     def has_speech(self, clip_id: str) -> bool:
         return bool(self.clip_sentences.get(clip_id))
 
@@ -210,22 +318,36 @@ class EditorMaterial:
         """Soma das durações das frases do clipe."""
         return sum(s.end_sec - s.start_sec for s in self.clip_sentences.get(clip_id, []))
 
-    def structure_line(self, clip_id: str, summary: Optional[str], words: int) -> str:
-        """Clipe numa linha para a estrutura: ID, papel, duração, fala (com os segundos de frases), data e o
-        resumo nas primeiras `words` palavras (a lista inteira sempre cabe: nunca precisa encurtar depois)."""
+    def clip_place(self, clip_id: str) -> str:
+        """Lugar do clipe: o lugar (do roteiro) que ocupa mais tempo nos momentos dele, como escrito no 1º momento
+        com ele; "" sem lugar."""
+        weight: dict[str, float] = {}
+        written: dict[str, str] = {}
+        for moment in self.clip_moments.get(clip_id, []):
+            key = place_key(moment.place)
+            if key:
+                weight[key] = weight.get(key, 0.0) + max(moment.duration, 0.001)
+                written.setdefault(key, " ".join(moment.place.split()))
+        return written[max(weight, key=lambda k: weight[k])] if weight else ""
+
+    def structure_line(self, clip_id: str, summary: Optional[str]) -> str:
+        """Clipe numa linha para a estrutura (enxuta: a lista de um material grande precisa caber no contexto).
+        Medido no vlog real de 99 clipes: o resumo era 72% da lista e quase sempre abria com "O clipe mostra";
+        a duração de um clipe com fala e o "de frases" não ajudavam a decidir. Fica: ID, papel, segundos de fala
+        (ou "sem fala" e a duração), lugar (até `STRUCTURE_PLACE_CHARS`), data (se houver) e o resumo sem a
+        abertura repetida, até `STRUCTURE_SUMMARY_CHARS` caracteres."""
         clip = self.clips[clip_id]
-        parts = [clip.id, clip.role, clock(clip.duration_sec)]
+        parts = [clip.id, clip.role]
         if self.has_speech(clip_id):
-            parts.append(f"fala sim ({round(self.speech_sec(clip_id))} s de frases)")
+            parts.append(f"fala {round(self.speech_sec(clip_id))} s")
         else:
-            parts.append("fala não")
+            parts.append(f"sem fala {clock(clip.duration_sec)}")
+        place = self.clip_place(clip_id)
+        if place:
+            parts.append(_cut_text(place, STRUCTURE_PLACE_CHARS))
         if clip.recorded_at is not None:
-            parts.append(clip.recorded_at.strftime("%Y-%m-%d %H:%M"))
-        text = " ".join((summary or "(sem resumo)").split())
-        cut = text.split()
-        if len(cut) > words:
-            text = " ".join(cut[:words]) + "…"
-        return f"- {' · '.join(parts)} — {text}"
+            parts.append(clip.recorded_at.strftime("%d/%m %H:%M"))
+        return f"- {' · '.join(parts)} — {short_summary(summary)}"
 
     def clip_line(self, clip_id: str) -> str:
         """Linha curta do clipe: ID, papel, duração, fala, data, ordem do catálogo."""

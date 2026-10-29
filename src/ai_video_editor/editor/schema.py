@@ -15,10 +15,12 @@ from pydantic import BaseModel, Field, field_validator, model_serializer, model_
 from ai_video_editor.llm.schema import ModelSwitch
 
 # Sobe quando o formato do editor_run.json / editor_plano.json muda.
-EDITOR_SCHEMA_VERSION = 5
+EDITOR_SCHEMA_VERSION = 9
 
 MAX_HIGHLIGHTS = 3
 MAX_PROBLEMS = 3
+# Motivo de um corte da 2a: texto livre, cortado neste tamanho (não há lista de motivos).
+MAX_REASON_CHARS = 120
 
 # ia: resposta validada do modelo; cache: a mesma resposta, de uma execução anterior; fallback: o código
 # montou o resultado neutro porque a IA falhou de vez (aviso no relatório).
@@ -177,6 +179,31 @@ class StructureAnswer(BaseModel):
         return _text(value)
 
 
+class StructureAdditionsAnswer(BaseModel):
+    """Resposta da pergunta de acréscimo (falta de duração da estrutura): os clipes a acrescentar, só dentre os
+    oferecidos (vazio = nenhum). O código põe cada um no bloco do vizinho na ordem de gravação."""
+
+    acrescentar: list[str] = Field(default_factory=list, description="IDs de clipes oferecidos")
+    notas: str = ""
+
+    @field_validator("acrescentar", mode="before")
+    @classmethod
+    def _clips(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = value.replace(";", ",").split(",")
+        if not isinstance(value, list):
+            return value
+        found = (_id(v.get("clipe") if isinstance(v, dict) else v) for v in value)
+        return [i for i in found if i and i not in _NONE_TOKENS]
+
+    @field_validator("notas", mode="before")
+    @classmethod
+    def _strip(cls, value):
+        return _text(value)
+
+
 # --- E11: passada 2 em três perguntas por bloco (2a cortes, 2b inclusões e respiros, 2c coberturas) ---
 
 # Palavras que a IA pode mandar no lugar de uma letra para dizer "nenhuma".
@@ -219,7 +246,7 @@ def _number(value):
 
 
 class CutItem(BaseModel):
-    """Corte da 2a: UMA frase (o ID) e o motivo curto."""
+    """Corte da 2a: UMA frase (o ID) e o motivo (texto livre curto, sem lista fechada)."""
 
     frase: Optional[str] = None
     motivo: str = ""
@@ -245,16 +272,27 @@ class CutItem(BaseModel):
     @field_validator("motivo", mode="before")
     @classmethod
     def _strip(cls, value):
-        return _text(value)
+        text = _text(value)
+        return text if len(text) <= MAX_REASON_CHARS else text[: MAX_REASON_CHARS - 1].rstrip() + "…"
 
 
 class CutsAnswer(BaseModel):
     """Resposta da 2a para um clipe (ou parte): as frases que saem; o resto fica. `fora` = o clipe (ou a
-    parte) inteiro sai do bloco (decisão da IA)."""
+    parte) inteiro sai do bloco (decisão da IA). `limite_meta` = a IA diz por que não dá para chegar à meta
+    sem prejudicar a fala (vazio = não há limite)."""
 
     cortar: list[CutItem] = Field(default_factory=list)
     fora: bool = False
+    limite_meta: str = ""
     notas: str = ""
+
+    @field_validator("limite_meta", mode="before")
+    @classmethod
+    def _limit(cls, value):
+        text = _text(value)
+        if text.lower() in {"", "-", "nenhum", "nenhuma", "não", "nao", "none", "null"}:
+            return ""
+        return text if len(text) <= MAX_REASON_CHARS else text[: MAX_REASON_CHARS - 1].rstrip() + "…"
 
     @field_validator("fora", mode="before")
     @classmethod
@@ -305,11 +343,20 @@ class InsertsAnswer(BaseModel):
 
 
 class CoverageItem(BaseModel):
-    """Cobertura da 2c: o trecho, a letra escolhida (ou "nenhuma") e a palavra em comum copiada."""
+    """Cobertura da 2c: o trecho, a letra escolhida (ou "nenhuma"), a palavra em comum copiada e, para a
+    correspondência sem palavra em comum, o que a imagem mostra e por que ela ilustra a fala."""
 
     trecho: Optional[float] = None
     letra: Optional[str] = None
     palavra: str = ""
+    mostra: str = ""
+    porque: str = ""
+
+    @field_validator("mostra", "porque", mode="before")
+    @classmethod
+    def _explain(cls, value):
+        text = _text(value)
+        return text if len(text) <= MAX_REASON_CHARS else text[: MAX_REASON_CHARS - 1].rstrip() + "…"
 
     @field_validator("trecho", mode="before")
     @classmethod
@@ -343,10 +390,13 @@ class CoveragesAnswer(BaseModel):
         return _text(value)
 
 
-# Tipos de cobertura (do candidato medido pelo código; aparecem no pedido e no relatório).
+# Tipos de cobertura (do candidato medido pelo código; aparecem no pedido e no relatório). RELATED: as tags da
+# imagem dividem palavra com a fala, mas a descrição não (as tags só indicam a candidata; a evidência é a
+# correspondência explicada pela IA e conferida contra a descrição e a fala).
 COVERAGE_SAYS = "mostra o que é dito"
 COVERAGE_PLACE = "mostra o lugar"
-CoverageKind = Literal["mostra o que é dito", "mostra o lugar"]
+COVERAGE_RELATED = "relacionada pelas tags"
+CoverageKind = Literal["mostra o que é dito", "mostra o lugar", "relacionada pelas tags"]
 
 
 # --- o que o código registra ---
@@ -403,7 +453,26 @@ class Block(BaseModel):
     title: str = ""
     subject: str = ""
     clip_ids: list[str]
-    target_sec: Optional[float] = None
+    target_sec: Optional[float] = Field(default=None, description="Meta do bloco (a da IA reescalada para o alvo)")
+    ai_target_sec: Optional[float] = Field(default=None, description="Meta que a IA deu ao bloco, antes da reescala")
+    ai_block: str = Field(default="", description="Bloco da IA de onde veio, quando foi dividido pela ordem de gravação")
+
+
+# pedido: duração do briefing/CLI; texto: lida do texto do pedido; ia: escolhida pela estrutura.
+TargetOrigin = Literal["pedido", "texto", "ia", "nenhuma"]
+
+
+class StructurePartRun(BaseModel):
+    """Uma parte da estrutura (material grande: a lista inteira não cabe no contexto)."""
+
+    number: int
+    clip_ids: list[str] = Field(default_factory=list, description="Clipes da parte, em ordem de gravação")
+    estimated_tokens: int = 0
+    target_sec: Optional[float] = Field(default=None, description="Meta da parte = alvo × fala da parte / fala total")
+    speech_sec: float = 0.0
+    origin: Origin = "ia"
+    block_titles: list[str] = Field(default_factory=list, description="Blocos que vieram desta parte")
+    fallback_reason: str = ""
 
 
 class StructureRun(BaseModel):
@@ -412,7 +481,11 @@ class StructureRun(BaseModel):
     out: list[OutClip] = Field(default_factory=list)
     library_clip_ids: list[str] = Field(default_factory=list, description="Acervo: clipes nem em bloco nem fora")
     target_total_sec: Optional[float] = None
-    target_origin: Literal["pedido", "ia", "nenhuma"] = "nenhuma"
+    target_origin: TargetOrigin = "nenhuma"
+    target_note: str = Field(default="", description="De onde veio o alvo (o trecho lido do pedido, o limite pela fala)")
+    target_requested_sec: Optional[float] = Field(
+        default=None, description="O alvo pedido, quando passou da fala disponível no material (o alvo virou ela)"
+    )
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)
     attempts: list[str] = Field(default_factory=list, description="Erro de cada tentativa recusada")
@@ -422,6 +495,20 @@ class StructureRun(BaseModel):
     normalized_ids: list[str] = Field(
         default_factory=list, description="IDs da resposta aceita trocados pelo formato do roteiro (\"bruto → ID\")"
     )
+    speech_sec: Optional[float] = Field(default=None, description="Fala disponível dos clipes nos blocos (aceita)")
+    speech_sec_first: Optional[float] = Field(
+        default=None, description="A mesma soma na 1ª resposta, quando houve nova tentativa por falta de duração"
+    )
+    shortfall: str = Field(default="", description="O aviso de falta de duração dado à IA na nova tentativa")
+    added_clip_ids: list[str] = Field(default_factory=list, description="Clipes incluídos em blocos pela pergunta de acréscimo")
+    parts: list[StructurePartRun] = Field(
+        default_factory=list, description="Partes perguntadas (uma só quando a lista inteira cabe no contexto)"
+    )
+    joins: list[str] = Field(default_factory=list, description="Blocos juntados na fronteira entre partes (mesmo lugar)")
+    added_blocks: dict[str, str] = Field(
+        default_factory=dict, description="Clipe acrescentado → o bloco final em que entrou (\"B03 título\")"
+    )
+    order: str = Field(default="", description="Ordem dos blocos: de gravação (como foi medida) ou a da IA (e por quê)")
 
 
 class KeepRange(BaseModel):
@@ -512,6 +599,18 @@ class CoverageChoice(BaseModel):
     speech_evidence: str = ""
     image_evidence: str = ""
     reason: str = ""
+    semantic: bool = Field(
+        default=False, description="Aceita pela correspondência explicada (mostra/porque), sem palavra em comum"
+    )
+
+
+class CutAttempt(BaseModel):
+    """Uma resposta aproveitável da 2a: o que ficaria com ela."""
+
+    attempt: int
+    result_sec: float
+    all_cut: bool = False
+    out: bool = False
 
 
 class CutRun(BaseModel):
@@ -528,6 +627,18 @@ class CutRun(BaseModel):
     result_sec: float = 0.0
     duration_off: bool = Field(default=False, description="Fora da meta ± DURATION_TOLERANCE depois da nova tentativa")
     removed: bool = Field(default=False, description="A IA tirou o clipe (ou a parte) do bloco: fora: true ou tudo cortado")
+    joined: list[str] = Field(
+        default_factory=list, description="Pares contínuos que a IA cortou pela metade, ajustados pelo código"
+    )
+    no_question: str = Field(default="", description="Por que não houve pergunta (1 frase / fala curta): entra inteiro")
+    tries: list[CutAttempt] = Field(default_factory=list, description="Resultado de cada resposta aproveitável")
+    chosen_attempt: Optional[int] = Field(
+        default=None, description="A tentativa usada (a mais perto da meta); 0 = o clipe inteiro, sem cortes"
+    )
+    kept_whole: bool = Field(default=False, description="A IA cortou tudo sem fora: true; o clipe entrou inteiro")
+    target_limit: str = Field(
+        default="", description="A IA disse que não dá para chegar à meta sem prejudicar a fala (o porquê)"
+    )
     notes: str = ""
     discarded: list[Discarded] = Field(default_factory=list)
     attempts: list[str] = Field(default_factory=list)

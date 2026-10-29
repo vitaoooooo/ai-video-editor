@@ -478,6 +478,11 @@ def test_folder_with_three_roles_keeps_every_clip(roles_folder, tmp_path):
         assert needle in text
     assert all((result.json_path.parent / p.file).is_file() for p in roteiro.photos)
     assert roteiro.estimated_tokens > 0 and all(c.estimated_tokens > 0 for c in roteiro.clips)
+    # Movimento por amostra do scan (o editor usa para tirar as pontas de câmera mexida): 2 por segundo, 0–1.
+    for clip in roteiro.clips:
+        times = [t for t, _ in clip.motion]
+        assert times and times == sorted(times) and times[0] > 0 and all(0.0 <= m <= 1.0 for _, m in clip.motion)
+        assert len(times) >= int(clip.duration_sec * 2) - 2
 
     # Segunda execução: nada de IA nem de transcrição.
     calls = len(client.calls)

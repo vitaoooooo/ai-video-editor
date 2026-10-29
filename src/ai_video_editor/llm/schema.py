@@ -43,6 +43,11 @@ class LLMCallConfig(BaseModel):
     thinking: ThinkingLevel = "low"
     temperature: float = 0.2
     timeout_sec: float = Field(default=120.0, gt=0.0)
+    max_output_tokens: Optional[int] = Field(
+        default=None, gt=0,
+        description="Limite de tokens da resposta (None = o do provedor). Só o Ollama aplica (`num_predict`); os "
+        "outros ignoram (no Gemini o raciocínio conta nesse limite)",
+    )
 
 
 class LLMCallMetrics(BaseModel):

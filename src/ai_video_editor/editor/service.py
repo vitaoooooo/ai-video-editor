@@ -8,25 +8,59 @@ exato (sem a lista de erros de uma nova tentativa) + versão do pedido da passad
 modelos e raciocínio. Como o pedido do resumo só contém a seção do clipe no roteiro, mudar o pedido de
 outra passada não refaz os resumos. Respostas inaproveitáveis não vão para o cache.
 
-Meta de cada clipe na 2a (aritmética, sem decisão): a meta do bloco repartida entre os clipes com fala na
-proporção da fala livre de cada um (`meta do clipe = meta do bloco × fala do clipe / fala do bloco`); um
-clipe dividido em partes reparte a sua meta do mesmo jeito.
+Alvo do vídeo (`_resolve_target`): a duração do briefing/CLI; sem ela, a escrita no texto do pedido
+(`material.request_duration`: "uns 8 minutos" = 480 s); sem nenhuma, a que a estrutura escolheu. O do pedido
+acima da fala do material inteiro vira a fala disponível (com aviso). As metas que a IA deu aos blocos são
+reescaladas para somar o alvo, na proporção dela (`_rescale_blocks`).
+
+Meta de cada clipe na 2a (aritmética, sem decisão; `_clip_targets`): clipes sem pergunta de cortes (uma frase
+ou fala até `CUT_MIN_SPEECH_SEC`) entram inteiros e contam a fala toda; o resto da meta do bloco é repartido
+pela fala livre de cada clipe, nunca acima da fala do clipe (o excesso vai para os outros); um clipe dividido
+em partes reparte a sua meta do mesmo jeito.
+
+Ordem de gravação (medida, `_chronological_blocks`): a estrutura é da IA (onde começa cada bloco, título, o que
+fica fora), mas o vídeo segue a ordem de gravação (`EditorMaterial.chronology`: a data de gravação quando o
+catálogo marca todas como confiáveis; senão a ordem do catálogo). Os clipes dos blocos são postos nessa ordem e
+cada bloco vira uma sequência contígua: um bloco da IA com clipes de outro bloco no meio é dividido nas partes
+contíguas (título com "(parte k/n)", meta repartida pela fala, aviso). Se o
+pedido pede outra ordem (`material.FREE_ORDER_PHRASES`: "por tema", "fora de ordem", "ordem livre"...), a ordem da
+IA fica.
 
 A estrutura não precisa usar todos os clipes: um clipe com fala que a IA não pôs em bloco nem em "fora"
-conta como fora ("não escolhido pela IA"), sem nova tentativa e sem bloco extra.
+conta como fora ("não escolhido pela IA"), sem bloco extra. Falta de duração (medida, sem decisão): se a fala
+dos clipes nos blocos fica abaixo de `STRUCTURE_MIN_RATIO` da duração do pedido (a que a IA escolhe sozinha
+não conta: os dois números seriam dela) e há clipes com fala fora dos blocos, UMA pergunta de acréscimo informa
+os números e lista esses clipes (ID, fala, resumo curto); a resposta é a lista dos que entram (vazia vale; código
+fora da lista é ignorado com um aviso). A primeira estrutura nunca perde clipes: o código só acrescenta cada
+escolhido ao bloco do vizinho na ordem de gravação (o anterior; sem ele, o seguinte), com a meta do bloco
+somada da fala do clipe (`_add_to_neighbors`; vale também com ordem livre).
 
 2b (medida, sem decisão): sobra do bloco = alvo do bloco − fala mantida depois da 2a. Bloco com fala sem
 sobra (ou sem alvo) não tem pergunta 2b. Com sobra, o pedido informa a sobra, as posições medidas
 (`validate.insert_positions`: respiro só no começo de um bloco que não é o 1º, ou numa troca de lugar, nunca
 onde a fala continua) e até `INSERT_CANDIDATES` imagens: primeiro as sem fala do próprio bloco, depois as do
 acervo com afinidade medida com os trechos vizinhos das posições de respiro (`material.breath_affinity`),
-depois o resto. 2c: só trechos ditos para a câmera (`validate.talking_sentences`) recebem candidatos.
+depois o resto. 2c: só trechos ditos para a câmera (`validate.talking_sentences`) recebem candidatos, e um
+momento só é candidato (medidas) se (a) é do mesmo momento da viagem (`_cover_refusal`): do mesmo bloco, ou
+com os dois clipes datados a no máximo `COVER_MAX_GAP_SEC` da fala, ou (sem data) do mesmo lugar da fala
+(`material.same_place`); e (b) tem palavra de conteúdo da fala na DESCRIÇÃO dele que não está na imagem de
+quem fala (`validate.speaker_text`): se a pessoa já aparece mostrando aquilo, não cobre. No máximo
+`COVERAGE_CANDIDATES` por trecho, os com mais palavras novas primeiro. Uma cobertura por trecho (validação) e,
+no vídeo inteiro, no máximo `COVER_MAX_RATIO` da duração coberta (`_limit_coverages`: as que passam são
+recusadas da última para a primeira, com aviso). A saída da 2c é limitada pelo número de trechos perguntados
+(`budget.coverage_output_limit`: `num_predict` no Ollama).
 
 Nova tentativa (uma, com a lista de erros): estrutura sem bloco válido; qualquer pergunta da passada 2 com
 metade ou mais dos itens inválida; 2a com todas as frases cortadas sem `fora: true` (`validate.ALL_CUT`) ou
 com a duração fora da meta ± `DURATION_TOLERANCE` (a nova tentativa mostra os números); 2b de bloco sem fala
-que não escolhe nada. Depois dela, a última resposta aproveitável é aceita com os itens válidos (duração
-fora da meta é registrada; tudo cortado de novo = a IA tirou o clipe do bloco, registrado). Fallback neutro
+que não escolhe nada. Depois dela, a última resposta aproveitável é aceita com os itens válidos; na 2a, entre
+as respostas aproveitáveis, a mais perto da meta (`_closest_cut`; uma que corta tudo nunca ganha de uma que
+mantém algo; duração fora da meta é registrada). Só a estrutura ou um `fora: true` explícito tiram um clipe:
+se todas as respostas cortam tudo sem `fora: true`, o clipe entra inteiro com aviso (`ALL_CUT_KEPT`). A nova
+tentativa da 2a por duração diz quantos segundos cortar ou devolver e lista as frases com os segundos (acima
+da meta, as que ficaram; abaixo, as cortadas). Na 2a, os
+pares contínuos (`validate.continuous_groups`) vão marcados no roteiro, e um par cortado pela metade é
+ajustado pela validação (corta ou fica junto). Fallback neutro
 (com aviso) só sem resposta aproveitável: 2a = nada cortado;
 2b = nada a mais (bloco sem fala: todas as imagens dele, em ordem); 2c = sem cobertura. Depois de
 `MAX_CONSECUTIVE_FAILURES` erros seguidos da API (não de validação), a IA não é mais chamada nesta execução
@@ -36,6 +70,7 @@ Cada pedido fica registrado em `EditorRun.requests` com os tokens estimados pelo
 informados pelo provedor (acompanhamento da calibração de `budget.TOKEN_FACTOR`).
 """
 
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,22 +78,30 @@ from typing import Callable, Optional
 
 from pydantic import BaseModel
 
-from ai_video_editor.editor.budget import Budget, tokens
+from ai_video_editor.editor.budget import Budget, coverage_output_limit, tokens
 from ai_video_editor.editor.ids import IdResolver
 from ai_video_editor.editor.material import (
     EditorMaterial,
+    asks_free_order,
     asks_landscape_opening,
     breath_affinity,
-    coverage_matches,
+    common_words,
     library_ranking,
+    matched_words,
+    request_duration,
+    place_key,
+    same_place,
 )
 from ai_video_editor.editor.prompt import (
     COVERAGE_PROMPT_VERSION,
     CUTS_PROMPT_VERSION,
     INSERTS_PROMPT_VERSION,
+    SHORTFALL_SUMMARY_WORDS,
     STRUCTURE_PROMPT_VERSION,
-    STRUCTURE_SUMMARY_WORDS,
     SUMMARY_PROMPT_VERSION,
+    CONTEXT_MAX_CHARS,
+    CONTEXT_SUMMARY_WORDS,
+    NEIGHBOR_WORDS,
     TRECHO_WORDS,
     BlockHeader,
     CoveragePromptInput,
@@ -66,15 +109,21 @@ from ai_video_editor.editor.prompt import (
     CutsPromptInput,
     EditorContext,
     InsertsPromptInput,
+    PREVIOUS_TITLES_MAX_CHARS,
+    StructurePart,
+    StructureShortfall,
+    build_additions_prompt,
     build_coverage_prompt,
     build_cuts_prompt,
     build_inserts_prompt,
     build_structure_prompt,
     build_summary_prompt,
     duration_retry_line,
+    sentence_retry_lines,
     short_text,
 )
 from ai_video_editor.editor.provider import (
+    AdditionsRequest,
     CoverageRequest,
     CutsRequest,
     EditorAI,
@@ -83,23 +132,26 @@ from ai_video_editor.editor.provider import (
     SummaryRequest,
 )
 from ai_video_editor.editor.schema import (
-    COVERAGE_PLACE,
     COVERAGE_SAYS,
     Block,
     CallStats,
     Candidate,
     ClipSummary,
+    CutAttempt,
     ClipSummaryAnswer,
     CoveragesAnswer,
     CutRun,
     CutsAnswer,
     DetailRun,
+    Discarded,
     EditorRun,
     InsertsAnswer,
     KeepRange,
     RequestRecord,
     Skipped,
+    StructureAdditionsAnswer,
     StructureAnswer,
+    StructurePartRun,
     StructureRun,
     SubpassRun,
     SummaryNote,
@@ -110,11 +162,14 @@ from ai_video_editor.editor.validate import (
     RESPIRO_MAX_SEC,
     Usage,
     build_trechos,
+    continuing_sentences,
     insert_positions,
     letters,
     neutral_inserts,
-    neutral_structure,
+    StructureCheck,
+    fallback_structure,
     sentences_sec,
+    speaker_text,
     speech_places,
     take_sentences,
     talking_sentences,
@@ -122,6 +177,7 @@ from ai_video_editor.editor.validate import (
     validate_coverages,
     validate_cuts,
     validate_inserts,
+    validate_additions,
     validate_structure,
 )
 from ai_video_editor.intelligence.exceptions import (
@@ -142,8 +198,35 @@ MAX_CONSECUTIVE_FAILURES = 3
 # Faixa aceita da duração resultante de um clipe na 2a: meta ± 35%. Fora dela, UMA nova tentativa com os
 # números; se ainda ficar fora, aceita e registra (a duração é informação para a IA, não decisão do código).
 DURATION_TOLERANCE = 0.35
+# Clipe com fala livre até isto (ou com uma frase só) não tem pergunta de cortes: entra inteiro. Medido no
+# vlog real: clipes de uma frase (3,6 a 31,6 s) eram cortados inteiros com o motivo copiado do formato, e um
+# clipe curto tem pouco o que cortar sem perder o sentido (a estrutura já decidiu que ele entra).
+CUT_MIN_SPEECH_SEC = 12.0
+# A 2a só é perguntada quando há fala sobrando: fala do clipe (ou do bloco) > meta × isto. Medido no vlog
+# real: clipes que cabiam na meta (30,5 s para 27,3 s) eram cortados até sobrar quase nada.
+CUT_EXCESS_RATIO = 1.15
+FITS_CLIP = "cabe na meta"
+FITS_BLOCK = "o bloco cabe na meta"
+# Aviso de quando todas as respostas da 2a cortaram tudo sem fora: true.
+ALL_CUT_KEPT = "IA cortou tudo sem dizer fora; mantido inteiro"
+# Estrutura com a fala dos clipes escolhidos abaixo desta fração da meta: UMA pergunta de acréscimo informa
+# quanto falta e lista os clipes com fala não usados (a IA pode não acrescentar nenhum).
+STRUCTURE_MIN_RATIO = 0.85
+# Estrutura em partes (`split_parts`), quando a lista inteira não cabe no contexto. A saída de cada parte já está
+# reservada no orçamento (`budget.STRUCTURE_OUTPUT_TOKENS`); além dela, cada parte usa só esta fração do espaço
+# para as linhas (folga para o erro da estimativa e para uma resposta mais longa com muitos clipes em "fora").
+STRUCTURE_PART_ROOM_RATIO = 0.9
+# Tamanho mínimo de uma parte (em clipes): evita uma última parte com 1 ou 2 clipes, sem contexto para decidir.
+STRUCTURE_PART_MIN_CLIPS = 8
+# Corte preferido numa mudança de lugar até esta fração do tamanho ideal da parte (para mais ou para menos).
+STRUCTURE_PART_PLACE_WINDOW = 0.25
 # Candidatos de cobertura listados por trecho na 2c.
 COVERAGE_CANDIDATES = 4
+# Cobertura só do mesmo momento da viagem: com os dois clipes datados, a imagem gravada a no máximo isto da fala
+# (medido no vlog real: drone e paisagem de outro lugar cobriam falas da trilha e da praia).
+COVER_MAX_GAP_SEC = 15 * 60.0
+# Cobertura total no vídeo: no máximo esta fração da duração (as que passam saem da última para a primeira).
+COVER_MAX_RATIO = 0.15
 # Candidatos com letra na 2b de um bloco com fala (imagens do bloco primeiro, depois o acervo). Num bloco sem
 # fala, as imagens do próprio bloco vão todas (elas são o bloco) e o acervo só preenche até este número.
 INSERT_CANDIDATES = 6
@@ -184,6 +267,18 @@ class CallCache:
         tmp.replace(path)
 
 
+class CachedStructure(BaseModel):
+    """Estrutura (de uma parte) no cache: a resposta aceita."""
+
+    answer: StructureAnswer
+
+
+class CachedAdditions(BaseModel):
+    """Resposta da pergunta de acréscimo no cache (a chave é o pedido: a falta e a lista oferecida)."""
+
+    answer: StructureAdditionsAnswer
+
+
 def editor_cache(projects_root: Path) -> CallCache:
     return CallCache(Path(projects_root) / EDITOR_CACHE_DIR)
 
@@ -198,6 +293,8 @@ class Decision:
     problem: Optional[str] = None  # problema extra (duração) que persistiu depois da nova tentativa
     attempts: list[str] = field(default_factory=list)
     estimated: int = 0
+    tries: list[tuple[int, object]] = field(default_factory=list)  # (tentativa, conferência) aproveitáveis
+    chosen: Optional[int] = None  # a tentativa usada
 
 
 def _fmt_sec(seconds: float) -> str:
@@ -236,8 +333,8 @@ class EditorService:
     def identity(self) -> list:
         return [self.ai.provider_name, list(self.ai.model_chain), self.ai.thinking_label]
 
-    def key(self, kind: str, version: str, prompt: str) -> str:
-        return fingerprint("editor", kind, version, prompt, self.identity)
+    def key(self, kind: str, version: str, prompt: str, *extra) -> str:
+        return fingerprint("editor", kind, version, prompt, self.identity, *extra)
 
     def _notice(self, message: str) -> None:
         if self.on_notice is not None:
@@ -299,9 +396,13 @@ class EditorService:
         check_of: Callable[[BaseModel], object],
         stats: CallStats,
         extra_problem: Optional[Callable[[object], Optional[str]]] = None,
+        retry_details: Optional[Callable[[object], list[str]]] = None,
+        choose: Optional[Callable[[list], int]] = None,
     ) -> Decision:
         """Uma pergunta: cache → IA → (recusada) nova tentativa com os erros. `check.unusable` decide se a
-        resposta serve; `check.refused` e `extra_problem` pedem a nova tentativa."""
+        resposta serve; `check.refused` e `extra_problem` pedem a nova tentativa; `retry_details` (com o
+        `extra_problem`) acrescenta linhas de informação à lista da nova tentativa. Sem `choose`, vale a última
+        resposta aproveitável; com ele, a que ele escolher entre as conferências aproveitáveis (em ordem)."""
         prompt = build([])
         decision = Decision(estimated=tokens(prompt))
         key = self.key(kind, version, prompt)
@@ -311,26 +412,36 @@ class EditorService:
             if trial.unusable is None:
                 decision.check, decision.answer, decision.origin = trial, cached, "cache"
                 decision.problem = extra_problem(trial) if extra_problem else None
+                decision.tries, decision.chosen = [(1, trial)], 1
                 stats.cached += 1
                 self._cached(kind, unit, decision.estimated)
                 return decision
         errors: list[str] = []
+        details: list[str] = []
+        usable: list[tuple[int, object, BaseModel, Optional[str]]] = []
         for attempt in range(1, MAX_ATTEMPTS + 1):
             raw, error = self._ask(call, make_request(build(errors)), stats, kind, unit, attempt)
             if raw is not None:
                 trial = check_of(raw)
                 problem = extra_problem(trial) if extra_problem and trial.unusable is None else None
                 if trial.unusable is None:  # aproveitável: vale se a nova tentativa não resolver
-                    decision.check, decision.answer, decision.problem = trial, raw, problem
+                    usable.append((attempt, trial, raw, problem))
                 problems = [p for p in (trial.refused, problem) if p]
                 if not problems:
                     break
                 error = "; ".join(problems) + (": " + "; ".join(trial.errors[:12]) if trial.errors else "")
+                if problem and retry_details is not None:
+                    details = retry_details(trial)
             errors.append(error)
+            errors += details
+            details = []
             decision.attempts.append(error)
             if self.gave_up:
                 break
-        if decision.answer is not None:
+        if usable:
+            k = choose([u[1] for u in usable]) if choose is not None else len(usable) - 1
+            attempt, decision.check, decision.answer, decision.problem = usable[k]
+            decision.tries, decision.chosen = [(u[0], u[1]) for u in usable], attempt
             self.cache.save(kind, key, decision.answer)
         return decision
 
@@ -368,6 +479,7 @@ class EditorService:
             if detail.coverage is not None:
                 run.coverage_stats.add(detail.coverage.stats)
             run.warnings += [f"{detail.unit_id}: {w}" for w in detail.warnings]
+        run.warnings += _limit_coverages(run.details, self.material)
         run.requests = list(self.requests)
         run.effective_model = (
             f"{self.ai.effective_provider}:{self.ai.effective_model_id}" if self.ai.effective_model_id else None
@@ -387,7 +499,8 @@ class EditorService:
         current: list[str] = []
         for moment in material.clip_moments.get(clip_id, []):
             trial = current + [moment.id]
-            if current and tokens(build_summary_prompt(material.section(clip_id, trial), 2, 2)) > available:
+            reserved = "x" * CONTEXT_MAX_CHARS  # o contexto do pedaço anterior também tem que caber
+            if current and tokens(build_summary_prompt(material.section(clip_id, trial), 2, 2, previous=reserved)) > available:
                 parts.append(current)
                 trial = [moment.id]
             current = trial
@@ -400,11 +513,12 @@ class EditorService:
         summary = ClipSummary(clip_id=clip_id, parts=len(parts))
         answers: list[ClipSummaryAnswer] = []
         errors_seen: list[str] = []
+        previous = ""
         for k, moment_ids in enumerate(parts, start=1):
             unit = clip_id + (f" ({k}/{len(parts)})" if len(parts) > 1 else "")
             self._progress(f"resumo {unit}")
             section = material.section(clip_id, moment_ids)
-            prompt = build_summary_prompt(section, k, len(parts))
+            prompt = build_summary_prompt(section, k, len(parts), previous=previous)
             key = self.key("resumos", SUMMARY_PROMPT_VERSION, prompt)
             answer = self.cache.load("resumos", key, ClipSummaryAnswer)
             if answer is not None:
@@ -415,7 +529,7 @@ class EditorService:
                 errors: list[str] = []
                 for attempt in range(1, MAX_ATTEMPTS + 1):
                     request = SummaryRequest(
-                        clip_id=clip_id, prompt=build_summary_prompt(section, k, len(parts), errors),
+                        clip_id=clip_id, prompt=build_summary_prompt(section, k, len(parts), errors, previous),
                         material=material, moment_ids=moment_ids, part=k, parts=len(parts),
                     )
                     answer, error = self._ask(self.ai.summarize, request, stats, "resumo", unit, attempt)
@@ -427,6 +541,7 @@ class EditorService:
                         break
                 errors_seen += errors if answer is None else []
             self.calls_done += 1
+            previous = self._part_context(answer, moment_ids) if len(parts) > 1 else ""
             if answer is not None:
                 answers.append(self._clean_summary(clip_id, answer, summary))
             elif len(parts) > 1:
@@ -437,6 +552,24 @@ class EditorService:
         summary.answer = _join_summaries(answers)
         summary.origin = "cache" if summary.cached_parts == len(parts) else "ia"
         return summary
+
+    def _part_context(self, answer: Optional[ClipSummaryAnswer], moment_ids: Optional[list[str]]) -> str:
+        """Contexto para o próximo pedaço: o resumo deste (se houve) e a última frase dele."""
+        parts = []
+        if answer is not None:
+            parts.append(f"resumo: {short_text(answer.resumo, CONTEXT_SUMMARY_WORDS)}")
+        sentences = self.material.moment_sentences(moment_ids or [])
+        if sentences:
+            parts.append(f"última frase: \"{short_text(sentences[-1].text, NEIGHBOR_WORDS)}\"")
+        return "; ".join(parts)
+
+    def _neighbors(self, part_ids: list[str], ids: list[str]) -> tuple[str, str]:
+        """Frases logo antes e logo depois de uma parte de clipe grande (texto curto, sem código)."""
+        if not part_ids or len(part_ids) == len(ids):
+            return "", ""
+        first, last = ids.index(part_ids[0]), ids.index(part_ids[-1])
+        text = lambda k: short_text(self.material.sentences[ids[k]].text, NEIGHBOR_WORDS)  # noqa: E731
+        return (text(first - 1) if first > 0 else ""), (text(last + 1) if last + 1 < len(ids) else "")
 
     def _clean_summary(self, clip_id: str, answer: ClipSummaryAnswer, summary: ClipSummary) -> ClipSummaryAnswer:
         """Normaliza os IDs dos destaques/problemas (`editor/ids.py`) e tira os que não são do clipe (só
@@ -459,75 +592,72 @@ class EditorService:
 
     # --- E10: estrutura ---
 
-    def structure_lines(self, summaries: dict[str, ClipSummary]) -> list[str]:
-        """Uma linha por clipe, todos os clipes (ID, papel, duração, fala, data e o resumo curto)."""
+    def structure_lines(self, summaries: dict[str, ClipSummary]) -> dict[str, str]:
+        """Clipe → linha (`EditorMaterial.structure_line`), todos os clipes, em ordem de gravação."""
         material = self.material
-        return [
-            material.structure_line(
-                c, summaries[c].answer.resumo if c in summaries and summaries[c].answer else None,
-                STRUCTURE_SUMMARY_WORDS,
-            )
-            for c in material.clip_ids
-        ]
+        return {
+            c: material.structure_line(c, summaries[c].answer.resumo if c in summaries and summaries[c].answer else None)
+            for c in material.chronology()[0]
+        }
 
     def _structure(self, summaries: dict[str, ClipSummary]) -> StructureRun:
         material, context = self.material, self.context
         lines = self.structure_lines(summaries)
+        target = self._requested_target()[0]
         result = StructureRun(origin="ia")
-
-        def prompt_for(errors: Optional[list[str]] = None) -> str:
-            return build_structure_prompt(context, lines, errors)
-
-        prompt = prompt_for()
-        result.estimated_tokens = tokens(prompt)
         self._progress("estrutura")
-        answer: Optional[StructureAnswer] = None
-        check = None
-        if result.estimated_tokens > self.budget.structure_available:
-            result.attempts.append(
-                f"o pedido da estrutura (~{result.estimated_tokens} tokens, uma linha por clipe) não cabe no "
-                f"contexto ({self.budget.num_ctx})"
+        whole = build_structure_prompt(context, list(lines.values()), target_sec=target)
+        spans = [list(lines)] if tokens(whole) <= self.budget.structure_available else self._split_parts(lines, target)
+        speech_total = sum(material.speech_sec(c) for c in lines)
+        checks: list = []
+        answers: list[StructureAnswer] = []
+        titles: list[str] = []
+        for number, clip_ids in enumerate(spans, start=1):
+            part_speech = sum(material.speech_sec(c) for c in clip_ids)
+            part_target = round(target * part_speech / speech_total, 1) if target and speech_total > 0 else None
+            part = None if len(spans) == 1 else StructurePart(
+                number=number, total=len(spans), first_clip=clip_ids[0], last_clip=clip_ids[-1],
+                target_sec=part_target, previous_titles=list(titles),
             )
+            record = StructurePartRun(
+                number=number, clip_ids=clip_ids, target_sec=part_target if part else target,
+                speech_sec=round(part_speech, 3),
+            )
+            check, answer = self._structure_part(lines, clip_ids, part, target, summaries, result, record)
+            result.parts.append(record)
+            checks.append(check)
+            answers.append(answer)
+            titles += [b.title or b.id for b in check.blocks]
+        origins = {p.origin for p in result.parts}
+        result.origin = origins.pop() if len(origins) == 1 else "ia"
+        result.estimated_tokens = sum(p.estimated_tokens for p in result.parts)
+        blocks, result.joins = _join_parts([c.blocks for c in checks], material)
+        result.warnings += result.joins
+        check = StructureCheck(
+            blocks=blocks, out=[o for c in checks for o in c.out], discarded=[d for c in checks for d in c.discarded],
+            not_chosen=[x for c in checks for x in c.not_chosen],
+            normalized=[x for c, p in zip(checks, result.parts) if p.origin != "fallback" for x in c.normalized],
+        )
+        totals = [a.duracao_total_alvo_sec for a in answers if a.duracao_total_alvo_sec]
+        answer = StructureAnswer(
+            duracao_total_alvo_sec=round(sum(totals), 1) if totals else None,
+            notas=" | ".join(a.notas for a in answers if a.notas),
+        )
+        if any(p.origin != "fallback" for p in result.parts):
+            self._additions(check, summaries, result)
+        free = asks_free_order(context.request)
+        if free is not None:
+            result.blocks, result.order = check.blocks, f"a da IA (o pedido diz \"{free}\")"
         else:
-            key = self.key("estrutura", STRUCTURE_PROMPT_VERSION, prompt)
-            cached = self.cache.load("estrutura", key, StructureAnswer)
-            if cached is not None:
-                check = validate_structure(cached, material)
-                if check.blocks:
-                    answer, result.origin = cached, "cache"
-                    result.stats.cached += 1
-                    self._cached("estrutura", "estrutura", result.estimated_tokens)
-            errors: list[str] = []
-            for attempt in range(1, 1 + (0 if answer is not None else MAX_ATTEMPTS)):
-                request = StructureRequest(prompt=prompt_for(errors), material=material, context=context, summaries=summaries)
-                raw, error = self._ask(self.ai.structure, request, result.stats, "estrutura", "estrutura", attempt)
-                if raw is not None:
-                    trial = validate_structure(raw, material)
-                    if trial.blocks:  # aproveitável: a última aproveitável vale se a nova tentativa não resolver
-                        answer, check = raw, trial
-                    if trial.refused is None:
-                        break
-                    error = f"{trial.refused}: " + "; ".join(trial.errors[:12])
-                errors.append(error)
-                result.attempts.append(error)
-                if self.gave_up:
-                    break
-            if answer is not None and result.origin != "cache":
-                self.cache.save("estrutura", key, answer)
-        self.calls_done += 1
-        if answer is None:
-            answer = neutral_structure(material)
-            check = validate_structure(answer, material)
-            result.origin = "fallback"
-            result.warnings.append(
-                "ESTRUTURA PELO FALLBACK NEUTRO (a IA falhou de vez): um bloco por clipe com fala, na ordem do "
-                f"catálogo. Motivo: {result.attempts[-1] if result.attempts else 'sem resposta'}"
-            )
-            self._notice(result.warnings[-1])
-        result.blocks, result.out = check.blocks, check.out
+            result.blocks, order_warnings, how = _chronological_blocks(check.blocks, material)
+            result.order = f"de gravação ({'data de gravação' if how == 'data' else 'ordem do catálogo'})"
+            result.warnings += order_warnings
+        result.added_blocks = {
+            c: f"{b.id} {b.title}".strip() for b in result.blocks for c in b.clip_ids if c in result.added_clip_ids
+        }
+        result.out = check.out
         result.discarded = check.discarded
-        if result.origin != "fallback":
-            result.normalized_ids = check.normalized
+        result.normalized_ids = check.normalized
         result.notes = answer.notas
         if check.not_chosen:
             self._notice(f"estrutura: fora do vídeo ({NOT_CHOSEN}): {', '.join(check.not_chosen)}")
@@ -535,11 +665,224 @@ class EditorService:
             result.warnings.append(f"estrutura: {len(check.discarded)} item(ns) descartado(s) na validação")
         placed = {c for b in result.blocks for c in b.clip_ids} | {o.clipe for o in result.out}
         result.library_clip_ids = [c for c in material.clip_ids if c not in placed]
-        if context.target_sec is not None:
-            result.target_total_sec, result.target_origin = context.target_sec, "pedido"
-        elif answer.duracao_total_alvo_sec and answer.duracao_total_alvo_sec > 0:
-            result.target_total_sec, result.target_origin = answer.duracao_total_alvo_sec, "ia"
+        in_blocks = {c for b in result.blocks for c in b.clip_ids}
+        silent_out = [o.clipe for o in result.out if not material.has_speech(o.clipe)]
+        if silent_out and not result.library_clip_ids:
+            result.warnings.append(
+                f"estrutura: todo o acervo foi para \"fora\" ({', '.join(silent_out)}): a 2b não tem imagens do "
+                "acervo para oferecer como respiro"
+            )
+        result.speech_sec = round(sum(material.speech_sec(c) for c in in_blocks), 3)
+        self._resolve_target(result, answer)
+        _rescale_blocks(result.blocks, result.target_total_sec, material)
         return result
+
+    def _split_parts(self, lines: dict[str, str], target: Optional[float]) -> list[list[str]]:
+        """Clipes (em ordem de gravação) em partes contíguas que cabem no contexto (`split_parts`): o espaço de
+        cada parte é o disponível da estrutura menos o pedido sem a lista (com o cabeçalho de parte e os títulos
+        anteriores no tamanho máximo)."""
+        ids = list(lines)
+        filler = StructurePart(
+            number=99, total=99, first_clip=ids[-1], last_clip=ids[-1], target_sec=target,
+            previous_titles=["x" * PREVIOUS_TITLES_MAX_CHARS],
+        )
+        fixed = tokens(build_structure_prompt(self.context, [], target_sec=target, part=filler))
+        room = self.budget.structure_available - fixed
+        costs = [tokens(lines[c] + "\n") for c in ids]
+        places = [place_key(self.material.clip_place(c)) for c in ids]
+        return [ids[a:b] for a, b in split_parts(costs, places, room)]
+
+    def _structure_part(
+        self, lines: dict[str, str], clip_ids: list[str], part: Optional[StructurePart], target: Optional[float],
+        summaries: dict[str, ClipSummary], result: StructureRun, record: StructurePartRun,
+    ):
+        """Uma pergunta de estrutura (a lista inteira ou uma parte): cache, tentativas e, se a IA falhar de vez,
+        o fallback só desta parte. Devolve (conferência, resposta)."""
+        material, context = self.material, self.context
+        label = "" if part is None else f" (parte {part.number}/{part.total})"
+        unit = "estrutura" if part is None else f"estrutura {part.number}/{part.total}"
+        part_target = target if part is None else part.target_sec
+
+        def prompt_for(errors: Optional[list[str]] = None) -> str:
+            return build_structure_prompt(context, [lines[c] for c in clip_ids], errors, target, part)
+
+        prompt = prompt_for()
+        record.estimated_tokens = tokens(prompt)
+        answer: Optional[StructureAnswer] = None
+        check = None
+        attempts: list[str] = []
+        if record.estimated_tokens > self.budget.structure_available:
+            attempts.append(
+                f"o pedido da estrutura{label} (~{record.estimated_tokens} tokens, uma linha por clipe) não cabe no "
+                f"contexto ({self.budget.num_ctx})"
+            )
+        else:
+            # O alvo e os clipes da parte entram na chave (e no pedido): outra divisão ou outro alvo pergunta de novo.
+            key = self.key("estrutura", STRUCTURE_PROMPT_VERSION, prompt, target, clip_ids, part_target)
+            entry = self.cache.load("estrutura", key, CachedStructure)
+            if entry is not None:
+                trial = validate_structure(entry.answer, material, clip_ids)
+                if trial.blocks:
+                    answer, check, record.origin = entry.answer, trial, "cache"
+                    result.stats.cached += 1
+                    self._cached("estrutura", unit, record.estimated_tokens)
+            errors: list[str] = []
+            for attempt in range(1, 1 + (0 if answer is not None else MAX_ATTEMPTS)):
+                request = StructureRequest(
+                    prompt=prompt_for(errors), material=material, context=context, summaries=summaries,
+                    clip_ids=clip_ids,
+                )
+                raw, error = self._ask(self.ai.structure, request, result.stats, "estrutura", unit, attempt)
+                if raw is not None:
+                    trial = validate_structure(raw, material, clip_ids)
+                    if trial.blocks:  # aproveitável: a última aproveitável vale se a nova tentativa não resolver
+                        answer, check, record.origin = raw, trial, "ia"
+                    if trial.refused is None:
+                        break
+                    error = f"{trial.refused}: " + "; ".join(trial.errors[:12])
+                errors.append(error)
+                attempts.append(error)
+                if self.gave_up:
+                    break
+            if answer is not None and record.origin == "ia":
+                self.cache.save("estrutura", key, CachedStructure(answer=answer))
+        result.attempts += [f"parte {part.number}: {a}" if part else a for a in attempts]
+        self.calls_done += 1
+        if answer is None:
+            answer = fallback_structure(material, clip_ids, part_target)
+            check = validate_structure(answer, material, clip_ids)
+            record.origin = "fallback"
+            record.fallback_reason = attempts[-1] if attempts else "sem resposta"
+            limit = f" ({_fmt_sec(part_target)})" if part_target else ""
+            result.warnings.append(
+                f"ESTRUTURA{label.upper()} PELO FALLBACK (a IA falhou de vez): clipes vizinhos do mesmo lugar num "
+                f"bloco, clipes inteiros em ordem até a meta{limit}. Motivo: {record.fallback_reason}"
+            )
+            self._notice(result.warnings[-1])
+        record.block_titles = [b.title or b.id for b in check.blocks]
+        return check, answer
+
+    def _additions(self, check, summaries: dict[str, ClipSummary], result: StructureRun) -> None:
+        """Falta de duração (medida sobre a estrutura inteira, já juntada): a pergunta de acréscimo, uma vez, com a
+        resposta no cache; os escolhidos entram na estrutura (`_apply_additions`)."""
+        shortfall = self._shortfall(check, summaries)
+        if shortfall is None:
+            return
+        result.speech_sec_first = round(shortfall.speech_sec, 3)
+        result.shortfall = (
+            f"faltam {round(shortfall.missing_sec)} s: meta {round(shortfall.target_sec)} s, "
+            f"fala dos clipes escolhidos {round(shortfall.speech_sec)} s"
+        )
+        prompt = build_additions_prompt(self.context, shortfall)
+        key = self.key("estrutura", STRUCTURE_PROMPT_VERSION, prompt, "acréscimo")
+        entry = self.cache.load("estrutura", key, CachedAdditions)
+        if entry is not None:
+            additions = entry.answer
+            result.stats.cached += 1
+            self._cached("estrutura", "acréscimo", tokens(prompt))
+        elif self.gave_up:
+            return
+        else:
+            self._notice(f"estrutura: {result.shortfall}; pergunta de acréscimo com os clipes com fala não usados")
+            request = AdditionsRequest(
+                prompt=prompt, material=self.material, context=self.context,
+                offered=shortfall.offered, missing_sec=shortfall.missing_sec,
+            )
+            additions, error = self._ask(self.ai.additions, request, result.stats, "estrutura", "acréscimo")
+            if additions is None:
+                result.attempts.append(f"acréscimo: {error}")
+                return
+            self.cache.save("estrutura", key, CachedAdditions(answer=additions))
+        self._apply_additions(check, additions, shortfall, result)
+
+    def _requested_target(self) -> tuple[Optional[float], str, str]:
+        """(alvo, origem, nota) do pedido: a duração do briefing/CLI; sem ela, a escrita no texto do pedido
+        (`material.request_duration`)."""
+        if self.context.target_sec is not None:
+            return self.context.target_sec, "pedido", "duração do briefing ou da CLI"
+        found = request_duration(self.context.request)
+        if found is not None:
+            return found[0], "texto", f"\"{found[1]}\" no texto do pedido"
+        return None, "nenhuma", ""
+
+    def _resolve_target(self, result: StructureRun, answer: StructureAnswer) -> None:
+        """Alvo do vídeo: o do pedido (`_requested_target`) > o que a estrutura escolheu. O do pedido acima da
+        fala disponível no material inteiro vira a fala disponível (com aviso); o da IA fica como ela deu."""
+        material = self.material
+        target, origin, note = self._requested_target()
+        if target is None and answer.duracao_total_alvo_sec and answer.duracao_total_alvo_sec > 0:
+            target, origin, note = answer.duracao_total_alvo_sec, "ia", "escolhido pela estrutura (o pedido não diz a duração)"
+        available = sum(material.speech_sec(c) for c in material.clip_ids)
+        if target is not None and origin != "ia" and 0 < available < target:
+            result.target_requested_sec = target
+            note += f"; passa da fala disponível no material ({round(available)} s): alvo = a fala disponível"
+            result.warnings.append(
+                f"alvo: {clock(target)} pedido, mas o material só tem {clock(available)} de fala; alvo = {clock(available)}"
+            )
+            target = round(available, 1)
+        result.target_total_sec, result.target_origin, result.target_note = target, origin, note  # type: ignore[assignment]
+
+    def _shortfall(self, check, summaries: dict[str, ClipSummary]) -> Optional[StructureShortfall]:
+        """Falta de duração da estrutura (None = sem duração no pedido, sem fala no material, fala ≥
+        `STRUCTURE_MIN_RATIO` da duração pedida ou nada fora dos blocos para oferecer). Só medida: o que
+        fazer é da IA."""
+        material = self.material
+        target = self._requested_target()[0]
+        if target is None or target <= 0 or not any(material.has_speech(c) for c in material.clip_ids):
+            return None
+        in_blocks = {c for b in check.blocks for c in b.clip_ids}
+        speech = sum(material.speech_sec(c) for c in in_blocks)
+        if speech >= STRUCTURE_MIN_RATIO * target:
+            return None
+        out_reason = {o.clipe: o.motivo for o in check.out if o.motivo != NOT_CHOSEN}
+
+        def summary(clip_id: str) -> str:
+            found = summaries.get(clip_id)
+            text = found.answer.resumo if found is not None and found.answer is not None else "(sem resumo)"
+            return short_text(text, SHORTFALL_SUMMARY_WORDS)
+
+        def where(clip_id: str) -> str:
+            return f" (em fora: {short_text(out_reason[clip_id], 6)})" if clip_id in out_reason else ""
+
+        unused = [c for c in material.clip_ids if material.has_speech(c) and c not in in_blocks]
+        blocks = [f"- {b.title or b.id}: {', '.join(b.clip_ids)}" for b in check.blocks]
+
+        def shortfall_of(ids: list[str]) -> StructureShortfall:
+            offers = [
+                (c, f"- {c} · {round(material.speech_sec(c))} s de fala{where(c)} — {summary(c)}")
+                for c in material.chronology(ids)[0]
+            ]
+            return StructureShortfall(
+                target_sec=target, speech_sec=speech, offers=offers, block_lines=blocks, hidden=len(unused) - len(ids),
+            )
+
+        # A lista cabe no contexto: os de mais fala entram primeiro (empate: ordem do catálogo), até não caber.
+        chosen: list[str] = []
+        for c in sorted(unused, key=lambda c: -material.speech_sec(c)):
+            if tokens(build_additions_prompt(self.context, shortfall_of(chosen + [c]))) > self.budget.structure_available:
+                break
+            chosen.append(c)
+        return shortfall_of(chosen) if chosen else None
+
+    def _apply_additions(
+        self, check, additions: StructureAdditionsAnswer, shortfall: StructureShortfall, result: StructureRun
+    ) -> None:
+        """Acrescenta à estrutura (`check`) os clipes escolhidos na pergunta de acréscimo, cada um no bloco do
+        vizinho na ordem de gravação; nenhum clipe da primeira estrutura sai."""
+        material = self.material
+        found = validate_additions(additions, shortfall.offered, material)
+        if found.ignored:
+            result.warnings.append(
+                f"acréscimo: {len(found.ignored)} código(s) fora da lista oferecida ignorado(s): "
+                f"{', '.join(found.ignored)} (oferecidos: {', '.join(shortfall.offered)})"
+            )
+        result.added_clip_ids = found.added
+        if not found.added:
+            return
+        check.blocks, warnings = _add_to_neighbors(check.blocks, found.added, material)
+        result.warnings += warnings
+        check.out = [o for o in check.out if o.clipe not in found.added]
+        check.not_chosen = [c for c in check.not_chosen if c not in found.added]
 
     # --- E11: passada 2 de um bloco ---
 
@@ -568,17 +911,38 @@ class EditorService:
         # 2a: cortes, um pedido por clipe com fala (clipe grande por partes).
         kept: list[str] = []
         removed: list[str] = []
+        speech = {c: sentences_sec(material, free[c]) for c in speaking}
+        fixed = {c: reason for c in speaking if (reason := self._no_cuts_reason(free[c]))}
+        targets = _clip_targets(block.target_sec, speech, set(fixed))
+        if block.target_sec and whole <= block.target_sec * CUT_EXCESS_RATIO:  # o bloco inteiro cabe na meta
+            fits = FITS_CLIP if len(speaking) == 1 else FITS_BLOCK
+            fixed.update({c: fits for c in speaking if c not in fixed})
+        for c in speaking:  # sem fala sobrando além da meta do clipe
+            if c not in fixed and targets.get(c) is not None and speech[c] <= targets[c] * CUT_EXCESS_RATIO:
+                fixed[c] = FITS_CLIP
+        asked = len(speaking) - len(fixed)
         for clip_id in speaking:
             runs_before = len(detail.cut_runs)
             clip_sec = sentences_sec(material, free[clip_id])
-            target = round(block.target_sec * clip_sec / whole, 1) if block.target_sec and whole > 0 else None
-            parts = self._cut_parts(header, clip_id, free[clip_id], target, len(speaking))
+            target = targets.get(clip_id)
+            if clip_id in fixed:  # sem o que cortar: entra inteiro (a estrutura já decidiu que entra)
+                self.calls_done += 1
+                detail.cut_runs.append(CutRun(
+                    unit_id=f"{block.id}.{clip_id}", clip_id=clip_id, origin="ia", available_sec=round(clip_sec, 3),
+                    target_sec=target, result_sec=round(clip_sec, 3), kept_ids=list(free[clip_id]),
+                    no_question=fixed[clip_id],
+                ))
+                kept += free[clip_id]
+                continue
+            parts = self._cut_parts(header, clip_id, free[clip_id], target, asked)
             for k, (moment_ids, ids) in enumerate(parts, start=1):
                 part_target = target
                 if target is not None and len(parts) > 1:
                     part_target = round(target * sentences_sec(material, ids) / clip_sec, 1) if clip_sec > 0 else None
                 unit_id = f"{block.id}.{clip_id}" + (_suffix(k - 1) if len(parts) > 1 else "")
-                cut_run = self._cuts(header, unit_id, clip_id, moment_ids, ids, part_target, k, len(parts), len(speaking))
+                cut_run = self._cuts(
+                    header, unit_id, clip_id, moment_ids, ids, part_target, k, len(parts), asked, free[clip_id],
+                )
                 detail.cut_runs.append(cut_run)
                 kept += cut_run.kept_ids
             if all(r.removed for r in detail.cut_runs[runs_before:]):
@@ -628,7 +992,7 @@ class EditorService:
         if not detail.keep:
             detail.warnings.append("nada ficou neste bloco (sem fala livre e sem imagens)")
 
-        origins = [r.origin for r in detail.cut_runs]
+        origins = [r.origin for r in detail.cut_runs if not r.no_question]
         origins += [s.origin for s in (detail.inserts, detail.coverage) if s.requests]
         if "fallback" in origins:
             detail.origin = "fallback"
@@ -650,10 +1014,11 @@ class EditorService:
         available = self.budget.cuts_available
 
         def prompt(moment_ids: Optional[list[str]], part_ids: list[str], parts: int) -> str:
+            before, after = self._neighbors(part_ids, ids)
             return build_cuts_prompt(CutsPromptInput(
                 header=header, clip_id=clip_id, section=material.section(clip_id, moment_ids),
                 available_sec=sentences_sec(material, part_ids), target_sec=target, part=1, parts=parts,
-                block_clips=block_clips,
+                block_clips=block_clips, continues=continuing_sentences(part_ids, material), before=before, after=after,
             ))
 
         if tokens(prompt(None, ids, 1)) <= available:
@@ -684,6 +1049,14 @@ class EditorService:
             parts[-1] = (moment_ids, [s for s in ids if s in set(part_ids) | set(leftover)])
         return parts
 
+    def _no_cuts_reason(self, ids: list[str]) -> str:
+        """Por que o clipe não tem pergunta de cortes ("" = tem): 1 frase ou fala até `CUT_MIN_SPEECH_SEC`."""
+        if len(ids) == 1:
+            return "1 frase"
+        if sentences_sec(self.material, ids) <= CUT_MIN_SPEECH_SEC:
+            return "fala curta"
+        return ""
+
     def _duration_problem(self, check, target: Optional[float]) -> Optional[str]:
         """Resultado fora da meta ± `DURATION_TOLERANCE` (só informação; None = dentro ou sem meta).
 
@@ -698,16 +1071,29 @@ class EditorService:
             return None
         return duration_retry_line(check.result_sec, target, low, high)
 
+    def _cut_list(self, check, target: Optional[float]) -> list[str]:
+        """Fora da meta: as frases com os segundos para a nova tentativa (acima: as que ficaram, para escolher o
+        que cortar; abaixo: as cortadas, para escolher o que devolver)."""
+        if target is None:
+            return []
+        above = check.result_sec > target
+        material = self.material
+        ids = check.kept if above else [c.sentence_id for c in check.cuts]
+        items = [(sid, sentences_sec(material, [sid]), material.sentences[sid].text) for sid in ids]
+        return sentence_retry_lines(above, items)
+
     def _cuts(
         self, header: BlockHeader, unit_id: str, clip_id: str, moment_ids: Optional[list[str]], ids: list[str],
-        target: Optional[float], part: int, parts: int, block_clips: int,
+        target: Optional[float], part: int, parts: int, block_clips: int, clip_ids: Optional[list[str]] = None,
     ) -> CutRun:
+        """`ids`: as frases desta parte; `clip_ids`: as do clipe inteiro (para as frases vizinhas da parte)."""
         material = self.material
         self._progress(f"cortes {unit_id}")
+        before, after = self._neighbors(ids, clip_ids or ids)
         data = CutsPromptInput(
             header=header, clip_id=clip_id, section=material.section(clip_id, moment_ids),
             available_sec=round(sentences_sec(material, ids), 3), target_sec=target, part=part, parts=parts,
-            block_clips=block_clips,
+            block_clips=block_clips, continues=continuing_sentences(ids, material), before=before, after=after,
         )
         run = CutRun(
             unit_id=unit_id, clip_id=clip_id, moment_ids=moment_ids, origin="ia", available_sec=data.available_sec,
@@ -721,10 +1107,18 @@ class EditorService:
                 target_sec=target,
             ),
             call=self.ai.cuts, check_of=lambda answer: validate_cuts(answer, ids, material), stats=run.stats,
-            extra_problem=lambda check: None if check.removed else self._duration_problem(check, target),
+            # Meta fora com limite_meta: a IA já disse que não dá sem prejudicar a fala; sem nova tentativa.
+            extra_problem=lambda check: None if check.removed or check.limit else self._duration_problem(check, target),
+            retry_details=lambda check: self._cut_list(check, target),
+            choose=lambda checks: _closest_cut(checks, target),
         )
         self.calls_done += 1
         run.estimated_tokens, run.attempts = decision.estimated, decision.attempts
+        run.tries = [
+            CutAttempt(attempt=n, result_sec=c.result_sec, all_cut=not c.out and not c.kept, out=c.out)
+            for n, c in decision.tries
+        ]
+        run.chosen_attempt = decision.chosen
         if decision.estimated > self.budget.cuts_available:
             run.warnings.append(f"o pedido (~{decision.estimated} tokens) passa do disponível ({self.budget.cuts_available}) mesmo dividido")
         check = decision.check
@@ -741,22 +1135,45 @@ class EditorService:
             run.origin = decision.origin  # type: ignore[assignment]
             run.notes = decision.answer.notas
             run.normalized_ids = check.normalized
+            run.target_limit = check.limit
+            problem = decision.problem or (self._duration_problem(check, target) if check.limit else None)
+            # Resposta fora da meta ± tolerância (ou que corta tudo): "sem cortes" também concorre (empate: a IA).
+            if not check.out and target is not None and (problem or not check.kept):
+                whole = validate_cuts(CutsAnswer(), ids, material)
+                gap = abs(check.result_sec - target) if check.kept else math.inf
+                if abs(whole.result_sec - target) < gap:
+                    if not check.kept:
+                        run.kept_whole = True
+                        run.warnings.append(ALL_CUT_KEPT)
+                    else:
+                        run.warnings.append(
+                            f"clipe inteiro ({_fmt_sec(whole.result_sec)}) mais perto da meta que as respostas; usado "
+                            "sem cortes"
+                        )
+                    check, run.chosen_attempt, problem = whole, 0, self._duration_problem(whole, target)
             if decision.attempts and check.discarded:
                 run.warnings.append(f"aceitos os itens válidos; {len(check.discarded)} item(ns) inválido(s) descartado(s)")
-            if decision.problem:
+            if problem:
                 run.duration_off = True
-                run.warnings.append(f"fora da meta depois da nova tentativa, aceito assim ({decision.problem})")
-            if check.removed:
-                run.removed = True
-                why = "fora: true" if check.out else "todas as frases cortadas de novo na nova tentativa"
-                if parts > 1:
-                    run.warnings.append(f"IA tirou a parte {unit_id} do clipe {clip_id} ({why})")
+                if check.limit:
+                    run.warnings.append(f"fora da meta: a IA diz que não dá sem prejudicar a fala ({check.limit})")
                 else:
-                    run.warnings.append(f"IA tirou o clipe {clip_id} ({why})")
+                    run.warnings.append(f"fora da meta depois da nova tentativa, aceito assim ({problem})")
+            if check.removed and not check.out:  # só listas que cortam tudo: tirar o clipe não é da 2a
+                check = validate_cuts(CutsAnswer(), ids, material)
+                run.kept_whole = True
+                run.warnings.append(ALL_CUT_KEPT)
+            elif check.removed:
+                run.removed = True
+                if parts > 1:
+                    run.warnings.append(f"IA tirou a parte {unit_id} do clipe {clip_id} (fora: true)")
+                else:
+                    run.warnings.append(f"IA tirou o clipe {clip_id} (fora: true)")
         if run.removed:
             check.kept, check.result_sec = [], 0.0
         run.cuts, run.kept_ids, run.result_sec = check.cuts, check.kept, check.result_sec
         run.discarded = check.discarded
+        run.joined = list(check.joined)
         run.warnings += [f"cortar descartado ({d.item}): {d.reason}" for d in check.discarded]
         return run
 
@@ -914,21 +1331,16 @@ class EditorService:
                 sub.skipped.append(Skipped(number=trecho.number, reason=NOT_TALKING))
                 continue
             spoken = trecho.model_copy(update={"sentence_ids": talking})
-            speech = " ".join(material.sentences[s].text for s in talking)
-            options = [m for m in pool if m.clip_id != trecho.clip_id]
-            matches = coverage_matches(
-                speech, speech_places(spoken, material), options, COVERAGE_CANDIDATES, COVERAGE_SAYS, COVERAGE_PLACE,
-            )
-            if not matches:
+            found = cover_candidates(spoken, [m for m in pool if m.clip_id != trecho.clip_id], clip_ids, material)
+            if not found:
                 continue
             candidates = []
-            for match in matches:
-                letter = letter_of.setdefault(match.moment.id, letters(len(letter_of) + 1)[-1])
+            for moment, fresh in found[:COVERAGE_CANDIDATES]:
+                letter = letter_of.setdefault(moment.id, letters(len(letter_of) + 1)[-1])
                 candidates.append(Candidate(
-                    letter=letter, moment_id=match.moment.id, clip_id=match.moment.clip_id,
-                    duration_sec=round(match.moment.duration, 3),
-                    source="acervo" if match.moment.clip_id in structure.library_clip_ids else "outro clipe",
-                    kind=match.kind, words=match.words,
+                    letter=letter, moment_id=moment.id, clip_id=moment.clip_id, duration_sec=round(moment.duration, 3),
+                    source="acervo" if moment.clip_id in structure.library_clip_ids else "outro clipe",
+                    kind=COVERAGE_SAYS, words=fresh,
                 ))
             questions[trecho.number] = candidates
             texts[trecho.number] = CoverageQuestion(
@@ -969,6 +1381,7 @@ class EditorService:
                 build=lambda errors, data=data: build_coverage_prompt(data, errors),
                 make_request=lambda prompt, asked=asked: CoverageRequest(
                     unit_id=unit, prompt=prompt, material=material, trechos=trechos, questions=asked,
+                    max_output_tokens=coverage_output_limit(len(asked)),
                 ),
                 call=self.ai.coverages,
                 check_of=lambda answer, asked=asked: validate_coverages(answer, asked, trechos, material, usage),
@@ -992,11 +1405,287 @@ class EditorService:
             sub.coverages += check.coverages
             sub.nones += check.nones
             sub.discarded += check.discarded
+            if check.ignored:
+                sub.warnings.append(
+                    f"{len(check.ignored)} itens para trechos não perguntados ignorados "
+                    f"(trechos perguntados: {', '.join(str(n) for n in asked)})"
+                )
             sub.warnings += [f"cobertura descartada ({d.item}): {d.reason}" for d in check.discarded]
             _replace_usage(usage, check.usage)
         self.calls_done += 1
         sub.origin = "fallback" if "fallback" in origins else ("cache" if all(o == "cache" for o in origins) else "ia")
         return sub
+
+
+def cover_refusal(moment: Moment, spoken: Trecho, block_clip_ids: list[str], material: EditorMaterial) -> Optional[str]:
+    """Regra (a) da 2c: por que o momento não é do mesmo momento da viagem que a fala (None = é). Do mesmo bloco;
+    ou, com os dois clipes datados, gravado a no máximo `COVER_MAX_GAP_SEC` da fala; ou, sem data (em algum dos
+    dois), do mesmo lugar de um momento da fala (`material.same_place`)."""
+    if moment.clip_id in block_clip_ids:
+        return None
+    image, voice = material.clips[moment.clip_id], material.clips[spoken.clip_id]
+    if image.recorded_at is not None and voice.recorded_at is not None:
+        first = material.sentences[spoken.sentence_ids[0]]
+        gap = abs(
+            image.recorded_at.timestamp() + moment.start_sec - voice.recorded_at.timestamp() - first.start_sec
+        )
+        if gap <= COVER_MAX_GAP_SEC:
+            return None
+        return f"gravada a {gap / 60:.0f} min da fala (máximo {COVER_MAX_GAP_SEC / 60:.0f} min)"
+    places = speech_places(spoken, material)
+    if moment.place and any(same_place(moment.place, p) for p in places):
+        return None
+    return f"sem data e de outro lugar ({moment.place or 'sem lugar'} × {', '.join(places) or 'sem lugar'})"
+
+
+def cover_words(spoken: Trecho, moment: Moment, material: EditorMaterial) -> tuple[list[str], list[str]]:
+    """Regra (b) da 2c: (palavras da fala na descrição da imagem, as que a imagem de quem fala ainda não mostra)."""
+    speech = " ".join(material.sentences[s].text for s in spoken.sentence_ids)
+    speaker = speaker_text(spoken.sentence_ids, material)
+    said = common_words(speech, moment.description)
+    return said, [w for w in said if not matched_words(w, speaker)]
+
+
+def cover_candidates(
+    spoken: Trecho, options: list[Moment], block_clip_ids: list[str], material: EditorMaterial
+) -> list[tuple[Moment, list[str]]]:
+    """Momentos que passam nas regras (a) e (b), com as palavras novas; mais palavras primeiro, empate na ordem."""
+    found: list[tuple[int, int, Moment, list[str]]] = []
+    for n, moment in enumerate(options):
+        if cover_refusal(moment, spoken, block_clip_ids, material) is not None:
+            continue
+        fresh = cover_words(spoken, moment, material)[1]
+        if fresh:
+            found.append((-len(fresh), n, moment, fresh))
+    found.sort(key=lambda item: item[:2])
+    return [(moment, fresh) for _, _, moment, fresh in found]
+
+
+def _coverage_sec(coverage, material: EditorMaterial) -> float:
+    """Segundos cobertos (medida): da 1ª à última frase coberta, no máximo a soma das imagens."""
+    first, last = material.sentences[coverage.from_sentence], material.sentences[coverage.to_sentence]
+    images = sum(material.moments[m].duration for m in coverage.moment_ids)
+    return max(0.0, min(last.end_sec - first.start_sec, images))
+
+
+def _limit_coverages(details: list[DetailRun], material: EditorMaterial) -> list[str]:
+    """Cobertura total ≤ `COVER_MAX_RATIO` da duração do vídeo (soma de `DetailRun.result_sec`): as que passam
+    são recusadas da última para a primeira (descarte registrado na 2c do bloco). Devolve os avisos."""
+    video = sum(d.result_sec for d in details)
+    limit = COVER_MAX_RATIO * video
+    placed = [(d, c, _coverage_sec(c, material)) for d in details for c in d.coverages]
+    total = sum(sec for _, _, sec in placed)
+    warnings: list[str] = []
+    for detail, coverage, sec in reversed(placed):
+        if total <= limit + 1e-6:
+            break
+        total -= sec
+        detail.coverages = [c for c in detail.coverages if c is not coverage]
+        text = f"{coverage.from_sentence}–{coverage.to_sentence} ← {', '.join(coverage.moment_ids)}"
+        reason = f"passa do limite de cobertura do vídeo ({COVER_MAX_RATIO:.0%} de {round(video)} s = {limit:.0f} s)"
+        if detail.coverage is not None:
+            detail.coverage.coverages = [c for c in detail.coverage.coverages if c is not coverage]
+            detail.coverage.discarded.append(Discarded(kind="cobertura", item=text, reason=reason))
+        warnings.append(f"{detail.unit_id}: cobertura {text} ({sec:.1f} s) recusada: {reason}")
+    return list(reversed(warnings))
+
+
+def _closest_cut(checks: list, target: Optional[float]) -> int:
+    """A resposta da 2a usada (validação, não decisão: todas são da IA): um fora: true explícito (o último)
+    vale; senão, entre as que mantêm alguma frase, a mais perto da meta (empate: a primeira; sem meta, a
+    última). Só as que cortam tudo: a última (o clipe entra inteiro, com aviso). Se a usada ficar fora da meta ±
+    `DURATION_TOLERANCE`, `_cuts` ainda compara com o clipe inteiro ("sem cortes")."""
+    outs = [k for k, c in enumerate(checks) if c.out]
+    if outs:
+        return outs[-1]
+    keeping = [k for k, c in enumerate(checks) if c.kept]
+    if not keeping:
+        return len(checks) - 1
+    if target is None:
+        return keeping[-1]
+    return min(keeping, key=lambda k: (abs(checks[k].result_sec - target), k))
+
+
+def _clip_targets(block_target: Optional[float], speech: dict[str, float], fixed: set[str]) -> dict[str, float]:
+    """Meta de cada clipe com fala do bloco (aritmética, sem decisão): os sem pergunta (`fixed`) entram com a
+    fala inteira; o resto da meta do bloco é repartido pela fala de cada clipe, e nenhuma meta passa da fala do
+    clipe (o excesso vai para os outros, na mesma proporção). Sem meta do bloco: {} (sem meta)."""
+    if not block_target or sum(speech.values()) <= 0:
+        return {}
+    targets = {c: speech[c] for c in fixed}
+    remaining = block_target - sum(targets.values())
+    open_ = [c for c in speech if c not in fixed]
+    while open_:
+        total = sum(speech[c] for c in open_)
+        share = {c: max(remaining, 0.0) * speech[c] / total if total > 0 else 0.0 for c in open_}
+        over = [c for c in open_ if share[c] > speech[c]]
+        if not over:
+            targets.update(share)
+            break
+        for c in over:
+            targets[c] = speech[c]
+            remaining -= speech[c]
+            open_.remove(c)
+    return {c: round(v, 1) for c, v in targets.items()}
+
+
+def _block_content_sec(block: Block, material: EditorMaterial) -> float:
+    """Fala dos clipes do bloco (sem fala: a duração dos clipes)."""
+    speech = sum(material.speech_sec(c) for c in block.clip_ids)
+    return speech if speech > 0 else sum(material.clips[c].duration_sec for c in block.clip_ids)
+
+
+def _rescale_blocks(blocks: list[Block], total: Optional[float], material: EditorMaterial) -> None:
+    """Metas dos blocos reescaladas para somar o alvo, na proporção que a IA deu (bloco sem meta pesa o
+    conteúdo dele). Sem alvo ou sem nenhuma meta da IA, nada muda. A meta da IA fica em `ai_target_sec`."""
+    if not total or total <= 0 or not any(b.target_sec for b in blocks):
+        return
+    weights = {b.id: b.target_sec if b.target_sec and b.target_sec > 0 else _block_content_sec(b, material) for b in blocks}
+    weight_sum = sum(weights.values())
+    if weight_sum <= 0:
+        return
+    for block in blocks:
+        block.ai_target_sec = block.target_sec
+        block.target_sec = round(total * weights[block.id] / weight_sum, 1)
+
+
+def _add_to_neighbors(blocks: list[Block], added: list[str], material: EditorMaterial) -> tuple[list[Block], list[str]]:
+    """Cópia dos blocos com cada clipe acrescentado no bloco do vizinho na ordem de gravação (o anterior entre os
+    clipes já nos blocos; sem ele, o seguinte), logo depois (ou antes) dele; a meta do bloco (se houver) soma a
+    fala do clipe. Devolve os blocos e um aviso por clipe."""
+    blocks = [b.model_copy(update={"clip_ids": list(b.clip_ids)}) for b in blocks]
+    order, _ = material.chronology([c for b in blocks for c in b.clip_ids] + list(added))
+    rank = {c: n for n, c in enumerate(order)}
+    owner = {c: b for b in blocks for c in b.clip_ids}
+    warnings: list[str] = []
+    for c in sorted(added, key=rank.__getitem__):
+        before = [x for x in owner if rank[x] < rank[c]]
+        neighbor = max(before, key=rank.__getitem__) if before else min(owner, key=rank.__getitem__)
+        block = owner[neighbor]
+        at = block.clip_ids.index(neighbor)
+        block.clip_ids.insert(at + 1 if before else at, c)
+        if block.target_sec:
+            block.target_sec = round(block.target_sec + material.speech_sec(c), 1)
+        owner[c] = block
+        warnings.append(
+            f'acréscimo: {c} entrou no bloco de {neighbor} ("{block.title or block.id}"), o vizinho na ordem de gravação'
+        )
+    return blocks, warnings
+
+
+def split_parts(costs: list[int], places: list[str], room: int) -> list[tuple[int, int]]:
+    """Divisão da lista da estrutura em partes contíguas `[a, b)` (medida, sem decisão: os blocos continuam da IA).
+
+    `costs`: tokens de cada linha; `places`: lugar normalizado de cada clipe; `room`: tokens para as linhas num
+    pedido. Cada parte usa até `STRUCTURE_PART_ROOM_RATIO` do espaço e tem pelo menos `STRUCTURE_PART_MIN_CLIPS`
+    clipes (menos só se não houver clipes para isso). O menor número de partes que cabe; cada corte perto do
+    tamanho igual para todas, preferindo uma mudança de lugar (os dois vizinhos com lugar, diferentes) até
+    `STRUCTURE_PART_PLACE_WINDOW` do tamanho ideal, para não partir uma cena no meio."""
+    count = len(costs)
+    capacity = int(room * STRUCTURE_PART_ROOM_RATIO)
+    if count == 0:
+        return []
+    if capacity <= 0 or max(costs) > capacity:
+        return [(0, count)]  # nem o pedido sem a lista (ou uma linha) cabe: dividir não resolve; o pedido é recusado
+    prefix = [0]
+    for cost in costs:
+        prefix.append(prefix[-1] + cost)
+
+    def attempt(parts: int) -> Optional[list[tuple[int, int]]]:
+        minimum = max(1, min(STRUCTURE_PART_MIN_CLIPS, count // parts))
+        spans, start = [], 0
+        for left in range(parts, 1, -1):  # `left` partes por fazer, contando esta
+            ideal = (prefix[count] - prefix[start]) / left
+            ends = [
+                e for e in range(start + minimum, count - minimum * (left - 1) + 1)
+                if prefix[e] - prefix[start] <= capacity and prefix[count] - prefix[e] <= capacity * (left - 1)
+            ]
+            if not ends:
+                return None
+            near = [e for e in ends if abs(prefix[e] - prefix[start] - ideal) <= STRUCTURE_PART_PLACE_WINDOW * ideal]
+            changes = [e for e in near if places[e - 1] and places[e] and places[e - 1] != places[e]]
+            end = min(changes or ends, key=lambda e: (abs(prefix[e] - prefix[start] - ideal), e))
+            spans.append((start, end))
+            start = end
+        if prefix[count] - prefix[start] > capacity:
+            return None
+        return spans + [(start, count)]
+
+    for parts in range(max(1, math.ceil(prefix[count] / capacity)), count + 1):
+        found = attempt(parts)
+        if found is not None:
+            return found
+    return [(0, count)]  # inalcançável com toda linha ≤ capacidade (uma por parte sempre cabe)
+
+
+def _join_parts(parts: list[list[Block]], material: EditorMaterial) -> tuple[list[Block], list[str]]:
+    """Blocos de todas as partes, em ordem, renumerados (B01...). O primeiro bloco de uma parte com o mesmo lugar
+    (normalizado) do último bloco da anterior (o último clipe de um × o primeiro do outro) vira um bloco só, com as
+    metas somadas; devolve os blocos e uma linha por junção."""
+    joined: list[Block] = []
+    joins: list[str] = []
+    for k, blocks in enumerate(parts):
+        for i, block in enumerate(blocks):
+            block = block.model_copy(update={"clip_ids": list(block.clip_ids)})
+            if i == 0 and k > 0 and joined:
+                previous = joined[-1]
+                place = material.clip_place(block.clip_ids[0])
+                if place_key(place) and place_key(material.clip_place(previous.clip_ids[-1])) == place_key(place):
+                    joins.append(
+                        f"junção: \"{previous.title or previous.id}\" (fim da parte {k}) e \"{block.title or block.id}\" "
+                        f"(começo da parte {k + 1}) são do mesmo lugar ({place}): um bloco só"
+                    )
+                    previous.clip_ids += block.clip_ids
+                    targets = [t for t in (previous.target_sec, block.target_sec) if t]
+                    previous.target_sec = round(sum(targets), 1) if targets else None
+                    continue
+            joined.append(block)
+    for n, block in enumerate(joined, start=1):
+        block.id = f"B{n:02d}"
+    return joined, joins
+
+
+def _chronological_blocks(blocks: list[Block], material: EditorMaterial) -> tuple[list[Block], list[str], str]:
+    """Blocos em ordem de gravação, cada um uma sequência contígua de clipes (ver o topo do módulo). Devolve os
+    blocos novos (B01... na ordem), os avisos e como a ordem foi medida ("data" ou "catálogo")."""
+    order, how = material.chronology([c for b in blocks for c in b.clip_ids])
+    owner = {c: k for k, b in enumerate(blocks) for c in b.clip_ids}
+    share: dict[str, Optional[float]] = {}
+    for block in blocks:  # a meta de cada bloco repartida pelos clipes (pela fala; sem fala, pela duração)
+        weights = {c: material.speech_sec(c) for c in block.clip_ids}
+        if sum(weights.values()) <= 0:
+            weights = {c: material.clips[c].duration_sec for c in block.clip_ids}
+        total = sum(weights.values())
+        for c in block.clip_ids:
+            share[c] = block.target_sec * weights[c] / total if block.target_sec and total > 0 else None
+    warnings: list[str] = []
+    runs: list[tuple[int, list[str]]] = []
+    for c in order:
+        if runs and runs[-1][0] == owner[c]:
+            runs[-1][1].append(c)
+        else:
+            runs.append((owner[c], [c]))
+    parts = {k: sum(1 for r, _ in runs if r == k) for k, _ in runs}
+    seen: dict[int, int] = {}
+    result: list[Block] = []
+    for k, clip_ids in runs:
+        source = blocks[k]
+        seen[k] = seen.get(k, 0) + 1
+        title = source.title if parts[k] == 1 else f"{source.title or source.id} (parte {seen[k]}/{parts[k]})"
+        shares = [share[c] for c in clip_ids if share[c] is not None]
+        result.append(Block(
+            id=f"B{len(result) + 1:02d}", title=title, subject=source.subject, clip_ids=clip_ids,
+            target_sec=round(sum(shares), 1) if shares else None,
+            ai_block=f"{source.id} {source.title}".strip() if parts[k] > 1 else "",
+        ))
+    for k, block in enumerate(blocks):
+        if parts.get(k, 0) > 1:
+            pieces = " | ".join(", ".join(ids) for r, ids in runs if r == k)
+            warnings.append(
+                f"ordem: o bloco \"{block.title or block.id}\" da IA juntava momentos diferentes da gravação "
+                f"({pieces}): dividido em {parts[k]} partes"
+            )
+    return result, warnings, how
 
 
 def _suffix(k: int) -> str:
@@ -1055,16 +1744,14 @@ def _coverage_trecho_line(trecho: Trecho, material: EditorMaterial) -> str:
 
 
 def _coverage_line(candidate: Candidate, material: EditorMaterial) -> str:
-    """`C: descrição · lugar: lago · 9,0s · D001 [problemas] — mostra o que é dito; em comum: lago`"""
+    """`C: descrição · lugar: lago · 9,0s · D001 [problemas] — em comum: lago` (palavras da fala na descrição que a
+    imagem de quem fala não mostra)."""
     moment = material.moments[candidate.moment_id]
     parts = [moment.description or "(sem descrição)"]
     if moment.place:
         parts.append(f"lugar: {moment.place}")
     parts += [_fmt_sec(moment.duration), moment.clip_id]
-    return (
-        f"{candidate.letter}: {' · '.join(parts)}{_issues(moment)} — {candidate.kind}; "
-        f"em comum: {', '.join(candidate.words)}"
-    )
+    return f"{candidate.letter}: {' · '.join(parts)}{_issues(moment)} — em comum: {', '.join(candidate.words)}"
 
 
 def _join_summaries(answers: list[ClipSummaryAnswer]) -> ClipSummaryAnswer:

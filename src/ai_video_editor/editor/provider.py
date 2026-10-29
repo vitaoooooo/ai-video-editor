@@ -17,6 +17,7 @@ from ai_video_editor.editor.schema import (
     CoveragesAnswer,
     CutsAnswer,
     InsertsAnswer,
+    StructureAdditionsAnswer,
     StructureAnswer,
     Trecho,
 )
@@ -39,6 +40,18 @@ class StructureRequest:
     material: EditorMaterial
     context: EditorContext
     summaries: dict[str, ClipSummary] = field(default_factory=dict)
+    clip_ids: Optional[list[str]] = None  # os clipes perguntados (uma parte da estrutura); None = todos
+
+
+@dataclass
+class AdditionsRequest:
+    """Pergunta de acréscimo da estrutura (falta de duração): os clipes com fala não usados oferecidos."""
+
+    prompt: str
+    material: EditorMaterial
+    context: EditorContext
+    offered: list[str] = field(default_factory=list)  # clipes oferecidos, em ordem de gravação
+    missing_sec: float = 0.0
 
 
 @dataclass
@@ -78,6 +91,7 @@ class CoverageRequest:
     material: EditorMaterial
     trechos: list[Trecho]
     questions: dict[int, list[Candidate]]  # trecho → candidatos com letra
+    max_output_tokens: Optional[int] = None  # limite da resposta (`budget.coverage_output_limit`)
 
 
 class EditorAI(ABC):
@@ -109,6 +123,9 @@ class EditorAI(ABC):
 
     @abstractmethod
     def structure(self, request: StructureRequest) -> StructureAnswer: ...
+
+    @abstractmethod
+    def additions(self, request: AdditionsRequest) -> StructureAdditionsAnswer: ...
 
     @abstractmethod
     def cuts(self, request: CutsRequest) -> CutsAnswer: ...

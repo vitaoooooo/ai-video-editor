@@ -451,6 +451,8 @@ class OllamaLLMClient(StructuredLLMClient):
             "stream": False,
             "options": {"num_ctx": self.num_ctx, "temperature": config.temperature},
         }
+        if config.max_output_tokens is not None:
+            payload["options"]["num_predict"] = config.max_output_tokens
         if format_mode == "schema":
             payload["format"] = json_schema(schema)
         if self.keep_alive is not None:
