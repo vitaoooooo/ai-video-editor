@@ -19,9 +19,12 @@ Passada 2, três perguntas por bloco; cada item sozinho (o inválido é descarta
   para respiro, `own_positions` para imagem do bloco, medidas por `insert_positions`); letra da lista, no
   máximo uma vez; `duracao_sec` maior que o momento vira o momento inteiro (com aviso); o trecho do arquivo
   não pode estar no vídeo. Candidato do bloco entra como momento; do acervo, como respiro: no máximo
-  `RESPIRO_MAX_SEC` (centrado no momento), nunca dois respiros seguidos, e a soma das inclusões não passa
-  da sobra do bloco (os respiros que passam são recusados do último para o primeiro).
-- 2c coberturas (`validate_coverages`): trecho perguntado, no máximo uma vez; "nenhuma" vale; letra entre os
+  `RESPIRO_MAX_SEC`, nunca dois respiros seguidos, e a soma das inclusões não passa da sobra do bloco (os
+  respiros que passam são recusados do último para o primeiro). O trecho do arquivo é a janela estável do
+  momento (`steady.steady_window`: sem as pontas de câmera mexida e, quando a imagem é mais longa que o que
+  entra, a janela de menor movimento; sem medidas, o respiro fica centrado e a inclusão começa no momento).
+- 2c coberturas (`validate_coverages`): trecho perguntado, no máximo uma vez (itens para trechos não perguntados
+  são ignorados juntos, sem contar como inválidos: o modelo às vezes continua a lista em loop); "nenhuma" vale; letra entre os
   candidatos DAQUELE trecho, no máximo uma vez no bloco; **evidência**: todas as palavras de conteúdo de
   `palavra` estão na fala do trecho e na descrição/lugar do momento ("mostra o que é dito"; as tags não
   valem) ou no lugar do momento e no lugar de um momento da fala ("mostra o lugar"); sem acento/caixa, mesmo
@@ -31,7 +34,9 @@ Passada 2, três perguntas por bloco; cada item sozinho (o inválido é descarta
   Sem palavra em comum que valha, vale a **correspondência explicada**: `mostra` (o que a imagem mostra) tem
   palavra de conteúdo na descrição/lugar do momento (a evidência visual continua obrigatória) e `porque` cita
   palavra de conteúdo da fala do trecho (a cobertura começa na frase com essa palavra). Faltando uma das duas,
-  o item é descartado e o trecho fica sem cobertura.
+  o item é descartado e o trecho fica sem cobertura. Nos dois caminhos, a palavra da fala não pode estar na
+  imagem de quem fala (`speaker_text`: a descrição dos momentos do trecho): se a imagem da pessoa já mostra
+  aquilo, não cobre.
 
 Antes de tudo, os IDs da 2a passam por `editor/ids.py` (`P009.S025` → `S025` só se P009 é o clipe da frase;
 caixa, espaços, zeros à esquerda e lixo de markdown); as trocas ficam em `normalized`. ID recusado leva na
@@ -72,6 +77,7 @@ from ai_video_editor.editor.schema import (
     StructureAnswer,
     Trecho,
 )
+from ai_video_editor.editor.steady import steady_range, steady_window
 
 # Sobreposição tolerada entre dois usos do mesmo arquivo (tempos do Whisper e das fotos não coincidem).
 OVERLAP_TOLERANCE_SEC = 0.25
@@ -484,14 +490,23 @@ class InsertsCheck(_Check):
         return super().unusable
 
 
-def _moment_span(moment, duration: Optional[float]) -> tuple[float, float]:
-    length = moment.duration if duration is None else min(duration, moment.duration)
-    return moment.start_sec, round(moment.start_sec + length, 3)
+def moment_span(moment, duration: Optional[float], material: EditorMaterial) -> tuple[float, float]:
+    """Trecho de uma imagem do bloco incluída: o momento sem as pontas de câmera mexida (sem duração pedida) ou a
+    janela estável da duração pedida (`steady.steady_window`); sem medidas, a partir do início do momento."""
+    a, b = steady_range(material, moment.clip_id, moment.start_sec, moment.end_sec)
+    if duration is None or duration >= b - a:
+        return a, b
+    if not material.clips[moment.clip_id].motion:
+        return a, round(a + duration, 3)
+    return steady_window(material, moment.clip_id, a, b, duration)
 
 
-def breath_span(moment, duration: Optional[float] = None) -> tuple[float, float]:
-    """Trecho do respiro no clipe: no máximo `RESPIRO_MAX_SEC` (e a duração pedida), centrado no momento."""
+def breath_span(moment, duration: Optional[float] = None, material: Optional[EditorMaterial] = None) -> tuple[float, float]:
+    """Trecho do respiro no clipe: no máximo `RESPIRO_MAX_SEC` (e a duração pedida), na janela estável do momento
+    (`steady.steady_window`; sem medidas ou sem `material`, centrado no momento)."""
     length = min(moment.duration, RESPIRO_MAX_SEC, duration if duration is not None else moment.duration)
+    if material is not None:
+        return steady_window(material, moment.clip_id, moment.start_sec, moment.end_sec, length)
     start = moment.start_sec + (moment.duration - length) / 2
     return round(start, 3), round(start + length, 3)
 
@@ -566,7 +581,7 @@ def validate_inserts(
                     "entra a imagem inteira"
                 )
             duration = None
-        start, end = breath_span(moment, duration) if breath else _moment_span(moment, duration)
+        start, end = breath_span(moment, duration, material) if breath else moment_span(moment, duration, material)
         clash = state.conflict(moment.clip_id, start, end) if moment.id not in state.moments else "já usado"
         if not clash:
             for _, (clip_id, a, b) in accepted:
@@ -577,15 +592,16 @@ def validate_inserts(
             continue
         if breath and moment.duration > RESPIRO_MAX_SEC and (duration is None or duration > RESPIRO_MAX_SEC):
             check.warnings.append(
-                f"respiro {raw.letra} ({moment.id}): {moment.duration:.1f}s cortado para {end - start:.1f}s, no centro "
-                f"do momento (respiro = no máximo {RESPIRO_MAX_SEC:g} s)"
+                f"respiro {raw.letra} ({moment.id}): {moment.duration:.1f}s cortado para {end - start:.1f}s, na janela "
+                f"estável do momento ({start:.1f}–{end:.1f} s; respiro = no máximo {RESPIRO_MAX_SEC:g} s)"
             )
         used.add(raw.letra)
         previous_breath[position] = breath
+        trimmed = not breath and (start, end) != (moment.start_sec, round(moment.start_sec + (duration or moment.duration), 3))
         choice = InsertChoice(
             after_trecho=position, letter=raw.letra, moment_id=moment.id,
-            duration_sec=round(end - start, 3) if breath else duration, start_sec=start if breath else None,
-            breath=breath,
+            duration_sec=round(end - start, 3) if breath or trimmed else duration,
+            start_sec=start if breath or trimmed else None, breath=breath,
         )
         accepted.append((choice, (moment.clip_id, start, end)))
     if spare_sec is not None:
@@ -645,6 +661,16 @@ def speech_places(trecho: Trecho, material: EditorMaterial) -> list[str]:
     return places
 
 
+def speaker_text(sentence_ids: list[str], material: EditorMaterial) -> str:
+    """O que a imagem de quem fala já mostra: a descrição dos momentos que as frases atravessam."""
+    seen: list[str] = []
+    for sid in sentence_ids:
+        for moment_id in material.sentences[sid].moment_ids:
+            if moment_id not in seen:
+                seen.append(moment_id)
+    return " ".join(material.moments[m].description for m in seen if m in material.moments)
+
+
 def talking_sentences(trecho: Trecho, material: EditorMaterial) -> list[str]:
     """Frases do trecho que começam num momento marcado "falando para a câmera" (as únicas que podem ser
     cobertas: nas outras, a própria imagem já mostra o assunto)."""
@@ -693,6 +719,13 @@ class CoverageCheck(_Check):
     coverages: list[CoverageChoice] = field(default_factory=list)
     nones: list[int] = field(default_factory=list)
     usage: Optional[Usage] = None
+    ignored: list[str] = field(default_factory=list)  # trechos não perguntados que vieram na resposta
+
+    @property
+    def refused(self) -> Optional[str]:
+        if self.ignored and not (self.coverages or self.nones or self.discarded):
+            return f"nenhum item para os trechos perguntados (vieram só trechos não perguntados: {', '.join(self.ignored[:8])})"
+        return super().refused
 
 
 def validate_coverages(
@@ -711,9 +744,8 @@ def validate_coverages(
     for raw in answer.coberturas:
         number = raw.trecho
         if number is None or number != int(number) or int(number) not in questions:
-            asked = ", ".join(str(n) for n in questions)
-            shown = int(number) if number is not None and number == int(number) else number
-            check.drop("cobertura", raw, f"trecho {shown} não foi perguntado (trechos: {asked})")
+            check.items -= 1  # ignorado (um aviso para todos), não inválido
+            check.ignored.append(str(int(number) if number is not None and number == int(number) else number))
             continue
         number = int(number)
         if number in seen_trechos:
@@ -736,8 +768,11 @@ def validate_coverages(
         moment = material.moments[candidate.moment_id]
         talking = talking_sentences(trecho, material) or trecho.sentence_ids
         speech = " ".join(material.sentences[s].text for s in talking)
+        speaker = speaker_text(talking, material)
         word = first_words(raw.palavra)
         literal = _literal_problem(word, candidate, moment, trecho, speech, raw.letra, number, material)
+        if literal is None and matched_words(word, speaker):
+            literal = f"palavra {word!r} já aparece na imagem de quem fala (\"{first_words(speaker, 12)}\"): não cobre"
         semantic = False
         if literal is not None:
             if not (raw.mostra or raw.porque):
@@ -745,14 +780,14 @@ def validate_coverages(
                 continue
             # Correspondência explícita: o que a imagem mostra (na descrição dela) e o que a fala diz (no porquê).
             shown = matched_words(raw.mostra, moment_visible_text(moment))
-            said = matched_words(raw.porque, speech)
+            said = [w for w in matched_words(raw.porque, speech) if not matched_words(w, speaker)]
             if not shown:
                 check.drop("cobertura", raw, f"mostra {raw.mostra!r} não está na descrição/lugar da imagem {raw.letra} "
                                              f"(\"{first_words(moment_visible_text(moment), 12)}\"): diga o que a imagem mostra")
                 continue
             if not said:
-                check.drop("cobertura", raw, f"porque {raw.porque!r} não cita nada da fala do trecho {number}: diga "
-                                             "que parte da fala a imagem ilustra")
+                check.drop("cobertura", raw, f"porque {raw.porque!r} não cita nada da fala do trecho {number} que a "
+                                             "imagem de quem fala ainda não mostre: diga que parte da fala a imagem ilustra")
                 continue
             word, semantic = said[0], True
         if moment.id in state.moments or state.conflict(moment.clip_id, moment.start_sec, moment.end_sec):

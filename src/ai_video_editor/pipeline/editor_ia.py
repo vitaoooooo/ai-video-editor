@@ -43,6 +43,7 @@ from ai_video_editor.editor import (
 )
 from ai_video_editor.editor import budget as editor_budget
 from ai_video_editor.editor import service as editor_service
+from ai_video_editor.editor import steady as editor_steady
 from ai_video_editor.editor import validate as editor_validate
 from ai_video_editor.editor.assemble import COVERAGE_SNAP_SEC, EDGE_SEC
 from ai_video_editor.editor.report import build_editor_report, build_plan_markdown
@@ -90,8 +91,8 @@ DEFAULT_EDITOR_MODELS = {"ollama": "qwen2.5:7b"}
 DEFAULT_EDITOR_PROVIDER = "ollama"
 
 # Versões de formato que entram nos fingerprints (sobem quando a saída da etapa muda).
-EDITOR_FORMAT = "editor-v4"
-TIMELINE_FORMAT = "editor-timeline-v1"
+EDITOR_FORMAT = "editor-v5"
+TIMELINE_FORMAT = "editor-timeline-v2"
 REPORT_FORMAT = "editor-report-v4"
 # Regras do código que mudam o resultado do editor (entram no fingerprint da etapa).
 EDITOR_RULES = (
@@ -100,8 +101,12 @@ EDITOR_RULES = (
     editor_service.COVERAGE_CANDIDATES, editor_service.COVERAGE_TRECHO_WORDS,
     editor_budget.TOKEN_FACTOR, editor_budget.SUMMARY_OUTPUT_TOKENS, editor_budget.STRUCTURE_OUTPUT_TOKENS,
     editor_budget.CUTS_OUTPUT_TOKENS, editor_budget.INSERTS_OUTPUT_TOKENS, editor_budget.COVERAGE_OUTPUT_TOKENS,
-    editor_budget.MARGIN_TOKENS, editor_budget.RETRY_TOKENS,
+    editor_budget.MARGIN_TOKENS, editor_budget.RETRY_TOKENS, editor_budget.COVERAGE_OUTPUT_BASE_TOKENS,
+    editor_budget.COVERAGE_OUTPUT_PER_TRECHO_TOKENS, editor_service.COVER_MAX_GAP_SEC, editor_service.COVER_MAX_RATIO,
+    editor_steady.EDGE_MOTION_FLOOR, editor_steady.EDGE_MOTION_RATIO, editor_steady.EDGE_MIN_KEEP_SEC,
 )
+# Regras do código que mudam a montagem (entram no fingerprint da Timeline).
+TIMELINE_RULES = (editor_steady.EDGE_MOTION_FLOOR, editor_steady.EDGE_MOTION_RATIO, editor_steady.EDGE_MIN_KEEP_SEC)
 
 
 def _now() -> datetime:
@@ -555,7 +560,7 @@ class EditorPipeline(EditPipeline):
         ]
         s.fp_timeline = fingerprint(
             "editor-timeline", TIMELINE_FORMAT, file_hash(s.work_dir / EDITOR_RUN_FILE), s.fp_roteiro, audio_fps,
-            params.effective_cut, params.loudness, EDGE_SEC, COVERAGE_SNAP_SEC,
+            params.effective_cut, params.loudness, EDGE_SEC, COVERAGE_SNAP_SEC, TIMELINE_RULES,
         )
 
         def do_timeline() -> tuple[dict, str]:

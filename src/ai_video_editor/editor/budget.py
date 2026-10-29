@@ -47,6 +47,11 @@ STRUCTURE_OUTPUT_TOKENS = 1500
 CUTS_OUTPUT_TOKENS = 1200
 INSERTS_OUTPUT_TOKENS = 600
 COVERAGE_OUTPUT_TOKENS = 600
+# Limite da RESPOSTA da 2c (`num_predict` no Ollama), pelo número de trechos perguntados: a parte fixa (chaves e
+# notas) + tantos por trecho (um item com palavra, mostra e porque cabe em ~70 tokens do Qwen). Medido no vlog real
+# (fotos a cada 1 s): 2 trechos perguntados e 128 itens na resposta (trecho 3 a 128, quase todos "nenhuma").
+COVERAGE_OUTPUT_BASE_TOKENS = 100
+COVERAGE_OUTPUT_PER_TRECHO_TOKENS = 120
 # Folga para o template de chat do servidor e para o schema que o Ollama acrescenta no modo texto.
 MARGIN_TOKENS = 600
 # Espaço da lista de erros da nova tentativa (`prompt.RETRY_MAX_CHARS` = 1500 caracteres + as duas linhas
@@ -58,6 +63,11 @@ CLOUD_CONTEXT_TOKENS = 32768
 
 def tokens(text: str) -> int:
     return math.ceil(estimate_tokens(text) * TOKEN_FACTOR)
+
+
+def coverage_output_limit(trechos: int) -> int:
+    """Tokens da resposta de um pedido da 2c com `trechos` trechos perguntados."""
+    return COVERAGE_OUTPUT_BASE_TOKENS + COVERAGE_OUTPUT_PER_TRECHO_TOKENS * max(1, trechos)
 
 
 @dataclass(frozen=True)

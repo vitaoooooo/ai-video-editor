@@ -1,0 +1,907 @@
+{
+ "schema_version": 8,
+ "project_name": "Trilha La Islita em San Martin de Los Andes",
+ "fps": 30,
+ "resolution": [
+  1920,
+  1080
+ ],
+ "duration_sec": 420.2,
+ "target_sec": 480.0,
+ "blocks": [
+  {
+   "id": "B01",
+   "title": "Chegada e Hotel",
+   "clip_ids": [
+    "P002",
+    "P006",
+    "P007"
+   ],
+   "origin": "ia",
+   "timeline_start": 0.0,
+   "timeline_end": 100.533,
+   "pieces": [
+    {
+     "kind": "frases",
+     "clip_id": "P002",
+     "ids": [
+      "S002"
+     ],
+     "source_in": 0.0,
+     "source_out": 8.853,
+     "timeline_start": 0.0,
+     "timeline_end": 8.867
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P006",
+     "ids": [
+      "S005"
+     ],
+     "source_in": 0.0,
+     "source_out": 8.183,
+     "timeline_start": 8.867,
+     "timeline_end": 17.033
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P006",
+     "ids": [
+      "S006",
+      "S019"
+     ],
+     "source_in": 11.461,
+     "source_out": 33.081,
+     "timeline_start": 17.033,
+     "timeline_end": 38.667
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P007",
+     "ids": [
+      "S021"
+     ],
+     "source_in": 0.0,
+     "source_out": 7.878,
+     "timeline_start": 38.667,
+     "timeline_end": 46.533
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P007",
+     "ids": [
+      "S021"
+     ],
+     "source_in": 8.799,
+     "source_out": 11.045,
+     "timeline_start": 46.533,
+     "timeline_end": 48.767
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P007",
+     "ids": [
+      "S021"
+     ],
+     "source_in": 11.806,
+     "source_out": 24.029,
+     "timeline_start": 48.767,
+     "timeline_end": 61.0
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P007",
+     "ids": [
+      "S022"
+     ],
+     "source_in": 25.783,
+     "source_out": 32.564,
+     "timeline_start": 61.0,
+     "timeline_end": 67.767
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P007",
+     "ids": [
+      "S022"
+     ],
+     "source_in": 33.422,
+     "source_out": 36.055,
+     "timeline_start": 67.767,
+     "timeline_end": 70.4
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P007",
+     "ids": [
+      "S022"
+     ],
+     "source_in": 37.068,
+     "source_out": 38.314,
+     "timeline_start": 70.4,
+     "timeline_end": 71.633
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P007",
+     "ids": [
+      "S022",
+      "S023"
+     ],
+     "source_in": 39.043,
+     "source_out": 47.658,
+     "timeline_start": 71.633,
+     "timeline_end": 80.233
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P007",
+     "ids": [
+      "S023"
+     ],
+     "source_in": 51.05,
+     "source_out": 71.346,
+     "timeline_start": 80.233,
+     "timeline_end": 100.533
+    }
+   ],
+   "coverages": [],
+   "notes": []
+  },
+  {
+   "id": "B02",
+   "title": "Trilha e Paisagens Naturais",
+   "clip_ids": [
+    "P009",
+    "P010",
+    "P013",
+    "P017",
+    "P019",
+    "P025"
+   ],
+   "origin": "ia",
+   "timeline_start": 100.533,
+   "timeline_end": 377.4,
+   "pieces": [
+    {
+     "kind": "frases",
+     "clip_id": "P009",
+     "ids": [
+      "S024"
+     ],
+     "source_in": 6.29,
+     "source_out": 10.105,
+     "timeline_start": 100.533,
+     "timeline_end": 104.333
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P009",
+     "ids": [
+      "S024"
+     ],
+     "source_in": 11.223,
+     "source_out": 16.6,
+     "timeline_start": 104.333,
+     "timeline_end": 109.7
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P009",
+     "ids": [
+      "S027",
+      "S032"
+     ],
+     "source_in": 19.36,
+     "source_out": 27.28,
+     "timeline_start": 109.7,
+     "timeline_end": 117.633
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P009",
+     "ids": [
+      "S036"
+     ],
+     "source_in": 33.52,
+     "source_out": 35.208,
+     "timeline_start": 117.633,
+     "timeline_end": 119.333
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P009",
+     "ids": [
+      "S036"
+     ],
+     "source_in": 35.94,
+     "source_out": 44.369,
+     "timeline_start": 119.333,
+     "timeline_end": 127.767
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P009",
+     "ids": [
+      "S037"
+     ],
+     "source_in": 45.076,
+     "source_out": 49.406,
+     "timeline_start": 127.767,
+     "timeline_end": 132.1
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P009",
+     "ids": [
+      "S038",
+      "S044"
+     ],
+     "source_in": 50.161,
+     "source_out": 83.733,
+     "timeline_start": 132.1,
+     "timeline_end": 165.667
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P013",
+     "ids": [
+      "S045",
+      "S048"
+     ],
+     "source_in": 0.0,
+     "source_out": 25.054,
+     "timeline_start": 165.667,
+     "timeline_end": 190.733
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P013",
+     "ids": [
+      "S048"
+     ],
+     "source_in": 25.707,
+     "source_out": 26.686,
+     "timeline_start": 190.733,
+     "timeline_end": 191.7
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P017",
+     "ids": [
+      "S060"
+     ],
+     "source_in": 0.0,
+     "source_out": 6.831,
+     "timeline_start": 191.7,
+     "timeline_end": 198.533
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P017",
+     "ids": [
+      "S063",
+      "S067"
+     ],
+     "source_in": 10.32,
+     "source_out": 21.74,
+     "timeline_start": 198.533,
+     "timeline_end": 209.967
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P017",
+     "ids": [
+      "S071"
+     ],
+     "source_in": 25.8,
+     "source_out": 29.34,
+     "timeline_start": 209.967,
+     "timeline_end": 213.5
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P019",
+     "ids": [
+      "S085"
+     ],
+     "source_in": 0.0,
+     "source_out": 9.94,
+     "timeline_start": 213.5,
+     "timeline_end": 223.433
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P019",
+     "ids": [
+      "S087",
+      "S092"
+     ],
+     "source_in": 15.999,
+     "source_out": 44.32,
+     "timeline_start": 223.433,
+     "timeline_end": 251.767
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P019",
+     "ids": [
+      "S094"
+     ],
+     "source_in": 45.917,
+     "source_out": 47.6,
+     "timeline_start": 251.767,
+     "timeline_end": 253.433
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P019",
+     "ids": [
+      "S096"
+     ],
+     "source_in": 47.8,
+     "source_out": 48.52,
+     "timeline_start": 253.433,
+     "timeline_end": 254.167
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P019",
+     "ids": [
+      "S097"
+     ],
+     "source_in": 49.54,
+     "source_out": 51.02,
+     "timeline_start": 254.167,
+     "timeline_end": 255.633
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P019",
+     "ids": [
+      "S099",
+      "S100"
+     ],
+     "source_in": 52.42,
+     "source_out": 56.646,
+     "timeline_start": 255.633,
+     "timeline_end": 259.867
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P019",
+     "ids": [
+      "S101",
+      "S103"
+     ],
+     "source_in": 57.329,
+     "source_out": 59.96,
+     "timeline_start": 259.867,
+     "timeline_end": 262.5
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P019",
+     "ids": [
+      "S104",
+      "S109"
+     ],
+     "source_in": 61.481,
+     "source_out": 85.053,
+     "timeline_start": 262.5,
+     "timeline_end": 286.067
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P019",
+     "ids": [
+      "S111",
+      "S116"
+     ],
+     "source_in": 93.816,
+     "source_out": 112.02,
+     "timeline_start": 286.067,
+     "timeline_end": 304.267
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S133"
+     ],
+     "source_in": 0.531,
+     "source_out": 4.132,
+     "timeline_start": 304.267,
+     "timeline_end": 307.867
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S134"
+     ],
+     "source_in": 4.877,
+     "source_out": 10.501,
+     "timeline_start": 307.867,
+     "timeline_end": 313.5
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S135"
+     ],
+     "source_in": 11.257,
+     "source_out": 13.131,
+     "timeline_start": 313.5,
+     "timeline_end": 315.367
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S135"
+     ],
+     "source_in": 14.698,
+     "source_out": 16.372,
+     "timeline_start": 315.367,
+     "timeline_end": 317.033
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S136"
+     ],
+     "source_in": 21.211,
+     "source_out": 24.517,
+     "timeline_start": 317.033,
+     "timeline_end": 320.333
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S136"
+     ],
+     "source_in": 27.132,
+     "source_out": 27.901,
+     "timeline_start": 320.333,
+     "timeline_end": 321.1
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S136"
+     ],
+     "source_in": 30.378,
+     "source_out": 34.23,
+     "timeline_start": 321.1,
+     "timeline_end": 324.967
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S137"
+     ],
+     "source_in": 35.141,
+     "source_out": 40.822,
+     "timeline_start": 324.967,
+     "timeline_end": 330.633
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S137",
+      "S140"
+     ],
+     "source_in": 43.053,
+     "source_out": 63.376,
+     "timeline_start": 330.633,
+     "timeline_end": 350.967
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S141"
+     ],
+     "source_in": 64.51,
+     "source_out": 66.964,
+     "timeline_start": 350.967,
+     "timeline_end": 353.433
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S142"
+     ],
+     "source_in": 68.035,
+     "source_out": 68.89,
+     "timeline_start": 353.433,
+     "timeline_end": 354.3
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S144",
+      "S145"
+     ],
+     "source_in": 69.39,
+     "source_out": 72.43,
+     "timeline_start": 354.3,
+     "timeline_end": 357.333
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S147",
+      "S152"
+     ],
+     "source_in": 77.64,
+     "source_out": 84.9,
+     "timeline_start": 357.333,
+     "timeline_end": 364.6
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S155"
+     ],
+     "source_in": 88.14,
+     "source_out": 89.12,
+     "timeline_start": 364.6,
+     "timeline_end": 365.567
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P025",
+     "ids": [
+      "S157",
+      "S165"
+     ],
+     "source_in": 97.06,
+     "source_out": 108.9,
+     "timeline_start": 365.567,
+     "timeline_end": 377.4
+    }
+   ],
+   "coverages": [
+    {
+     "from_sentence": "S102",
+     "to_sentence": "S104",
+     "moment_ids": [
+      "P010.M01"
+     ],
+     "speech_evidence": "arvores",
+     "image_evidence": "trilha na mata",
+     "reason": "a fala menciona árvores e a imagem mostra uma trilha na mata",
+     "timeline_start": 260.6,
+     "timeline_end": 264.867,
+     "pieces": [
+      {
+       "kind": "cobertura",
+       "clip_id": "P010",
+       "ids": [
+        "P010.M01"
+       ],
+       "source_in": 0.0,
+       "source_out": 4.267,
+       "timeline_start": 260.6,
+       "timeline_end": 264.867
+      }
+     ],
+     "uncovered_sec": 0.0
+    },
+    {
+     "from_sentence": "S112",
+     "to_sentence": "S113",
+     "moment_ids": [
+      "D001.M08"
+     ],
+     "speech_evidence": "arvores",
+     "image_evidence": "troncos de árvore",
+     "reason": "a fala menciona troncos de árvores e a imagem mostra vários troncos de árvores",
+     "timeline_start": 290.367,
+     "timeline_end": 293.867,
+     "pieces": [
+      {
+       "kind": "cobertura",
+       "clip_id": "D001",
+       "ids": [
+        "D001.M08"
+       ],
+       "source_in": 91.0,
+       "source_out": 94.5,
+       "timeline_start": 290.367,
+       "timeline_end": 293.867
+      }
+     ],
+     "uncovered_sec": 0.0
+    }
+   ],
+   "notes": [
+    "B02: curto"
+   ]
+  },
+  {
+   "id": "B03",
+   "title": "Praia e Momentos Relaxantes",
+   "clip_ids": [
+    "P022",
+    "P028",
+    "P027"
+   ],
+   "origin": "ia",
+   "timeline_start": 377.4,
+   "timeline_end": 420.2,
+   "pieces": [
+    {
+     "kind": "respiro",
+     "clip_id": "D001",
+     "ids": [
+      "D001.M03"
+     ],
+     "source_in": 35.0,
+     "source_out": 41.0,
+     "timeline_start": 377.4,
+     "timeline_end": 383.4
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P022",
+     "ids": [
+      "S127"
+     ],
+     "source_in": 0.0,
+     "source_out": 5.208,
+     "timeline_start": 383.4,
+     "timeline_end": 388.6
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P022",
+     "ids": [
+      "S127"
+     ],
+     "source_in": 5.9,
+     "source_out": 7.593,
+     "timeline_start": 388.6,
+     "timeline_end": 390.3
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P022",
+     "ids": [
+      "S128"
+     ],
+     "source_in": 8.596,
+     "source_out": 11.396,
+     "timeline_start": 390.3,
+     "timeline_end": 393.1
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P022",
+     "ids": [
+      "S128"
+     ],
+     "source_in": 12.263,
+     "source_out": 15.309,
+     "timeline_start": 393.1,
+     "timeline_end": 396.133
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P028",
+     "ids": [
+      "S169"
+     ],
+     "source_in": 0.0,
+     "source_out": 9.1,
+     "timeline_start": 396.133,
+     "timeline_end": 405.233
+    },
+    {
+     "kind": "respiro",
+     "clip_id": "D001",
+     "ids": [
+      "D001.M04"
+     ],
+     "source_in": 55.0,
+     "source_out": 61.0,
+     "timeline_start": 405.233,
+     "timeline_end": 411.233
+    },
+    {
+     "kind": "frases",
+     "clip_id": "P027",
+     "ids": [
+      "S166",
+      "S168"
+     ],
+     "source_in": 0.0,
+     "source_out": 8.969,
+     "timeline_start": 411.233,
+     "timeline_end": 420.2
+    }
+   ],
+   "coverages": [
+    {
+     "from_sentence": "S127",
+     "to_sentence": "S127",
+     "moment_ids": [
+      "D002.M02"
+     ],
+     "speech_evidence": "branca",
+     "image_evidence": "praia e lago com água azul e areia branca",
+     "reason": "a descrição menciona areia branca, que é mencionada na fala.",
+     "timeline_start": 383.4,
+     "timeline_end": 390.3,
+     "pieces": [
+      {
+       "kind": "cobertura",
+       "clip_id": "D002",
+       "ids": [
+        "D002.M02"
+       ],
+       "source_in": 4.0,
+       "source_out": 10.9,
+       "timeline_start": 383.4,
+       "timeline_end": 390.3
+      }
+     ],
+     "uncovered_sec": 0.0
+    },
+    {
+     "from_sentence": "S169",
+     "to_sentence": "S169",
+     "moment_ids": [
+      "D002.M03"
+     ],
+     "speech_evidence": "agua",
+     "image_evidence": "praia com uma área de vegetação e um canal",
+     "reason": "tags em comum: agua, e a fala menciona água.",
+     "timeline_start": 396.133,
+     "timeline_end": 405.233,
+     "pieces": [
+      {
+       "kind": "cobertura",
+       "clip_id": "D002",
+       "ids": [
+        "D002.M03"
+       ],
+       "source_in": 13.0,
+       "source_out": 22.1,
+       "timeline_start": 396.133,
+       "timeline_end": 405.233
+      }
+     ],
+     "uncovered_sec": 0.0
+    }
+   ],
+   "notes": [
+    "B03: curto"
+   ]
+  }
+ ],
+ "out": [
+  {
+   "clipe": "P003",
+   "motivo": "Cena tranquila, não contribui para a história"
+  },
+  {
+   "clipe": "P008",
+   "motivo": "Cena de rua, não contribui para a história"
+  },
+  {
+   "clipe": "P011",
+   "motivo": "Cena de penhasco, não contribui para a história"
+  },
+  {
+   "clipe": "P012",
+   "motivo": "Cena de trilha, não contribui para a história"
+  },
+  {
+   "clipe": "P014",
+   "motivo": "Cena de Osmo Pocket, não contribui para a história"
+  },
+  {
+   "clipe": "P015",
+   "motivo": "Cena de bairro com cães, não contribui para a história"
+  },
+  {
+   "clipe": "P016",
+   "motivo": "Cena de estrada rural, não contribui para a história"
+  },
+  {
+   "clipe": "P018",
+   "motivo": "Cena de estrada rural, não contribui para a história"
+  },
+  {
+   "clipe": "P020",
+   "motivo": "Cena de pedras molhadas, não contribui para a história"
+  },
+  {
+   "clipe": "P023",
+   "motivo": "Cena de cabana, não contribui para a história"
+  },
+  {
+   "clipe": "P024",
+   "motivo": "Cena de conversa, não contribui para a história"
+  },
+  {
+   "clipe": "P026",
+   "motivo": "Cena de parque, não contribui para a história"
+  },
+  {
+   "clipe": "B001",
+   "motivo": "Cena de cachorro brincando, não contribui para a história"
+  },
+  {
+   "clipe": "B002",
+   "motivo": "Cena de pessoa relaxando, não contribui para a história"
+  },
+  {
+   "clipe": "B003",
+   "motivo": "Cena de mulher beijando cachorro, não contribui para a história"
+  },
+  {
+   "clipe": "B004",
+   "motivo": "Cena de paisagem natural, não contribui para a história"
+  },
+  {
+   "clipe": "B005",
+   "motivo": "Cena de ilha, não contribui para a história"
+  },
+  {
+   "clipe": "B006",
+   "motivo": "Cena de leito de rio, não contribui para a história"
+  },
+  {
+   "clipe": "B007",
+   "motivo": "Cena de cavalo pastando, não contribui para a história"
+  },
+  {
+   "clipe": "B008",
+   "motivo": "Cena de gado, não contribui para a história"
+  },
+  {
+   "clipe": "B009",
+   "motivo": "Cena de galho com pássaro, não contribui para a história"
+  },
+  {
+   "clipe": "B010",
+   "motivo": "Cena de praia, não contribui para a história"
+  },
+  {
+   "clipe": "P001",
+   "motivo": "não escolhido pela IA"
+  },
+  {
+   "clipe": "P004",
+   "motivo": "não escolhido pela IA"
+  },
+  {
+   "clipe": "P005",
+   "motivo": "não escolhido pela IA"
+  },
+  {
+   "clipe": "P021",
+   "motivo": "não escolhido pela IA"
+  }
+ ],
+ "library_clip_ids": [
+  "D001",
+  "D002",
+  "V001"
+ ],
+ "warnings": []
+}

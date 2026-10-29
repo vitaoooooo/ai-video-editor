@@ -32,4 +32,4 @@ class LLMEditorAI(ChainBackedStage, EditorAI):
         return self._generate(request.prompt, InsertsAnswer)
 
     def coverages(self, request: CoverageRequest) -> CoveragesAnswer:
-        return self._generate(request.prompt, CoveragesAnswer)
+        return self._generate(request.prompt, CoveragesAnswer, max_output_tokens=request.max_output_tokens)

@@ -128,6 +128,13 @@ def test_text_call_sends_schema_in_format_and_explicit_num_ctx():
     assert "num_ctx=8192" in result.metrics.notes
 
 
+def test_output_limit_goes_as_num_predict_only_when_asked():
+    transport = FakeTransport()
+    client = _client(transport)
+    client.generate("prompt", DirectorDecision, _config(max_output_tokens=340), _policy()[0])
+    assert transport.calls[0][2]["options"] == {"num_ctx": DEFAULT_NUM_CTX, "temperature": 0.2, "num_predict": 340}
+
+
 def test_thinking_is_ignored_and_recorded():
     client = _client(FakeTransport())
     assert client.thinking_setting("qwen2.5:7b", "high") is None

@@ -29,15 +29,15 @@ refazer os resumos em cache; os IDs que ele copia do exemplo são retirados pelo
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ai_video_editor.editor.schema import COVERAGE_PLACE, COVERAGE_RELATED, COVERAGE_SAYS
+from ai_video_editor.editor.material import asks_free_order
 from ai_video_editor.roteiro.report import clock
 
 # Sobem quando o pedido ou o schema da resposta da passada mudam (invalida só o cache daquela passada).
 SUMMARY_PROMPT_VERSION = "resumo-v1"
-STRUCTURE_PROMPT_VERSION = "estrutura-v8"
+STRUCTURE_PROMPT_VERSION = "estrutura-v9"
 CUTS_PROMPT_VERSION = "cortes-v6"
 INSERTS_PROMPT_VERSION = "insercoes-v2"
-COVERAGE_PROMPT_VERSION = "coberturas-v3"
+COVERAGE_PROMPT_VERSION = "coberturas-v4"
 
 # Logo abaixo do pedido, em todas as perguntas (menos o resumo).
 RESPECT_REQUEST = "Faça o que o pedido pede; não acrescente nada que ele não peça; na dúvida, não acrescente."
@@ -224,8 +224,24 @@ def build_structure_prompt(
     errors: Optional[list[str]] = None,
     shortfall: Optional[StructureShortfall] = None,
 ) -> str:
-    """`clip_lines`: uma linha por clipe (`EditorMaterial.structure_line`), sempre todos os clipes.
-    `shortfall`: a nova tentativa por falta de duração (os números e o que não foi usado)."""
+    """`clip_lines`: uma linha por clipe (`EditorMaterial.structure_line`), sempre todos os clipes, em ordem de
+    gravação. `shortfall`: a nova tentativa por falta de duração (os números e o que não foi usado). Pedido que
+    pede outra ordem (`material.asks_free_order`): a regra de ordem deixa agrupar por tema."""
+    if asks_free_order(context.request):
+        order = [
+            "- Um bloco = um trecho da história (ex.: chegada, hotel, trilha, praia, volta), não um tema abstrato; "
+            "dentro dele, os clipes na ordem em que devem aparecer.",
+            "- Ordem: o pedido permite outra ordem que não a de gravação: os blocos e os clipes podem ser agrupados "
+            "por assunto, na ordem que contar melhor a história.",
+        ]
+    else:
+        order = [
+            "- Um bloco = um trecho da história (ex.: chegada, hotel, trilha, praia, volta), não um tema abstrato.",
+            "- Ordem: o vídeo segue a ordem de gravação, que é a ordem da lista abaixo. Você escolhe onde começa "
+            "cada bloco (com o título e o assunto) e o que fica fora; um bloco é uma sequência de clipes seguidos "
+            "da lista. O programa põe os blocos e os clipes nessa ordem: um bloco com clipes de momentos "
+            "diferentes (com clipes de outro bloco no meio) é dividido em partes.",
+        ]
     if context.target_sec is not None:
         target = f"Duração alvo do vídeo final: {_sec(context.target_sec)}. Use esse valor em duracao_total_alvo_sec."
     else:
@@ -239,15 +255,11 @@ def build_structure_prompt(
         target,
         "",
         "Regras de estilo:",
-        "- Um bloco = um trecho da história (ex.: chegada, hotel, trilha, praia, volta), não um tema abstrato; "
-        "dentro dele, os clipes na ordem em que devem aparecer.",
+        *order,
         "- Cada bloco tem uma função na história: diga em \"assunto\" o que ele conta e o que ele acrescenta ao "
         "vídeo. Um bloco sem função própria se junta a outro.",
         "- Continuidade: cada bloco continua o anterior (o espectador entende por que passou de um ao outro); "
         "evite repetir num bloco o que outro já contou, a não ser que o pedido peça.",
-        "- Ordem: a cronológica (a data de gravação quando houver; senão, a ordem da lista) quando ela ajuda a "
-        "contar a história, como num vlog ou numa viagem; se o pedido permitir uma montagem por tema, os clipes "
-        "podem ser agrupados por assunto.",
         "- Use só os clipes pertinentes ao pedido. Não precisa usar todos: um clipe com \"fala sim\" que você não "
         "puser em nenhum bloco fica fora do vídeo.",
         "- \"fora\": clipes que não devem entrar (repetidos, ruins, fora do assunto), com o motivo.",
@@ -518,10 +530,9 @@ def build_coverage_prompt(data: CoveragePromptInput, errors: Optional[list[str]]
         "",
         "Como funciona: os trechos abaixo são de alguém falando para a câmera. A fala continua; a imagem de outro "
         "clipe pode aparecer por cima dela, a partir da frase que ela ilustra. Para cada trecho, a primeira opção é "
-        "\"nenhuma\" (a imagem de quem fala continua); depois, até 4 imagens candidatas com letra: "
-        f"\"{COVERAGE_SAYS}\" = uma palavra da fala aparece na descrição da imagem; \"{COVERAGE_PLACE}\" = a "
-        f"imagem é do mesmo lugar onde a fala acontece; \"{COVERAGE_RELATED}\" = só as tags da imagem lembram a "
-        "fala (as tags podem estar erradas: julgue pela descrição).",
+        "\"nenhuma\" (a imagem de quem fala continua); depois, até 4 imagens candidatas com letra, do mesmo "
+        "momento da gravação, com as palavras da fala que aparecem na descrição da imagem e que a imagem de quem "
+        "fala ainda não mostra (em comum).",
         "",
         "Evidência (obrigatória para escolher uma letra): a imagem precisa mostrar de verdade o que é dito ou o lugar.",
         "- Diga em mostra o que a imagem realmente mostra, com as palavras da descrição dela, e em porque, em "
@@ -544,8 +555,9 @@ def build_coverage_prompt(data: CoveragePromptInput, errors: Optional[list[str]]
         lines += [f"  {c}" for c in question.candidate_lines]
         lines.append("")
     lines += [
-        "Responda a lista coberturas, um item por trecho acima: trecho = o número do trecho, letra = \"nenhuma\" "
-        "ou a letra escolhida; com \"nenhuma\", palavra, mostra e porque vazios.",
+        "Responda a lista coberturas com exatamente um item para cada trecho acima e nenhum outro: trecho = o "
+        "número do trecho, letra = \"nenhuma\" ou a letra escolhida; com \"nenhuma\", palavra, mostra e porque "
+        "vazios.",
         "",
         'Formato: {"coberturas": [{"trecho": <número>, "letra": "nenhuma", "palavra": "", "mostra": "", '
         '"porque": ""}], "notas": "curto"}',

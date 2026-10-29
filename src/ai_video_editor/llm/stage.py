@@ -41,12 +41,17 @@ class ChainBackedStage:
     def model_switches(self) -> list[ModelSwitch]:
         return self.chain.switches
 
-    def _generate(self, prompt: str, schema: type[T], images: Optional[Sequence[ImageInput]] = None) -> T:
+    def _generate(
+        self, prompt: str, schema: type[T], images: Optional[Sequence[ImageInput]] = None,
+        max_output_tokens: Optional[int] = None,
+    ) -> T:
         self.last_input_tokens = None
         self.last_output_tokens = None
         self.last_model_switches = 0
         self.effective_thinking_label = self.thinking_label
         try:
+            if max_output_tokens is not None:
+                return self.chain.generate(prompt, schema, images, max_output_tokens=max_output_tokens).value
             if images:
                 return self.chain.generate(prompt, schema, images).value
             return self.chain.generate(prompt, schema).value

@@ -3,8 +3,10 @@ da passada 2 (2a cortes, 2b inclusões e respiros, 2c coberturas) com validaçã
 fallbacks neutros, caches por passada, montagem (IDs → Timeline) e ponta a ponta com clipes sintéticos
 (render curto marcado `slow`). Sem rede: IA simulada (`MockEditorAI`)."""
 
+import json
 import math
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -28,10 +30,12 @@ from ai_video_editor.editor.assemble import (
     merge_pieces,
     piece_sentences,
 )
-from ai_video_editor.editor.budget import Budget, resolve_budget, tokens
+from ai_video_editor.editor.budget import Budget, coverage_output_limit, resolve_budget, tokens
 from ai_video_editor.editor.ids import IdResolver
 from ai_video_editor.editor.material import (
+    FREE_ORDER_PHRASES,
     GENERIC_WORDS,
+    asks_free_order,
     asks_landscape_opening,
     coverage_matches,
     library_ranking,
@@ -73,14 +77,24 @@ from ai_video_editor.editor.schema import (
     StructureRun,
     Trecho,
 )
-from ai_video_editor.editor.service import CallCache, EditorService
+from ai_video_editor.editor.service import (
+    CallCache,
+    EditorService,
+    _chronological_blocks,
+    cover_refusal,
+    cover_words,
+)
+from ai_video_editor.editor.steady import steady_range, steady_window
 from ai_video_editor.editor.validate import (
     RESPIRO_MAX_SEC,
     Usage,
+    breath_span,
     build_trechos,
+    moment_span,
     insert_positions,
     speech_continues,
     take_sentences,
+    talking_sentences,
     validate_coverages,
     validate_cuts,
     validate_inserts,
@@ -116,11 +130,17 @@ def _sentence(i, clip, start, end, text, moment) -> RoteiroSentence:
     )
 
 
-def _clip(clip_id, role, order, duration, speech, audio=True) -> RoteiroClip:
+def _clip(clip_id, role, order, duration, speech, audio=True, recorded_at=None) -> RoteiroClip:
     return RoteiroClip(
         id=clip_id, role=role, relative_path=f"{role}/{clip_id}.mp4", order=order, duration_sec=duration,
-        has_audio=audio, has_speech=speech, transcribed=speech,
+        has_audio=audio, has_speech=speech, transcribed=speech, recorded_at=recorded_at,
     )
+
+
+def _at(hhmm: str) -> datetime:
+    """Data de gravação confiável no dia da viagem de teste."""
+    hour, minute = hhmm.split(":")
+    return datetime(2026, 5, 7, int(hour), int(minute), tzinfo=timezone.utc)
 
 
 def make_roteiro(tmp_path: Path) -> ProjectRoteiro:
@@ -155,10 +175,12 @@ def make_roteiro(tmp_path: Path) -> ProjectRoteiro:
 @pytest.fixture(autouse=True)
 def _cuts_on_short_clips(monkeypatch):
     """Os clipes do material de teste são curtos (≤ 12 s) e as metas dos testes cabem na fala: sem isto, nenhum
-    chegaria à pergunta de cortes. Os testes de `CUT_MIN_SPEECH_SEC` e `CUT_EXCESS_RATIO` voltam os valores de
+    chegaria à pergunta de cortes; e o vídeo de teste tem ~15 s, então o limite de cobertura (15%) tiraria toda
+    cobertura. Os testes de `CUT_MIN_SPEECH_SEC`, `CUT_EXCESS_RATIO` e `COVER_MAX_RATIO` voltam os valores de
     produção."""
     monkeypatch.setattr(editor_service, "CUT_MIN_SPEECH_SEC", 0.0)
     monkeypatch.setattr(editor_service, "CUT_EXCESS_RATIO", 0.0)
+    monkeypatch.setattr(editor_service, "COVER_MAX_RATIO", 1.0)
 
 
 @pytest.fixture
@@ -586,8 +608,9 @@ def test_inserts_build_the_main_track_in_the_roteiro_order(material, tmp_path):
 
 def make_evidence_material(tmp_path: Path) -> EditorMaterial:
     """P001 fala no terminal (ómnibus, cachorros); D001 = drone com ônibus, cachorro e a fachada do terminal."""
-    clips = [_clip("P001", "principal", 1, 12.0, True), _clip("D001", "drone", 2, 12.0, False, audio=False),
-             _clip("P002", "principal", 3, 6.0, True)]
+    clips = [_clip("P001", "principal", 1, 12.0, True, recorded_at=_at("10:00")),
+             _clip("D001", "drone", 2, 12.0, False, audio=False, recorded_at=_at("10:05")),
+             _clip("P002", "principal", 3, 6.0, True, recorded_at=_at("10:10"))]
     moments = [
         _moment("P001", 1, 0.0, 12.0, "pessoa falando no saguão", "terminal de ônibus", ["pessoa"], ["S000", "S001"],
                 ["tremida"], talking=True),
@@ -625,10 +648,12 @@ def test_coverage_never_offers_the_speaking_clip_and_skips_trechos_without_candi
     run = _service(material, tmp_path, ai).run()
     request = ai.calls["coverages"][0]
     offered = {n: [c.moment_id for c in cs] for n, cs in request.questions.items()}
-    assert offered[1] == ["D001.M01", "D001.M02", "D001.M03"]  # nunca P001 (quem fala)
+    # Nunca P001 (quem fala); D001.M03 (fachada do terminal) só tem o lugar em comum: a palavra precisa estar na
+    # descrição da imagem e não estar na imagem de quem fala.
+    assert offered[1] == ["D001.M01", "D001.M02"]
     assert offered[2] == ["D001.M01"]  # P002 diz "ônibus": o drone; P001 está no vídeo (conflito), nunca P002
     assert "Trecho 1 (S000–S001 · P001 · 6 s; imagem de quem fala: pessoa falando no saguão [tremida], fala para a câmera)" in request.prompt
-    assert "— mostra o que é dito; em comum: omnibus" in request.prompt
+    assert "— em comum: omnibus" in request.prompt
     # O mock cobre o 1º trecho com o 1º candidato "o que é dito": da frase com a palavra, na duração do momento.
     [coverage] = run.details[0].coverages
     assert (coverage.trecho, coverage.letter, coverage.moment_ids, coverage.word) == (1, "A", ["D001.M01"], "omnibus")
@@ -660,18 +685,18 @@ def test_coverage_answer_letters_none_and_evidence(tmp_path):
         {"trecho": 1, "letra": "B", "palavra": "cachorros"},  # válida: começa em S001, a frase com a palavra
         {"trecho": 1, "letra": "A", "palavra": "ómnibus"},  # trecho repetido
         {"trecho": 2, "letra": "A", "palavra": "estrada"},  # palavra que não está na fala
-        {"trecho": 7, "letra": "A", "palavra": "ônibus"},  # trecho não perguntado
+        {"trecho": 7, "letra": "A", "palavra": "ônibus"},  # trecho não perguntado: ignorado, não inválido
+        {"trecho": 9, "letra": "nenhuma", "palavra": ""},
     ]})
     check = validate_coverages(answer, questions, trechos, material, usage)
     [coverage] = check.coverages
     assert (coverage.trecho, coverage.moment_ids, coverage.sentence_ids, coverage.kind) == (1, ["D001.M02"], ["S001"], COVERAGE_SAYS)
     reasons = [d.reason for d in check.discarded]
-    assert reasons[0] == "trecho 1 repetido (um item por trecho)"
-    assert reasons[1] == "palavra 'estrada' não está na fala do trecho 2: estrada"
-    assert reasons[2].startswith("trecho 7 não foi perguntado")
-    # "nenhuma", letra de outro trecho, letra já usada e a palavra que não está na imagem.
+    assert reasons == ["trecho 1 repetido (um item por trecho)", "palavra 'estrada' não está na fala do trecho 2: estrada"]
+    assert check.ignored == ["7", "9"] and check.items == 3
+    # "nenhuma" e o lugar (a descrição de quem fala não mostra o terminal); "saguão" já está na imagem de quem fala.
     answer = CoveragesAnswer.model_validate({"coberturas": [
-        {"trecho": 1, "letra": "C", "palavra": "terminal"},  # lugar: válida
+        {"trecho": 1, "letra": "C", "palavra": "terminal"},
         {"trecho": 2, "letra": "nenhuma", "palavra": ""},
     ]})
     check = validate_coverages(answer, questions, trechos, material, usage)
@@ -683,6 +708,13 @@ def test_coverage_answer_letters_none_and_evidence(tmp_path):
     reasons = [d.reason for d in wrong.discarded]
     assert reasons[0] == 'letra B não é candidata do trecho 2 (letras: A ou "nenhuma")'
     assert reasons[1] == "palavra 'Bariloche' não está na descrição/lugar da imagem A: bariloche"
+    saguao = trechos[0].model_copy(update={"sentence_ids": ["S000"]})
+    material.sentences["S000"].text = "Pegamos o ómnibus no saguão."
+    hall = [Candidate(letter="A", moment_id="D001.M03", clip_id="D001", duration_sec=4.0, kind=COVERAGE_SAYS, words=["saguao"])]
+    material.moments["D001.M03"].description = "saguão do terminal rodoviário"
+    check = validate_coverages(CoveragesAnswer.model_validate({"coberturas": [{"trecho": 1, "letra": "A", "palavra": "saguão"}]}),
+                               {1: hall}, [saguao], material, Usage())
+    assert check.discarded[0].reason.startswith("palavra 'saguão' já aparece na imagem de quem fala")
 
 
 def test_coverage_span_follows_the_sentences_that_fit_in_the_moment(material):
@@ -708,7 +740,8 @@ def test_full_run_with_mock_builds_the_plan_from_2a_2b_2c(material, tmp_path):
     # 1º bloco: um trecho só e o começo do vídeo: nenhuma posição de respiro, nenhuma imagem do bloco → sem 2b.
     assert [(k.kind, k.key, k.breath) for k in first.keep] == [("frases", "S003", False)]
     assert first.inserts.requests == 0 and first.inserts.spare_sec == pytest.approx(2.0)
-    assert first.coverages[0].moment_ids == ["D001.M01"] and first.coverages[0].word == "praia"
+    # "praia" está na imagem de quem fala (pessoa falando na praia): a palavra nova é "mar".
+    assert first.coverages[0].moment_ids == ["D001.M01"] and first.coverages[0].word == "mar"
     # 2º bloco: respiro no começo (troca de bloco), com a imagem do acervo do mesmo lugar (restaurante).
     assert [(k.kind, k.key, k.breath) for k in second.keep] == [("momento", "B001.M02", True), ("frases", "S005", False)]
     assert second.inserts.breath_positions == [0] and second.inserts.candidates[0].moment_id == "B001.M01"
@@ -840,7 +873,7 @@ def test_report_per_block_subpasses_and_estimated_vs_real_tokens(material, tmp_p
     assert "- B → B001.M02 (respiro (acervo), 2s) depois do trecho 0" in report
     assert "- trechos sem pergunta: 1 (imagem não é fala para câmera)" in report
     assert "| Respiros | 0,0s (0% do vídeo) |" in report
-    assert re.search(r"- trecho 1 → A → D001\.M01 · mostra o que é dito · palavra \"praia\" · cobre S000–S000", report)
+    assert re.search(r"- trecho 1 → A → D001\.M01 · mostra o que é dito · palavra \"mar\" · cobre S001–S001", report)
     rows = {line.split(" | ")[0]: line for line in report.splitlines() if line.startswith("| ") and "(E" in line}
     assert set(rows) == {"| Resumos (E9)", "| Estrutura (E10)", "| 2a Cortes (E11)", "| 2b Inclusões (E11)", "| 2c Coberturas (E11)"}
     assert rows["| 2a Cortes (E11)"].endswith("| 2 |")  # IDs normalizados na 2a
@@ -963,6 +996,7 @@ def make_trip_material(tmp_path: Path) -> EditorMaterial:
         _clip("P003", "principal", 3, 10.0, True), _clip("D001", "drone", 4, 20.0, False, audio=False),
         _clip("B001", "broll", 5, 16.0, False),
     ]
+    clips[2].recorded_at, clips[3].recorded_at = _at("17:30"), _at("17:20")  # praça e drone do lago: 10 min
     moments = [
         _moment("P002", 1, 0.0, 6.0, "pessoa no ônibus", "interior de ônibus", ["ônibus"], ["S000"]),
         _moment("P001", 1, 0.0, 6.0, "quarto de hotel com cama grande", "quarto de hotel", ["quarto"], ["S001", "S002"]),
@@ -1553,7 +1587,12 @@ def test_structure_prompt_asks_for_narrative_function_continuity_and_flexible_or
     prompt = ai.calls["structure"][0].prompt
     assert "Cada bloco tem uma função na história" in prompt and "continua o anterior" in prompt
     assert "evite repetir num bloco o que outro já contou" in prompt
-    assert "quando ela ajuda a contar a história" in prompt and "montagem por tema" in prompt
+    assert "o vídeo segue a ordem de gravação, que é a ordem da lista abaixo" in prompt
+    assert "Você escolhe onde começa cada bloco" in prompt and "é dividido em partes" in prompt
+    ai = MockEditorAI()
+    _service(material, tmp_path / "t", ai, context=EditorContext(request="vlog montado por tema")).run()
+    prompt = ai.calls["structure"][0].prompt
+    assert "o pedido permite outra ordem que não a de gravação" in prompt and "ordem de gravação, que é" not in prompt
 
 
 def test_cuts_put_meaning_before_the_target_and_the_ai_can_report_the_limit(material, tmp_path, monkeypatch):
@@ -1602,14 +1641,15 @@ def test_context_of_the_previous_piece_only_for_split_clips(material, tmp_path):
 
 
 def make_semantic_material(tmp_path: Path) -> EditorMaterial:
-    """P001 fala do almoço para a câmera; B001 mostra um prato de comida (a palavra "almoço" só nas tags)."""
-    clips = [_clip("P001", "principal", 1, 8.0, True), _clip("B001", "broll", 2, 6.0, False)]
+    """P001 fala do almoço na mesa para a câmera; B001 (gravado 5 min depois) mostra um prato de comida na mesa."""
+    clips = [_clip("P001", "principal", 1, 8.0, True, recorded_at=_at("13:00")),
+             _clip("B001", "broll", 2, 6.0, False, recorded_at=_at("13:05"))]
     moments = [
         _moment("P001", 1, 0.0, 8.0, "pessoa falando na varanda", "varanda", ["pessoa"], ["S000", "S001"], talking=True),
         _moment("B001", 1, 0.0, 6.0, "prato de comida na mesa", "restaurante", ["almoço", "comida"]),
     ]
     sentences = [
-        _sentence(0, "P001", 0.5, 3.5, "Hoje tivemos um almoço delicioso.", "P001.M01"),
+        _sentence(0, "P001", 0.5, 3.5, "Hoje tivemos um almoço delicioso na mesa.", "P001.M01"),
         _sentence(1, "P001", 4.0, 7.5, "Depois seguimos viagem.", "P001.M01"),
     ]
     roteiro = ProjectRoteiro(project_dir=tmp_path, source=tmp_path, kind="pasta", interval_sec=2.0, clips=clips,
@@ -1628,7 +1668,7 @@ def test_coverage_accepts_an_explained_correspondence_with_visual_evidence(tmp_p
     ai = MockEditorAI({"structure": [_structure((("P001",), 7))], "coverages": [answer]})
     run = _service(material, tmp_path, ai).run()
     prompt = ai.calls["coverages"][0].prompt
-    assert "relacionada pelas tags" in prompt and "sem palavra em comum na descrição; tags em comum: almoco" in prompt
+    assert "— em comum: mesa" in prompt
     assert "Diga em mostra o que a imagem realmente mostra" in prompt
     [coverage] = run.details[0].coverages
     assert coverage.semantic and coverage.moment_ids == ["B001.M01"] and coverage.sentence_ids[0] == "S000"
@@ -1739,13 +1779,14 @@ def test_end_to_end_folder_renders_a_valid_timeline_with_coverage(editor_folder,
     assert result.output_path is not None and result.output_path.is_file() and result.subtitles_path.is_file()
     timeline = Timeline.model_validate_json(result.timeline_path.read_text(encoding="utf-8"))
     assert {i.clip_id for i in timeline.video_main if not (i.label or "").startswith("respiro")} == {"P001"}
-    # O drone verde cobre "campo verde"; o b-roll (sem fala) fica no acervo. Um bloco só, que abre o vídeo, com
-    # um trecho de fala: nenhuma posição de respiro (o vídeo começa pela fala).
-    assert [o.clip_id for o in timeline.video_overlay] == ["D001"]
+    # O drone verde não cobre "campo verde": sem data de gravação e de outro lugar ("cenário verde" × o lugar de
+    # quem fala), não é do mesmo momento da viagem. Um bloco só, que abre o vídeo, com um trecho de fala: nenhuma
+    # posição de respiro (o vídeo começa pela fala).
+    assert timeline.video_overlay == []
     assert not any((i.label or "").startswith("respiro") for i in timeline.video_main)
     assert result.final_duration_sec == pytest.approx(timeline.duration_sec, abs=0.1)
     report = result.report_path.read_text(encoding="utf-8")
-    assert "## Estrutura (passada 1)" in report and "→ D001.M01 · mostra o que é dito · palavra \"verde\"" in report
+    assert "## Estrutura (passada 1)" in report and "Ordem dos blocos: de gravação" in report
     assert "**2a cortes**" in report and "## Chamadas e tokens" in report
     assert result.plan_md_path.is_file() and "## B01" in result.plan_md_path.read_text(encoding="utf-8")
     # Mesmo material: tudo do cache (nada de IA, render reaproveitado).
@@ -1795,3 +1836,292 @@ def test_cli_editor_ia_plan_only(editor_folder, tmp_path, capsys, monkeypatch):
     assert "Plano do Editor de IA pronto (sem render)." in out and "[editor] mock:mock" in out
     assert "Estrutura: 1 bloco(s)" in out and "editor_plano.md" in out
     assert not list((tmp_path / "projects").glob("*/editor_ia/*.mp4"))
+
+
+# --- ordem de gravação (estrutura) ---
+
+
+def make_story_material(tmp_path: Path, dates: Optional[dict] = None) -> EditorMaterial:
+    """P001..P005 com fala, na ordem do catálogo; `dates`: clipe → "HH:MM" (data de gravação confiável)."""
+    dates = dates or {}
+    clips, moments, sentences = [], [], []
+    for n in range(1, 6):
+        clip_id = f"P{n:03d}"
+        clips.append(_clip(clip_id, "principal", n, 10.0, True, recorded_at=_at(dates[clip_id]) if clip_id in dates else None))
+        moments.append(_moment(clip_id, 1, 0.0, 10.0, f"pessoa falando {n}", "rua", ["rua"],
+                               [f"S{2 * n - 2:03d}", f"S{2 * n - 1:03d}"], talking=True))
+        sentences += [_sentence(2 * n - 2, clip_id, 0.5, 4.5, f"Primeira fala do clipe {n}.", f"{clip_id}.M01"),
+                      _sentence(2 * n - 1, clip_id, 5.0, 9.0, f"Segunda fala do clipe {n}.", f"{clip_id}.M01")]
+    roteiro = ProjectRoteiro(project_dir=tmp_path, source=tmp_path, kind="pasta", interval_sec=2.0, clips=clips,
+                             moments=moments, sentences=sentences)
+    return EditorMaterial.from_roteiro(roteiro)
+
+
+VLOG = Path(__file__).parent / "data" / "editor_vlog"
+
+
+@pytest.fixture(scope="module")
+def vlog() -> EditorMaterial:
+    """Roteiro real do vlog "Trilha La Islita" (fotos a cada 1 s; movimento por amostra do scan de cada clipe)."""
+    return EditorMaterial.from_roteiro(ProjectRoteiro.load(VLOG / "roteiro.json"))
+
+
+def test_chronology_by_reliable_date_or_by_catalog_order(tmp_path, vlog):
+    dated = make_story_material(tmp_path, {"P001": "10:00", "P002": "09:00", "P003": "11:00", "P004": "08:00",
+                                           "P005": "12:00"})
+    assert dated.chronology() == (["P004", "P002", "P001", "P003", "P005"], "data")
+    # Uma data faltando (ou não confiável): a ordem do catálogo, que já ordena cada papel pela melhor data.
+    partial = make_story_material(tmp_path, {"P001": "10:00", "P002": "09:00"})
+    assert partial.chronology() == (["P001", "P002", "P003", "P004", "P005"], "catálogo")
+    assert dated.chronology(["P003", "P001"]) == (["P001", "P003"], "data")
+    # Vlog real: só o V001 tem data confiável; os P seguem o catálogo.
+    order, how = vlog.chronology([f"P{n:03d}" for n in range(1, 29)])
+    assert how == "catálogo" and order == [f"P{n:03d}" for n in range(1, 29)]
+    assert [c for c in vlog.clip_ids if vlog.clips[c].recorded_at is not None] == ["V001"]
+
+
+def test_mixed_block_is_split_into_contiguous_parts_in_recording_order(tmp_path):
+    material = make_story_material(tmp_path)
+    answer = {"blocos": [
+        {"titulo": "Praia", "clipes": ["P005"], "duracao_alvo_sec": 10},
+        {"titulo": "Trilha", "clipes": ["P004", "P001"], "duracao_alvo_sec": 20},
+        {"titulo": "Hotel", "clipes": ["P003", "P002"], "duracao_alvo_sec": 20},
+    ]}
+    ai = MockEditorAI({"structure": [answer]})
+    run = _service(material, tmp_path, ai, context=EditorContext(request="vlog", target_sec=50)).run()
+    blocks = run.structure.blocks
+    assert [(b.id, b.title, b.clip_ids) for b in blocks] == [
+        ("B01", "Trilha (parte 1/2)", ["P001"]), ("B02", "Hotel", ["P002", "P003"]),
+        ("B03", "Trilha (parte 2/2)", ["P004"]), ("B04", "Praia", ["P005"]),
+    ]
+    # A meta de cada bloco da IA repartida pela fala (o alvo de 50 s vira a fala disponível, 40 s).
+    assert [b.target_sec for b in blocks] == [8.0, 16.0, 8.0, 8.0]
+    assert blocks[0].ai_block == "B02 Trilha" and blocks[1].ai_block == ""
+    assert run.structure.order == "de gravação (ordem do catálogo)"
+    assert any('o bloco "Trilha" da IA juntava momentos diferentes da gravação (P001 | P004): dividido em 2 partes' in w
+               for w in run.warnings)
+    report = build_editor_report("t", run, EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0),
+                                 material, "editor_ia", None, None)
+    assert "Ordem dos blocos: de gravação (ordem do catálogo)" in report
+
+
+def test_clips_added_by_the_shortfall_retry_join_the_block_of_the_chronological_neighbor(tmp_path):
+    material = make_story_material(tmp_path)
+    blocks = [Block(id="B01", title="Chegada", clip_ids=["P002"], target_sec=8.0),
+              Block(id="B02", title="Trilha", clip_ids=["P004"], target_sec=8.0),
+              Block(id="B03", title="Conversas", clip_ids=["P001", "P003", "P005"], target_sec=24.0)]
+    result, warnings, how = _chronological_blocks(blocks, ["P001", "P003", "P005"], material)
+    # P001 não tem anterior: vai para o bloco do seguinte (P002); P003 → P002; P005 → P004. Nenhum bloco novo.
+    assert [(b.title, b.clip_ids, b.target_sec) for b in result] == [
+        ("Chegada", ["P001", "P002", "P003"], 24.0), ("Trilha", ["P004", "P005"], 16.0),
+    ]
+    assert how == "catálogo" and len(warnings) == 3
+    assert "P005 (incluído na nova tentativa por falta de duração) foi para o bloco de P004" in warnings[2]
+
+
+def test_shortfall_retry_clip_joins_the_neighbor_block_in_a_full_run(tmp_path, monkeypatch):
+    material = make_story_material(tmp_path)
+    first = {"blocos": [{"titulo": "Começo", "clipes": ["P001", "P002"], "duracao_alvo_sec": 16},
+                        {"titulo": "Fim", "clipes": ["P004", "P005"], "duracao_alvo_sec": 16}]}
+    retry = {"blocos": [*first["blocos"], {"titulo": "Conversas", "clipes": ["P003"], "duracao_alvo_sec": 8}]}
+    ai = MockEditorAI({"structure": [first, retry]})
+    run = _service(material, tmp_path, ai, context=EditorContext(request="vlog", target_sec=40)).run()
+    assert run.structure.added_clip_ids == ["P003"]
+    assert [(b.title, b.clip_ids) for b in run.structure.blocks] == [("Começo", ["P001", "P002", "P003"]), ("Fim", ["P004", "P005"])]
+
+
+def test_free_order_request_keeps_the_ai_order(tmp_path):
+    assert asks_free_order("vlog da trilha, uns 8 minutos") is None
+    assert asks_free_order("Montagem temática da viagem") == "tematic"
+    assert asks_free_order("pode ser fora de ordem") == "fora de ordem" and asks_free_order("ordem livre") == "ordem livre"
+    assert asks_free_order("uma edição sistemática") is None  # só no começo de uma palavra
+    assert "por tema" in FREE_ORDER_PHRASES and "nao cronologic" in FREE_ORDER_PHRASES
+    material = make_story_material(tmp_path)
+    answer = {"blocos": [{"titulo": "Praia", "clipes": ["P005", "P001"]}, {"titulo": "Trilha", "clipes": ["P004", "P002"]}]}
+    ai = MockEditorAI({"structure": [answer]})
+    run = _service(material, tmp_path, ai, context=EditorContext(request="vlog montado por tema")).run()
+    assert [b.clip_ids for b in run.structure.blocks] == [["P005", "P001"], ["P004", "P002"]]
+    assert run.structure.order == 'a da IA (o pedido diz "por tema")'
+
+
+# --- coberturas mais rígidas (2c) ---
+
+
+def _spoken(material, *ids) -> Trecho:
+    return Trecho(number=1, clip_id=material.sentences[ids[0]].clip_id, sentence_ids=list(ids), seconds=0.0)
+
+
+def test_coverage_refused_by_time_gap_and_by_another_place_without_date(tmp_path):
+    material = make_evidence_material(tmp_path)  # P001 10:00, D001 10:05, P002 10:10
+    spoken = _spoken(material, "S000", "S001")
+    drone = material.moments["D001.M01"]
+    assert cover_refusal(drone, spoken, ["P001"], material) is None  # 5 min da fala
+    material.clips["D001"].recorded_at = _at("11:00")
+    assert cover_refusal(drone, spoken, ["P001"], material) == "gravada a 60 min da fala (máximo 15 min)"
+    assert cover_refusal(drone, spoken, ["P001", "D001"], material) is None  # do mesmo bloco
+    # Sem data: só do mesmo lugar da fala ("terminal de ônibus").
+    material.clips["D001"].recorded_at = None
+    assert cover_refusal(drone, spoken, ["P001"], material) == "sem data e de outro lugar (estrada × terminal de ônibus)"
+    material.moments["D001.M01"].place = "Terminal de  Ônibus"
+    assert cover_refusal(drone, spoken, ["P001"], material) is None
+
+
+def test_coverage_refused_when_the_word_is_already_in_the_speaker_image(tmp_path):
+    material = make_evidence_material(tmp_path)
+    spoken = _spoken(material, "S000", "S001")
+    assert cover_words(spoken, material.moments["D001.M02"], material) == (["cachorros"], ["cachorros"])
+    material.moments["P001.M01"].description = "pessoa falando no saguão com cachorros correndo"
+    assert cover_words(spoken, material.moments["D001.M02"], material) == (["cachorros"], [])
+    ai = MockEditorAI({"structure": [_structure(("P001", "P002"))], "inserts": [{"inserir": []}]})
+    _service(material, tmp_path, ai).run()
+    offered = {n: [c.moment_id for c in cs] for n, cs in ai.calls["coverages"][0].questions.items()}
+    assert offered[1] == ["D001.M01"]  # o cachorro já aparece na imagem de quem fala
+
+
+def test_coverage_total_is_limited_to_15_percent_of_the_video(material, tmp_path, monkeypatch):
+    monkeypatch.setattr(editor_service, "COVER_MAX_RATIO", 0.15)
+    run = _service(material, tmp_path, MockEditorAI()).run()
+    first = run.details[0]
+    assert not first.coverages and not first.coverage.coverages
+    [dropped] = first.coverage.discarded
+    assert dropped.item == "S001–S001 ← D001.M01" and "passa do limite de cobertura do vídeo (15% de" in dropped.reason
+    assert any(w.startswith("B01: cobertura S001–S001 ← D001.M01 (2.5 s) recusada") for w in run.warnings)
+
+
+def test_real_vlog_coverages_under_the_new_rules(vlog):
+    """As 4 coberturas do plano real (fotos a cada 1 s) e as 3 do vídeo de 516 s que o usuário viu erradas."""
+    plan = json.loads((VLOG / "editor_plano.json").read_text(encoding="utf-8"))
+
+    def verdict(moment_id, ids, block):
+        spoken = _spoken(vlog, *ids)
+        spoken = spoken.model_copy(update={"sentence_ids": talking_sentences(spoken, vlog) or list(ids)})
+        refusal = cover_refusal(vlog.moments[moment_id], spoken, block, vlog)
+        fresh = cover_words(spoken, vlog.moments[moment_id], vlog)[1]
+        return refusal or ("ok" if fresh else "palavra só na imagem de quem fala ou nenhuma")
+
+    found = {}
+    for block in plan["blocks"]:
+        for c in block["coverages"]:
+            ids = [s.id for s in vlog.sentence_range(c["from_sentence"], c["to_sentence"])]
+            found[(c["moment_ids"][0], c["from_sentence"])] = verdict(c["moment_ids"][0], ids, block["clip_ids"])
+    assert found == {
+        ("P010.M01", "S102"): "ok",  # mesmo bloco da fala (P019); "árvores" não está na imagem de quem fala
+        ("D001.M08", "S112"): "sem data e de outro lugar (praça × floresta)",
+        ("D002.M02", "S127"): "sem data e de outro lugar (praia, lago × exterior, montanha)",
+        ("D002.M03", "S169"): "sem data e de outro lugar (praia × exterior)",
+    }
+    trilha = ["P004", "P013", "P019", "P025"]
+    assert verdict("D001.M07", ["S114", "S115", "S116"], trilha) == "sem data e de outro lugar (praça × floresta)"
+    assert verdict("B004.M01", ["S088"], trilha) == "sem data e de outro lugar (lago × floresta)"
+    praia = [f"P{n:03d}" for n in range(21, 29)]
+    for moment_id in ("D002.M16", "D002.M06", "D002.M01"):
+        for clip_id in ("P022", "P024", "P028"):
+            ids = [s.id for s in vlog.clip_sentences[clip_id]]
+            assert verdict(moment_id, ids, praia).startswith("sem data e de outro lugar"), (moment_id, clip_id)
+
+
+def test_coverage_output_is_limited_and_items_for_unasked_trechos_are_ignored_together(material, tmp_path):
+    assert coverage_output_limit(2) == 340 and coverage_output_limit(0) == 220
+
+    def loop(request):  # o trecho perguntado e mais 127 que não existem, como o qwen fez no vlog real
+        items = [{"trecho": n, "letra": "nenhuma"} for n in range(1, 129)]
+        return {"coberturas": items}
+
+    ai = MockEditorAI({"coverages": [loop]})
+    run = _service(material, tmp_path, ai).run()
+    [request] = ai.calls["coverages"]  # aceita sem nova tentativa: os itens a mais não contam como inválidos
+    assert request.max_output_tokens == coverage_output_limit(len(request.questions)) == 220
+    sub = run.details[0].coverage
+    assert sub.nones == [1] and not sub.discarded and not sub.attempts
+    assert [w for w in sub.warnings if "não perguntados" in w] == [
+        "127 itens para trechos não perguntados ignorados (trechos perguntados: 1)"
+    ]
+    # Só trechos não perguntados: recusada (nova tentativa com o erro).
+    ai = MockEditorAI({"coverages": [{"coberturas": [{"trecho": 5, "letra": "nenhuma"}]}, {"coberturas": []}]})
+    run = _service(material, tmp_path / "b", ai).run()
+    assert len(ai.calls["coverages"]) == 2
+    assert run.details[0].coverage.attempts[0].startswith("nenhum item para os trechos perguntados (vieram só trechos não perguntados: 5)")
+
+
+def test_llm_editor_passes_the_coverage_output_limit_to_the_chain(material):
+    seen = {}
+
+    from ai_video_editor.editor.provider import CoverageRequest
+
+    ai = LLMEditorAI(ModelChain([ModelSpec(provider="mock", model_id="m")], thinking="off", clients={"mock": MockLLMClient()}))
+
+    def generate(prompt, schema, images=None, max_output_tokens=None):
+        seen["max"] = max_output_tokens
+        return schema()
+
+    ai._generate = generate
+    ai.coverages(CoverageRequest(unit_id="B01", prompt="p", material=material, trechos=[], questions={}, max_output_tokens=340))
+    assert seen["max"] == 340
+
+
+# --- pontas de câmera mexida e janela estável ---
+
+
+def _with_motion(material: EditorMaterial, clip_id: str, values: list[float]) -> None:
+    """Movimento por amostra (2 por segundo, a 1ª em 0,5 s) do clipe."""
+    material.clips[clip_id].motion = [(round(0.5 * (k + 1), 3), v) for k, v in enumerate(values)]
+
+
+def test_end_with_a_motion_peak_is_trimmed_and_the_steady_window_is_chosen(material):
+    # D001.M02 (4–8 s): parada (0,005) com um esbarrão em 5–6 s e a câmera sendo pega no fim (7–8 s).
+    values = [0.005] * 16
+    for t, v in ((5.5, 0.05), (6.0, 0.04), (7.5, 0.06), (8.0, 0.07)):
+        values[int(t / 0.5) - 1] = v
+    _with_motion(material, "D001", values)
+    moment = material.moments["D001.M02"]
+    assert steady_range(material, "D001", moment.start_sec, moment.end_sec) == (4.0, 7.0)  # pico do fim fora
+    assert moment_span(moment, None, material) == (4.0, 7.0)  # inclusão do momento inteiro: sem a ponta
+    # Janela de 1 s com o menor movimento, fora do esbarrão (centrada seria 5,5–6,5).
+    assert steady_window(material, "D001", moment.start_sec, moment.end_sec, 1.0) == (4.0, 5.0)
+    assert breath_span(moment, 1.0) == (5.5, 6.5) and breath_span(moment, 1.0, material) == (4.0, 5.0)
+    # Todo instável (câmera na mão o tempo todo) ou sobra curta demais: nada sai.
+    _with_motion(material, "D001", [0.3] * 16)
+    assert steady_range(material, "D001", 4.0, 8.0) == (4.0, 8.0)
+    # Sem medidas: o de antes (respiro centrado, inclusão a partir do início).
+    material.clips["D001"].motion = []
+    assert breath_span(moment, 1.0, material) == (5.5, 6.5) and moment_span(moment, 2.0, material) == (4.0, 6.0)
+
+
+def test_assembly_uses_the_steady_window_for_coverage_and_trims_speaking_clip_edges(material, tmp_path):
+    values = [0.005] * 16
+    values[7] = values[6] = 0.08  # D001 3,5–4,0 s: a câmera mexe no fim do D001.M01 (0–4 s)
+    _with_motion(material, "D001", values)
+    detail = DetailRun(
+        unit_id="B01", block_id="B01", clip_ids=["P001"], origin="ia",
+        keep=[KeepRange(kind="frases", clip_id="P001", from_sentence="S000", to_sentence="S001", sentence_ids=["S000", "S001"])],
+        coverages=[CoverageChoice(from_sentence="S001", to_sentence="S001", sentence_ids=["S001"], clip_id="P001",
+                                  moment_ids=["D001.M01"], speech_evidence="mar", image_evidence="mar")],
+    )
+    assembled = assemble_plan(_run_with([detail], [_block("P001")]), material, _sources(material), SilenceCutParams(),
+                              tmp_path / "o.mp4", "t")
+    [overlay] = assembled.timeline.video_overlay
+    assert overlay.source_in == 0.0 and overlay.source_out <= 3.0 + 1e-6  # nunca o fim mexido (3,0–4,0 s)
+    # Clipe com fala: a câmera mexe no começo (0–1 s) e no fim; a 1ª frase começa em 0,5 s e a última termina
+    # em 11,5 s: as pontas fora das frases saem, nunca um pedaço de frase.
+    _with_motion(material, "P001", [0.09, 0.08] + [0.01] * 19 + [0.09, 0.08, 0.09])
+    keep = KeepRange(kind="frases", clip_id="P001", from_sentence="S000", to_sentence="S000", sentence_ids=["S000"])
+    source = _sources(material)["P001"]
+    source.audio = None
+    cut = SilenceCutParams(padding_before_sec=0.5, padding_after_sec=0.5)
+    [(start, end)] = [(r.start_sec, r.end_sec) for r in faixa_ranges(keep, material, source, cut)]
+    assert start == 0.5  # a frase começa em 0,5 s: o corte para nela (sem a folga dentro da câmera mexida)
+    keep = KeepRange(kind="frases", clip_id="P001", from_sentence="S003", to_sentence="S003", sentence_ids=["S003"])
+    [(start, end)] = [(r.start_sec, r.end_sec) for r in faixa_ranges(keep, material, source, cut)]
+    assert end == 11.5  # a frase termina em 11,5 s; a câmera mexe a partir de 11,0 s: o corte fica no fim dela
+
+
+def test_real_vlog_camera_picked_up_at_the_end_of_p012_is_left_out(vlog):
+    """P012: câmera parada atrás do casal (1–2/255) até 33 s; em 33,5–34,8 s o casal volta e pega a câmera."""
+    first, second = vlog.moments["P012.M01"], vlog.moments["P012.M02"]
+    assert (second.start_sec, second.end_sec) == (16.0, 34.816)
+    assert vlog.roteiro.motion_threshold == pytest.approx(0.1215)  # o pico fica abaixo do limite do projeto
+    assert max(m for t, m in vlog.clips["P012"].motion if t > 33.0) < vlog.roteiro.motion_threshold
+    assert moment_span(second, None, vlog) == (16.0, 33.0)  # inclusão do momento inteiro: sem a câmera sendo pega
+    assert breath_span(first, None, vlog) == (9.0, 15.0)  # respiro longe do esbarrão de 2–3,5 s (centrado: 5–11)
+    # P010 (câmera andando junto): o fim mais mexido (5,5–6,5 s, acima do limite do projeto) sai.
+    assert moment_span(vlog.moments["P010.M01"], None, vlog) == (0.0, 5.0)

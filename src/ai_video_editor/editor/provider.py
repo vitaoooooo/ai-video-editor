@@ -78,6 +78,7 @@ class CoverageRequest:
     material: EditorMaterial
     trechos: list[Trecho]
     questions: dict[int, list[Candidate]]  # trecho → candidatos com letra
+    max_output_tokens: Optional[int] = None  # limite da resposta (`budget.coverage_output_limit`)
 
 
 class EditorAI(ABC):

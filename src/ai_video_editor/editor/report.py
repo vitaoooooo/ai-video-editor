@@ -301,6 +301,8 @@ def build_editor_report(
     if structure.normalized_ids:
         lines.append(_cell(_normalized(structure.normalized_ids)))
     lines += _structure_speech_lines(structure)
+    if structure.order:
+        lines.append(f"Ordem dos blocos: {structure.order}")
     lines += ["", "| Bloco | Título | Clipes | Alvo | No plano | Origem |", "| --- | --- | --- | --- | --- | --- |"]
     by_id = {b.id: b for b in plan.blocks}
     for block in structure.blocks:

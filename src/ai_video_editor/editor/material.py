@@ -13,6 +13,7 @@ as tags ficam de fora porque têm erros (ex.: "rio" nas tags de uma praça).
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from ai_video_editor.roteiro.report import clip_section, clock
@@ -141,6 +142,21 @@ def asks_landscape_opening(request: str) -> bool:
     return any(w.startswith(OPENING_STEMS) for w in found) and any(w.startswith(LANDSCAPE_STEMS) for w in found)
 
 
+# Pedido que pede outra ordem que não a de gravação (a ordem dos blocos da IA é mantida): uma destas expressões
+# no texto (sem acento, minúsculas), começando no início de uma palavra; o fim é livre ("por tema" pega "por
+# temas", "tematic" pega temático/temática, "nao cronologic" pega "não cronológica").
+FREE_ORDER_PHRASES = (
+    "por tema", "tematic", "por assunto", "por topico", "fora de ordem", "ordem livre", "qualquer ordem",
+    "sem ordem", "nao cronologic",
+)
+
+
+def asks_free_order(request: str) -> Optional[str]:
+    """A expressão do pedido que pede outra ordem (None = a ordem de gravação vale). Leitura do texto, sem decisão."""
+    text = " " + " ".join(words(request))
+    return next((p for p in FREE_ORDER_PHRASES if f" {p}" in text), None)
+
+
 # Duração escrita no pedido ("uns 8 minutos", "1 minuto e 30 segundos", "5:30", "oito minutos"): só leitura
 # do texto, sem decisão. Números por extenso (pt/es/en) até trinta.
 _NUMBER_WORDS = {
@@ -190,6 +206,11 @@ def _fmt_sec(seconds: float) -> str:
     return f"{seconds:.1f}".replace(".", ",") + "s"
 
 
+def _utc(value: datetime) -> datetime:
+    """Data comparável: sem fuso vira UTC (o catálogo mistura as duas formas)."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
 @dataclass
 class EditorMaterial:
     """Índices do roteiro por ID (clipes na ordem do catálogo; frases e momentos na ordem de cada clipe)."""
@@ -221,6 +242,15 @@ class EditorMaterial:
     @property
     def clip_ids(self) -> list[str]:
         return list(self.clips)
+
+    def chronology(self, clip_ids: Optional[Iterable[str]] = None) -> tuple[list[str], str]:
+        """Clipes em ordem de gravação e como ela foi medida: "data" (todos têm data de gravação confiável no
+        catálogo: por ela, empate pela ordem do catálogo) ou "catálogo" (falta data em algum: a ordem do catálogo,
+        que já ordena cada papel pela melhor data disponível). Sem `clip_ids`, todos os clipes."""
+        ids = list(self.clips) if clip_ids is None else [c for c in self.clips if c in set(clip_ids)]
+        if ids and all(self.clips[c].recorded_at is not None for c in ids):
+            return sorted(ids, key=lambda c: (_utc(self.clips[c].recorded_at), self.clips[c].order)), "data"
+        return sorted(ids, key=lambda c: self.clips[c].order), "catálogo"
 
     def has_speech(self, clip_id: str) -> bool:
         return bool(self.clip_sentences.get(clip_id))
@@ -350,21 +380,6 @@ def coverage_matches(
             found.append((0, -len(places), n, CoverageMatch(moment, place, places)))
     found.sort(key=lambda item: item[:3])
     return [item[3] for item in found[:limit]]
-
-
-def tag_matches(speech: str, candidates: Iterable[Moment], exclude: set[str], limit: int, kind: str) -> list[CoverageMatch]:
-    """Até `limit` momentos (fora de `exclude`) cujas TAGS dividem palavra de conteúdo com a fala: candidatas a
-    uma correspondência semântica. As tags têm erros, então não são evidência; só põem a imagem na lista para a
-    IA julgar o que ela mostra. Ordem: mais palavras em comum; empate na ordem recebida."""
-    found: list[tuple[int, int, CoverageMatch]] = []
-    for n, moment in enumerate(candidates):
-        if moment.id in exclude or not moment.tags:
-            continue
-        shared = common_words(speech, " ".join(moment.tags))
-        if shared:
-            found.append((-len(shared), n, CoverageMatch(moment, kind, shared)))
-    found.sort(key=lambda item: item[:2])
-    return [item[2] for item in found[:limit]]
 
 
 def breath_affinity(moment: Moment, neighbor_text: str, neighbor_places: list[str]) -> list[str]:

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator, model_serializer, model_
 from ai_video_editor.llm.schema import ModelSwitch
 
 # Sobe quando o formato do editor_run.json / editor_plano.json muda.
-EDITOR_SCHEMA_VERSION = 8
+EDITOR_SCHEMA_VERSION = 9
 
 MAX_HIGHLIGHTS = 3
 MAX_PROBLEMS = 3
@@ -430,6 +430,7 @@ class Block(BaseModel):
     clip_ids: list[str]
     target_sec: Optional[float] = Field(default=None, description="Meta do bloco (a da IA reescalada para o alvo)")
     ai_target_sec: Optional[float] = Field(default=None, description="Meta que a IA deu ao bloco, antes da reescala")
+    ai_block: str = Field(default="", description="Bloco da IA de onde veio, quando foi dividido pela ordem de gravação")
 
 
 # pedido: duração do briefing/CLI; texto: lida do texto do pedido; ia: escolhida pela estrutura.
@@ -462,6 +463,7 @@ class StructureRun(BaseModel):
     )
     shortfall: str = Field(default="", description="O aviso de falta de duração dado à IA na nova tentativa")
     added_clip_ids: list[str] = Field(default_factory=list, description="Clipes incluídos em blocos pela nova tentativa")
+    order: str = Field(default="", description="Ordem dos blocos: de gravação (como foi medida) ou a da IA (e por quê)")
 
 
 class KeepRange(BaseModel):

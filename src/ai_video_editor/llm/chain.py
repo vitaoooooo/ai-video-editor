@@ -205,11 +205,13 @@ class ModelChain:
         return to.model_id if to.provider == frm.provider else to.label
 
     def generate(
-        self, prompt: str, schema: type[T], images: Optional[Sequence[ImageInput]] = None
+        self, prompt: str, schema: type[T], images: Optional[Sequence[ImageInput]] = None,
+        max_output_tokens: Optional[int] = None,
     ) -> StructuredResult[T]:
         """Chama o modelo atual da cadeia, trocando de modelo quando necessário.
 
         `images` (opcionais) vão para cada modelo tentado, com as mesmas regras de troca.
+        `max_output_tokens`: limite da resposta (`LLMCallConfig.max_output_tokens`; None = o do provedor).
 
         `last_metrics` resume a chamada (modelo efetivo, chamadas somadas de todos os
         modelos tentados, tokens da última resposta), mesmo em caso de erro.
@@ -232,7 +234,7 @@ class ModelChain:
             client = self.client_for(spec.provider)
             config = LLMCallConfig(
                 model_id=spec.model_id, thinking=self.thinking,
-                temperature=self.temperature, timeout_sec=self.timeout_sec,
+                temperature=self.temperature, timeout_sec=self.timeout_sec, max_output_tokens=max_output_tokens,
             )
             try:
                 if images:

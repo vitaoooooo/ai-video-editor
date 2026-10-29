@@ -828,6 +828,7 @@ class RoteiroBuilder:
             scene_changes=len(clip.cuts),
             photos_before=len(clip.extracted), photos_kept=len(photos),
             discarded=clip.discarded,
+            motion=[(x.time_sec, round(x.ydif / 255.0, 4)) for x in (clip.scan.samples[1:] if clip.scan else [])],
             warnings=clip.warnings,
         )
 

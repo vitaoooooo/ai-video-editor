@@ -3,7 +3,8 @@
 - Faixa de frases (`de`/`ate`): o mesmo corte do `edit` (`pipeline.cutting.plan_keep_ranges`: silêncios do
   clipe + todas as outras frases do clipe removidas, cortes levados para dentro dos silêncios, sem pedaço de
   palavra), limitado à janela da faixa (no máximo `EDGE_SEC` antes da 1ª e depois da última frase, nunca
-  dentro das frases vizinhas). Sem picote: dentro da faixa, só as pausas de pelo menos
+  dentro das frases vizinhas) e sem as pontas de câmera mexida do clipe fora das frases
+  (`steady.steady_range` do clipe inteiro: câmera sendo posta, pega ou carregada; nunca corta uma frase). Sem picote: dentro da faixa, só as pausas de pelo menos
   `INTERNAL_PAUSE_MIN_SEC` são cortadas (as menores ficam) e um pedaço com menos de `MIN_PIECE_SEC` é unido
   ao vizinho (`merge_pieces`; o `plan_keep_ranges` compartilhado com o `edit` não muda). Cada pedaço vira um
   item de `video_main` com o som do clipe, rotulado só com as frases que caem nele; os micro fades são os da
@@ -11,10 +12,11 @@
 - Momento incluído (2b, só momento sem fala, candidato do próprio bloco): um item da base com o som da
   própria imagem; a duração pedida, limitada ao momento (sem pedido, o momento inteiro).
 - Respiro (2b, candidato do acervo): o mesmo, entre os trechos, com o som mais baixo (rótulo `respiro ...`),
-  a partir de `KeepRange.start_sec` (o trecho centrado no momento, já limitado pela validação).
+  a partir de `KeepRange.start_sec` (a janela estável do momento, já escolhida pela validação).
 - Cobertura (2c): `video_overlay` do início da 1ª frase coberta ao fim da última, na Timeline final (a
   fala continua); vários momentos dividem o tempo na ordem dada, o mais igual possível sem passar da duração de
-  cada um (`coverage.assemble.distribute`); se não bastam, o fim fica sem cobertura (aviso) — nunca estica
+  cada um sem as pontas de câmera mexida (`coverage.assemble.distribute`), cada pedaço na janela de menor
+  movimento do momento (`steady.steady_window`); se não bastam, o fim fica sem cobertura (aviso) — nunca estica
   nem repete. O som da imagem entra baixinho em `audio_ambient` (momento sem fala, clipe com áudio).
   Início ou fim a menos de `COVERAGE_SNAP_SEC` da borda do item da base vai para a borda: a sobra seria um
   pedaço de poucos frames, que o render encadeia mal (regra técnica, não editorial).
@@ -38,6 +40,7 @@ from ai_video_editor.editor.schema import (
     PlanCoverage,
     PlanPiece,
 )
+from ai_video_editor.editor.steady import steady_range, steady_window
 from ai_video_editor.pipeline.cutting import plan_keep_ranges
 from ai_video_editor.planning import NoSpeechDetectedError, PlanningError, SilenceCutParams, TimeRange
 from ai_video_editor.planning.timeline_plan import (
@@ -122,6 +125,9 @@ def faixa_ranges(
     if after:
         hi = min(hi, max(after[0].start_sec, last.end_sec))
     lo, hi = max(0.0, lo), min(source.duration_sec, hi)
+    steady_in, steady_out = steady_range(material, keep.clip_id, 0.0, source.duration_sec)
+    lo = max(lo, min(steady_in, first.start_sec))  # pontas de câmera mexida, nunca dentro de uma frase
+    hi = min(hi, max(steady_out, last.end_sec))
     if source.audio is None:
         start = max(lo, first.start_sec - cut.padding_before_sec)
         return [TimeRange(start_sec=round(start, 3), end_sec=round(min(hi, last.end_sec + cut.padding_after_sec), 3))]
@@ -322,7 +328,8 @@ def _place_coverage(coverage, unit_id, n, base, material, sources, fps, overlays
         return None
     a, b = _snap_to_items(*mapped[:2], base, round(COVERAGE_SNAP_SEC * fps))
     moments = [material.moments[m] for m in coverage.moment_ids]
-    caps = [max(0, int(m.duration * fps + 1e-6)) for m in moments]
+    spans = [steady_range(material, m.clip_id, m.start_sec, m.end_sec) for m in moments]
+    caps = [max(0, int((b_m - a_m) * fps + 1e-6)) for a_m, b_m in spans]
     alloc = distribute(b - a, caps)
     cursor = a
     pieces: list[PlanPiece] = []
@@ -330,20 +337,21 @@ def _place_coverage(coverage, unit_id, n, base, material, sources, fps, overlays
         if frames < 1:
             continue
         source = sources[moment.clip_id]
-        source_out = round(moment.start_sec + frames / fps, 6)
+        source_in = steady_window(material, moment.clip_id, moment.start_sec, moment.end_sec, frames / fps)[0]
+        source_out = round(source_in + frames / fps, 6)
         overlays.append(OverlayItem(
-            source_path=source.path, source_in=moment.start_sec, source_out=source_out, timeline_start=round(cursor / fps, 6),
+            source_path=source.path, source_in=source_in, source_out=source_out, timeline_start=round(cursor / fps, 6),
             clip_id=moment.clip_id, label=f"{label} {moment.id}",
         ))
         if source.has_audio and not moment.sentence_ids:
             fade = min(AMBIENT_FADE_SEC, frames / fps / 4)
             ambient.append(AmbientItem(
-                source_path=source.path, source_in=moment.start_sec, source_out=source_out,
+                source_path=source.path, source_in=source_in, source_out=source_out,
                 timeline_start=round(cursor / fps, 6), volume=COVERAGE_AMBIENT_VOLUME, fade_in_sec=fade, fade_out_sec=fade,
                 clip_id=moment.clip_id, label=f"ambiente {moment.id}",
             ))
         pieces.append(PlanPiece(
-            kind="cobertura", clip_id=moment.clip_id, ids=[moment.id], source_in=moment.start_sec,
+            kind="cobertura", clip_id=moment.clip_id, ids=[moment.id], source_in=round(source_in, 3),
             source_out=round(source_out, 3), timeline_start=round(cursor / fps, 3), timeline_end=round((cursor + frames) / fps, 3),
         ))
         cursor += frames
