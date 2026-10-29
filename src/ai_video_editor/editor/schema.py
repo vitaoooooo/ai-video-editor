@@ -462,6 +462,19 @@ class Block(BaseModel):
 TargetOrigin = Literal["pedido", "texto", "ia", "nenhuma"]
 
 
+class StructurePartRun(BaseModel):
+    """Uma parte da estrutura (material grande: a lista inteira não cabe no contexto)."""
+
+    number: int
+    clip_ids: list[str] = Field(default_factory=list, description="Clipes da parte, em ordem de gravação")
+    estimated_tokens: int = 0
+    target_sec: Optional[float] = Field(default=None, description="Meta da parte = alvo × fala da parte / fala total")
+    speech_sec: float = 0.0
+    origin: Origin = "ia"
+    block_titles: list[str] = Field(default_factory=list, description="Blocos que vieram desta parte")
+    fallback_reason: str = ""
+
+
 class StructureRun(BaseModel):
     origin: Origin
     blocks: list[Block] = Field(default_factory=list)
@@ -488,6 +501,10 @@ class StructureRun(BaseModel):
     )
     shortfall: str = Field(default="", description="O aviso de falta de duração dado à IA na nova tentativa")
     added_clip_ids: list[str] = Field(default_factory=list, description="Clipes incluídos em blocos pela pergunta de acréscimo")
+    parts: list[StructurePartRun] = Field(
+        default_factory=list, description="Partes perguntadas (uma só quando a lista inteira cabe no contexto)"
+    )
+    joins: list[str] = Field(default_factory=list, description="Blocos juntados na fronteira entre partes (mesmo lugar)")
     added_blocks: dict[str, str] = Field(
         default_factory=dict, description="Clipe acrescentado → o bloco final em que entrou (\"B03 título\")"
     )

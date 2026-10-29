@@ -42,6 +42,8 @@ from ai_video_editor.editor import (
     subtitle_sources,
 )
 from ai_video_editor.editor import budget as editor_budget
+from ai_video_editor.editor import material as editor_material
+from ai_video_editor.editor import prompt as editor_prompt
 from ai_video_editor.editor import service as editor_service
 from ai_video_editor.editor import steady as editor_steady
 from ai_video_editor.editor import validate as editor_validate
@@ -104,6 +106,9 @@ EDITOR_RULES = (
     editor_budget.MARGIN_TOKENS, editor_budget.RETRY_TOKENS, editor_budget.COVERAGE_OUTPUT_BASE_TOKENS,
     editor_budget.COVERAGE_OUTPUT_PER_TRECHO_TOKENS, editor_service.COVER_MAX_GAP_SEC, editor_service.COVER_MAX_RATIO,
     editor_steady.EDGE_MOTION_FLOOR, editor_steady.EDGE_MOTION_RATIO, editor_steady.EDGE_MIN_KEEP_SEC,
+    editor_service.STRUCTURE_PART_ROOM_RATIO, editor_service.STRUCTURE_PART_MIN_CLIPS,
+    editor_service.STRUCTURE_PART_PLACE_WINDOW, editor_material.STRUCTURE_SUMMARY_CHARS,
+    editor_material.STRUCTURE_PLACE_CHARS, editor_prompt.PREVIOUS_TITLES_MAX_CHARS,
 )
 # Regras do código que mudam a montagem (entram no fingerprint da Timeline).
 TIMELINE_RULES = (editor_steady.EDGE_MOTION_FLOOR, editor_steady.EDGE_MOTION_RATIO, editor_steady.EDGE_MIN_KEEP_SEC)
@@ -353,6 +358,8 @@ class EditorPipeline(EditPipeline):
         if run is not None:
             if run.structure is not None and run.structure.origin == "fallback":
                 fallbacks.append("estrutura")
+            elif run.structure is not None:
+                fallbacks += [f"estrutura parte {p.number}" for p in run.structure.parts if p.origin == "fallback"]
             fallbacks += [d.unit_id for d in run.details if d.origin == "fallback"]
         material_sec = sum(c.duration_sec for c in s.material.clips.values()) if s.material else 0.0
         return EditorResult(

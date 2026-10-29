@@ -34,7 +34,7 @@ from ai_video_editor.roteiro.report import clock
 
 # Sobem quando o pedido ou o schema da resposta da passada mudam (invalida só o cache daquela passada).
 SUMMARY_PROMPT_VERSION = "resumo-v1"
-STRUCTURE_PROMPT_VERSION = "estrutura-v10"
+STRUCTURE_PROMPT_VERSION = "estrutura-v11"
 CUTS_PROMPT_VERSION = "cortes-v6"
 INSERTS_PROMPT_VERSION = "insercoes-v2"
 COVERAGE_PROMPT_VERSION = "coberturas-v4"
@@ -42,14 +42,13 @@ COVERAGE_PROMPT_VERSION = "coberturas-v4"
 # Logo abaixo do pedido, em todas as perguntas (menos o resumo).
 RESPECT_REQUEST = "Faça o que o pedido pede; não acrescente nada que ele não peça; na dúvida, não acrescente."
 
-# Resumo de cada clipe na lista da estrutura: até tantas palavras (a lista inteira sempre cabe).
-STRUCTURE_SUMMARY_WORDS = 25
+# Títulos dos blocos das partes anteriores no pedido de uma parte da estrutura: até tantos caracteres (os mais
+# recentes ficam).
+PREVIOUS_TITLES_MAX_CHARS = 300
 # Texto de um trecho nas listas da 2b e da 2c: até tantas palavras.
 TRECHO_WORDS = 30
 # Resumo de cada clipe oferecido na pergunta de acréscimo (falta de duração da estrutura): até tantas palavras.
 SHORTFALL_SUMMARY_WORDS = 8
-# A lista de clipes oferecidos no acréscimo tem no máximo tantos caracteres (os que não cabem não são oferecidos).
-ADDITIONS_MAX_CHARS = 3000
 # Contexto de um pedaço/parte de clipe grande (só nesses casos: a decisão depende do que veio antes): o resumo
 # do pedaço anterior e as frases vizinhas, cortados nestes tamanhos. `CONTEXT_MAX_CHARS` é o que o orçamento
 # reserva para esse contexto ao dividir o clipe.
@@ -180,6 +179,7 @@ class StructureShortfall:
     speech_sec: float  # fala disponível dos clipes escolhidos (nos blocos)
     offers: list[tuple[str, str]] = field(default_factory=list)  # (clipe, linha) oferecidos, em ordem de gravação
     block_lines: list[str] = field(default_factory=list)  # a estrutura escolhida (não muda)
+    hidden: int = 0  # clipes com fala não usados que não couberam na lista (os de menos fala)
 
     @property
     def missing_sec(self) -> float:
@@ -205,6 +205,8 @@ def build_additions_prompt(context: EditorContext, shortfall: StructureShortfall
         f"{round(shortfall.speech_sec)} s de fala; faltam {missing} s.",
         "Estes clipes com fala não foram usados (código · segundos de fala — resumo curto):",
         *(line for _, line in shortfall.offers),
+        *([f"- (mais {shortfall.hidden} clipe(s) com fala não usado(s), de menos fala, ficaram fora desta lista)"]
+          if shortfall.hidden else []),
         "",
         f"Faltam {missing} s; quais destes clipes acrescentar? Escolha só clipes da lista acima que servem ao "
         "pedido; nenhum também vale (lista vazia). O programa põe cada clipe escolhido no bloco do clipe vizinho "
@@ -217,13 +219,51 @@ def build_additions_prompt(context: EditorContext, shortfall: StructureShortfall
     return "\n".join(lines)
 
 
+@dataclass
+class StructurePart:
+    """Uma parte da estrutura de um material grande (a lista inteira não cabe no contexto: `service._split_parts`)."""
+
+    number: int
+    total: int
+    first_clip: str
+    last_clip: str
+    target_sec: Optional[float] = None  # meta da parte = alvo × (fala da parte / fala do material)
+    previous_titles: list[str] = field(default_factory=list)  # blocos decididos nas partes anteriores
+
+
+def _part_lines(part: StructurePart, video_target: Optional[float]) -> list[str]:
+    lines = [
+        f"O material é grande e foi dividido em {part.total} partes seguidas na ordem de gravação, perguntadas uma "
+        f"de cada vez. Esta é a parte {part.number} de {part.total}: clipes da gravação {part.first_clip} a "
+        f"{part.last_clip}. Responda blocos e \"fora\" só com os clipes desta parte; o programa junta as partes.",
+    ]
+    if part.previous_titles:
+        titles = "; ".join(part.previous_titles)
+        if len(titles) > PREVIOUS_TITLES_MAX_CHARS:
+            titles = "…" + titles[-(PREVIOUS_TITLES_MAX_CHARS - 1):].split("; ", 1)[-1]
+        lines.append(f"Blocos já decididos nas partes anteriores (o vídeo continua a partir deles): {titles}.")
+    if part.target_sec is not None:
+        lines.append(
+            f"Meta desta parte: {_sec(part.target_sec)} (o alvo do vídeo, {_sec(video_target)}, na proporção da fala "
+            "desta parte). Use a meta desta parte em duracao_total_alvo_sec."
+        )
+    else:
+        lines.append(
+            "Sem duração alvo: escolha você quanto desta parte entra no vídeo e diga em duracao_total_alvo_sec."
+        )
+    return lines
+
+
 def build_structure_prompt(
     context: EditorContext,
     clip_lines: list[str],
     errors: Optional[list[str]] = None,
+    target_sec: Optional[float] = None,
+    part: Optional[StructurePart] = None,
 ) -> str:
-    """`clip_lines`: uma linha por clipe (`EditorMaterial.structure_line`), sempre todos os clipes, em ordem de
-    gravação. Pedido que pede outra ordem (`material.asks_free_order`): a regra de ordem deixa agrupar por tema."""
+    """`clip_lines`: uma linha por clipe (`EditorMaterial.structure_line`), em ordem de gravação: todos os clipes
+    ou, com `part`, só os da parte. `target_sec`: o alvo do vídeo (do briefing/CLI ou do texto do pedido). Pedido
+    que pede outra ordem (`material.asks_free_order`): a regra de ordem deixa agrupar por tema."""
     if asks_free_order(context.request):
         order = [
             "- Um bloco = um trecho da história (ex.: chegada, hotel, trilha, praia, volta), não um tema abstrato; "
@@ -239,17 +279,19 @@ def build_structure_prompt(
             "da lista. O programa põe os blocos e os clipes nessa ordem: um bloco com clipes de momentos "
             "diferentes (com clipes de outro bloco no meio) é dividido em partes.",
         ]
-    if context.target_sec is not None:
-        target = f"Duração alvo do vídeo final: {_sec(context.target_sec)}. Use esse valor em duracao_total_alvo_sec."
+    if part is not None:
+        target = _part_lines(part, target_sec)
+    elif target_sec is not None:
+        target = [f"Duração alvo do vídeo final: {_sec(target_sec)}. Use esse valor em duracao_total_alvo_sec."]
     else:
-        target = "Sem duração alvo: escolha você a duração do vídeo final e diga qual em duracao_total_alvo_sec."
+        target = ["Sem duração alvo: escolha você a duração do vídeo final e diga qual em duracao_total_alvo_sec."]
     lines = [
         *_request_lines(context),
         "",
         "Você é o editor de um vídeo. Monte a ESTRUTURA do vídeo final a partir dos clipes do material bruto: "
         "blocos na ordem em que vão aparecer, cada um com os clipes que contam aquela parte. "
         "Responda só com o JSON pedido, em português.",
-        target,
+        *target,
         "",
         "Regras de estilo:",
         *order,
@@ -257,19 +299,20 @@ def build_structure_prompt(
         "vídeo. Um bloco sem função própria se junta a outro.",
         "- Continuidade: cada bloco continua o anterior (o espectador entende por que passou de um ao outro); "
         "evite repetir num bloco o que outro já contou, a não ser que o pedido peça.",
-        "- Use só os clipes pertinentes ao pedido. Não precisa usar todos: um clipe com \"fala sim\" que você não "
+        "- Use só os clipes pertinentes ao pedido. Não precisa usar todos: um clipe com fala que você não "
         "puser em nenhum bloco fica fora do vídeo.",
         "- \"fora\": clipes que não devem entrar (repetidos, ruins, fora do assunto), com o motivo.",
-        "- Clipes com \"fala não\" vão num bloco só quando o pedido pede essas imagens ou o material não tem fala; "
+        "- Clipes \"sem fala\" vão num bloco só quando o pedido pede essas imagens ou o material não tem fala; "
         "os que você não puser em nenhum bloco nem em \"fora\" ficam no acervo (o programa pode oferecê-los "
         "depois, por cima da fala ou entre as falas).",
         "- Cada clipe aparece no máximo uma vez (num bloco ou em \"fora\").",
         "- duracao_alvo_sec de cada bloco: quanto do vídeo final ele deve ocupar; a soma perto da duração total. "
-        "Um bloco não passa da fala que ele tem (os segundos de frases de cada clipe estão na lista), a não ser "
+        "Um bloco não passa da fala que ele tem (os segundos de fala de cada clipe estão na lista), a não ser "
         "com imagens sem fala.",
         "- " + _codes_line(CLIP_CODES) + " Use só clipes da lista abaixo.",
         "",
-        "Clipes (código · papel · duração · fala e segundos de frases · data de gravação — resumo):",
+        "Clipes (código · papel · segundos de fala, ou sem fala e a duração · lugar · data de gravação, se houver "
+        "— resumo):",
         *clip_lines,
         "",
         'Formato: {"blocos": [{"titulo": "...", "assunto": "...", "clipes": ["código do clipe", "código do clipe"], '

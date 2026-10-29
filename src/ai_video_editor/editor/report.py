@@ -176,6 +176,30 @@ def _structure_speech_lines(structure: StructureRun) -> list[str]:
     ]
 
 
+def _structure_part_lines(structure: StructureRun) -> list[str]:
+    """Estrutura em partes (a lista inteira não coube no contexto): clipes, tokens, meta e blocos de cada parte,
+    junções na fronteira e a parte que caiu no fallback (e por quê)."""
+    if len(structure.parts) <= 1:
+        return []
+    lines = [
+        "",
+        f"Estrutura em {len(structure.parts)} partes (a lista inteira não cabe no contexto):",
+        "",
+        "| Parte | Clipes | Tokens (estim.) | Fala | Meta da parte | Origem | Blocos |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for part in structure.parts:
+        clips = f"{part.clip_ids[0]}–{part.clip_ids[-1]} ({len(part.clip_ids)})" if part.clip_ids else "—"
+        lines.append(
+            f"| {part.number} | {clips} | ~{_tokens(part.estimated_tokens)} | {_sec(part.speech_sec)} | "
+            f"{_sec(part.target_sec)} | {_ORIGIN[part.origin]} | {_cell('; '.join(part.block_titles) or '—')} |"
+        )
+    lines += [f"- parte {p.number} pelo fallback: {_cell(_short(p.fallback_reason, 300))}"
+              for p in structure.parts if p.origin == "fallback"]
+    lines += [f"- {_cell(j)}" for j in structure.joins] or ["- nenhuma junção na fronteira entre partes"]
+    return lines
+
+
 def breath_total_line(plan: EditorPlan) -> str:
     """Total de respiro no plano, em segundos e % da duração."""
     total = sum(p.timeline_end - p.timeline_start for b in plan.blocks for p in b.pieces if p.kind == "respiro")
@@ -305,6 +329,7 @@ def build_editor_report(
     lines += _structure_speech_lines(structure)
     if structure.order:
         lines.append(f"Ordem dos blocos: {structure.order}")
+    lines += _structure_part_lines(structure)
     lines += ["", "| Bloco | Título | Clipes | Alvo | No plano | Origem |", "| --- | --- | --- | --- | --- | --- |"]
     by_id = {b.id: b for b in plan.blocks}
     for block in structure.blocks:

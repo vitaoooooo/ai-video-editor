@@ -35,18 +35,21 @@ from ai_video_editor.editor.ids import IdResolver
 from ai_video_editor.editor.material import (
     FREE_ORDER_PHRASES,
     GENERIC_WORDS,
+    STRUCTURE_SUMMARY_CHARS,
     asks_free_order,
     asks_landscape_opening,
     coverage_matches,
     library_ranking,
     matched_words,
+    place_key,
 )
 from ai_video_editor.editor.prompt import (
-    ADDITIONS_MAX_CHARS,
     BlockHeader,
     CoveragePromptInput,
     CutsPromptInput,
     InsertsPromptInput,
+    StructureShortfall,
+    build_additions_prompt,
     build_coverage_prompt,
     build_cuts_prompt,
     build_inserts_prompt,
@@ -62,6 +65,7 @@ from ai_video_editor.editor.schema import (
     COVERAGE_SAYS,
     Block,
     Candidate,
+    ClipSummary,
     ClipSummaryAnswer,
     CoverageChoice,
     CoverageItem,
@@ -82,7 +86,9 @@ from ai_video_editor.editor.service import (
     CallCache,
     EditorService,
     _add_to_neighbors,
+    _join_parts,
     cover_refusal,
+    split_parts,
     cover_words,
 )
 from ai_video_editor.editor.steady import steady_range, steady_window
@@ -101,7 +107,7 @@ from ai_video_editor.editor.validate import (
     validate_inserts,
     validate_structure,
 )
-from ai_video_editor.intelligence.exceptions import AIAuthenticationError, AIProviderError
+from ai_video_editor.intelligence.exceptions import AIAuthenticationError, AIProviderError, AIResponseValidationError
 from ai_video_editor.llm.chain import ModelChain
 from ai_video_editor.llm.providers.mock import MockLLMClient
 from ai_video_editor.llm.schema import ModelSpec
@@ -110,6 +116,7 @@ from ai_video_editor.pipeline.editor_ia import EditorParams, EditorPipeline
 from ai_video_editor.planning import SilenceCutParams, TimeRange
 from ai_video_editor.producer import registered_recipes
 from ai_video_editor.recipes import get_recipe
+from ai_video_editor.roteiro.report import clock
 from ai_video_editor.roteiro.schema import Moment, ProjectRoteiro, RoteiroClip, RoteiroSentence
 from ai_video_editor.transcription.provider import TranscriptionProvider
 from ai_video_editor.transcription.schema import Transcript, TranscriptionConfig, TranscriptSegment, Word
@@ -399,23 +406,29 @@ def make_vlog_material(tmp_path: Path, clips: int = 41) -> EditorMaterial:
     return EditorMaterial.from_roteiro(roteiro)
 
 
-def test_structure_prompt_lists_all_41_clips_in_one_line_each_without_shortening(tmp_path):
+def test_structure_prompt_lists_all_41_clips_in_one_lean_line_each_in_one_request(tmp_path):
     vlog = make_vlog_material(tmp_path)
-    long_summary = "Ele caminha pela trilha até o lago e mostra a água gelada. " * 5  # 60 palavras
+    long_summary = "O clipe mostra que ele caminha pela trilha até o lago e mostra a água gelada. " * 5
     ai = MockEditorAI({"summary": [{"resumo": long_summary, "tom": "leve"}] * 41})
     run = _service(vlog, tmp_path, ai, num_ctx=8192).run()
-    prompt = ai.calls["structure"][0].prompt
+    [request] = ai.calls["structure"]  # a lista inteira cabe: um pedido só, sem parte
+    prompt = request.prompt
     lines = [line for line in prompt.splitlines() if line.startswith("- ") and " — " in line]
     assert [line.split(" · ")[0][2:] for line in lines] == vlog.clip_ids  # todos, na ordem
-    assert all(len(line.split(" — ", 1)[1].split()) == 25 for line in lines)  # resumo em 25 palavras
-    assert "P001 · principal · 0:30 · fala sim (10 s de frases) — Ele caminha pela trilha" in prompt
-    assert "B001 · broll · 0:30 · fala não — " in prompt
+    summaries = [line.split(" — ", 1)[1] for line in lines]
+    assert all(len(text) <= STRUCTURE_SUMMARY_CHARS and text.endswith("…") for text in summaries)
+    # Sem a abertura repetida ("O clipe mostra"), sem a duração de clipe com fala, com o lugar.
+    assert "- P001 · principal · fala 10 s · lago — Que ele caminha pela trilha até o lago" in prompt
+    assert "- B001 · broll · sem fala 0:30 · lago — " in prompt
+    assert "parte 1 de" not in prompt and request.clip_ids == vlog.clip_ids
+    assert len(run.structure.parts) == 1 and run.structure.parts[0].estimated_tokens == tokens(prompt)
     assert tokens(prompt) <= Budget(8192, "t").structure_available
-    assert not any("encurtad" in w for w in run.warnings) and run.structure.origin == "ia"
+    assert run.structure.origin == "ia"
 
 
-def test_structure_prompt_without_room_goes_to_the_neutral_fallback(material, tmp_path):
-    run = _service(material, tmp_path, num_ctx=3000).run()  # nem a estrutura de 4 clipes cabe
+def test_structure_prompt_without_room_goes_to_the_fallback(material, tmp_path):
+    run = _service(material, tmp_path, num_ctx=3000).run()  # nem o pedido sem a lista cabe: dividir não resolve
+    assert len(run.structure.parts) == 1
     assert run.structure.origin == "fallback" and "não cabe no contexto" in run.structure.attempts[0]
 
 
@@ -762,7 +775,7 @@ def test_retry_with_the_errors_and_neutral_fallbacks(material, tmp_path):
     run = _service(material, tmp_path, ai).run()
     assert run.structure.origin == "fallback" and [b.clip_ids for b in run.structure.blocks] == [["P001"], ["P002"]]
     assert "nenhum bloco" in run.structure.attempts[0] and "X999 não existe" in run.structure.attempts[1]
-    assert any("ESTRUTURA PELO FALLBACK NEUTRO" in w for w in run.warnings)
+    assert any("ESTRUTURA PELO FALLBACK (a IA falhou de vez)" in w for w in run.warnings)
     assert "Sua resposta anterior foi recusada" in ai.calls["structure"][1].prompt
     first = run.details[0]
     assert first.cut_runs[0].origin == "ia" and "S999 não existe" in ai.calls["cuts"][1].prompt
@@ -1701,15 +1714,49 @@ def test_coverage_accepts_an_explained_correspondence_with_visual_evidence(tmp_p
     assert check({"palavra": ""}).discarded[0].reason.startswith("sem a palavra em comum")
 
 
-def test_structure_addition_list_fits_its_room_with_41_clips(tmp_path):
+def _first_clip_only(request):
+    """Estrutura simulada de uma parte: um bloco só, com o primeiro clipe da parte (o resto não escolhido)."""
+    return {"blocos": [{"titulo": f"Começo {request.clip_ids[0]}", "clipes": [request.clip_ids[0]]}]}
+
+
+LONG_SUMMARY = "extraordinariamente " * 10  # linhas longas: a lista do acréscimo não cabe inteira
+
+
+def test_addition_after_the_parts_with_the_list_limited_to_the_budget(tmp_path):
     vlog = make_vlog_material(tmp_path)
-    ai = MockEditorAI({"structure": [_structure((("P001",), 480))]})
-    _service(vlog, tmp_path, ai, num_ctx=8192, context=EditorContext(request="vlog", target_sec=480)).run()
-    [request] = ai.calls["additions"]
-    offered = [line for line in request.prompt.splitlines() if line.startswith("- ") and " s de fala" in line]
-    assert "- P002 · 10 s de fala" in request.prompt and "P001" not in request.offered
-    assert len(offered) == len(request.offered) and sum(len(line) + 1 for line in offered) <= ADDITIONS_MAX_CHARS
-    assert tokens(request.prompt) <= Budget(8192, "t").structure_available
+    ai = MockEditorAI({"summary": [{"resumo": LONG_SUMMARY}] * 41, "structure": [_first_clip_only] * 10})
+    run = _service(vlog, tmp_path, ai, num_ctx=4600, context=EditorContext(request="vlog", target_sec=480)).run()
+    parts = run.structure.parts
+    assert len(parts) > 1 and len(ai.calls["structure"]) == len(parts)
+    [request] = ai.calls["additions"]  # uma pergunta só, depois de juntar as partes, sobre o total
+    chosen = [p.clip_ids[0] for p in parts]
+    assert run.structure.speech_sec_first == pytest.approx(sum(vlog.speech_sec(c) for c in chosen))
+    unused = [c for c in vlog.clip_ids if vlog.has_speech(c) and c not in chosen]
+    offered = [line for line in request.prompt.splitlines() if line.startswith("- P") and " s de fala" in line]
+    hidden = len(unused) - len(request.offered)
+    assert len(offered) == len(request.offered) and hidden > 0
+    assert f"- (mais {hidden} clipe(s) com fala não usado(s), de menos fala, ficaram fora desta lista)" in request.prompt
+    assert tokens(request.prompt) <= Budget(4600, "t").structure_available
+
+
+def test_addition_list_shows_the_clips_with_most_speech_first(tmp_path):
+    material = make_story_material(tmp_path)
+    for n, clip_id in enumerate(material.clip_ids):  # P001 4 s ... P005 20 s de fala
+        first, last = material.clip_sentences[clip_id]
+        last.end_sec = last.start_sec + 4.0 * (n + 1) - (first.end_sec - first.start_sec)
+    summaries = {c: ClipSummary(clip_id=c, answer=ClipSummaryAnswer(resumo=LONG_SUMMARY)) for c in material.clip_ids}
+    service = _service(material, tmp_path, context=EditorContext(request="vlog", target_sec=100))
+    check = editor_service.validate_structure(StructureAnswer.model_validate(_structure(("P001",))), material)
+    full = service._shortfall(check, summaries)
+    assert full.offered == ["P002", "P003", "P004", "P005"] and full.hidden == 0
+    # Espaço para três: ficam os de mais fala (P003 a P005), em ordem de gravação, e o aviso do que ficou fora.
+    three = StructureShortfall(target_sec=full.target_sec, speech_sec=full.speech_sec, offers=full.offers[1:],
+                               block_lines=full.block_lines, hidden=1)
+    room = tokens(build_additions_prompt(service.context, three))
+    service.budget = Budget(room + service.budget.num_ctx - service.budget.structure_available, "t")
+    limited = service._shortfall(check, summaries)
+    assert limited.offered == ["P003", "P004", "P005"] and limited.hidden == 1
+    assert "- (mais 1 clipe(s) com fala não usado(s)" in build_additions_prompt(service.context, limited)
 
 
 # --- ponta a ponta (FFmpeg) ---
@@ -1969,6 +2016,128 @@ def test_empty_addition_keeps_the_first_structure(tmp_path):
         assert [b.clip_ids for b in run.structure.blocks] == [["P001", "P002"], ["P004"]]
         assert run.structure.added_clip_ids == [] and not run.structure.attempts
         assert not [w for w in run.warnings if "acréscimo" in w]
+
+
+# --- estrutura em partes (material grande: a lista inteira não cabe no contexto) ---
+
+VLOG99 = Path(__file__).parent / "data" / "editor_vlog99"
+
+
+@pytest.fixture(scope="module")
+def vlog99() -> tuple[EditorMaterial, dict, str]:
+    """Caso real de 99 clipes (75 com fala): roteiro reduzido ao que a estrutura usa, resumos e o pedido de 15 min."""
+    data = json.loads((VLOG99 / "resumos.json").read_text(encoding="utf-8"))
+    summaries = {
+        c: ClipSummary(clip_id=c, answer=ClipSummaryAnswer(resumo=r) if r else None, origin="cache")
+        for c, r in data["summaries"].items()
+    }
+    return EditorMaterial.from_roteiro(ProjectRoteiro.load(VLOG99 / "roteiro.json")), summaries, data["request"]
+
+
+def _structure_only(material, summaries, request, tmp_path, ai, num_ctx=8192):
+    service = _service(material, tmp_path, ai, num_ctx=num_ctx, context=EditorContext(request=request))
+    return service, service._structure(summaries)
+
+
+def test_real_99_clips_do_not_fit_and_are_asked_in_contiguous_parts(vlog99, tmp_path):
+    material, summaries, request = vlog99
+    ai = MockEditorAI()
+    service, structure = _structure_only(material, summaries, request, tmp_path, ai)
+    lines = service.structure_lines(summaries)
+    available = Budget(8192, "t").structure_available
+    whole = build_structure_prompt(service.context, list(lines.values()), target_sec=900)
+    assert len(lines) == 99 and 6000 < tokens(whole) and tokens(whole) > available  # enxuta, mas não cabe
+    parts = structure.parts
+    assert [(p.clip_ids[0], p.clip_ids[-1], len(p.clip_ids)) for p in parts] == [("P001", "P049", 49), ("P050", "B010", 50)]
+    assert [c for p in parts for c in p.clip_ids] == material.chronology()[0]  # contíguas, na ordem de gravação
+    assert all(p.estimated_tokens <= available for p in parts)
+    assert [r.clip_ids for r in ai.calls["structure"]] == [p.clip_ids for p in parts]
+    # O corte cai numa mudança de lugar (exterior → trilha na mata).
+    assert (material.clip_place("P049"), material.clip_place("P050")) == ("exterior", "trilha na mata")
+    # Meta da parte = alvo (900 s do texto do pedido) × fala da parte / fala total.
+    total = sum(material.speech_sec(c) for c in material.clip_ids)
+    for part in parts:
+        assert part.target_sec == pytest.approx(900 * part.speech_sec / total, abs=0.1)
+    first, second = (r.prompt for r in ai.calls["structure"])
+    assert first.startswith(f'Pedido do usuário: "{request}"')
+    assert "Esta é a parte 1 de 2: clipes da gravação P001 a P049." in first and "já decididos" not in first
+    assert "Esta é a parte 2 de 2: clipes da gravação P050 a B010." in second
+    assert "Blocos já decididos nas partes anteriores (o vídeo continua a partir deles): " in second
+    assert f"Meta desta parte: {clock(parts[1].target_sec)}" in second
+    assert "- P049 · " not in second and "- P050 · " in second and "- P050 · " not in first
+
+
+def test_split_prefers_a_place_change_near_the_ideal_size():
+    costs = [10] * 20
+    same = ["trilha"] * 20
+    assert split_parts(costs, same, 140) == [(0, 10), (10, 20)]  # sem mudança de lugar: o tamanho igual
+    places = ["hotel"] * 8 + ["trilha"] * 12
+    assert split_parts(costs, places, 140) == [(0, 8), (8, 20)]  # a mudança de lugar dentro da janela
+    far = ["hotel"] * 3 + ["trilha"] * 17
+    assert split_parts(costs, far, 140) == [(0, 10), (10, 20)]  # longe demais do tamanho ideal: ignorada
+    assert split_parts(costs, same, 1000) == [(0, 20)]
+    spans = split_parts([10] * 30, ["x"] * 30, 120)  # 300 tokens em partes de até 108
+    assert len(spans) == 3 and all(sum([10] * (b - a)) <= 108 for a, b in spans)
+    assert all(b - a >= editor_service.STRUCTURE_PART_MIN_CLIPS for a, b in spans)
+
+
+def test_parts_join_in_order_and_merge_the_same_place_at_the_border(tmp_path):
+    material = make_story_material(tmp_path)  # todos os clipes na "rua"
+    first = [Block(id="B01", title="Chegada", clip_ids=["P001"], target_sec=8.0),
+             Block(id="B02", title="Rua", clip_ids=["P002"], target_sec=8.0)]
+    second = [Block(id="B01", title="Rua de novo", clip_ids=["P003"], target_sec=6.0),
+              Block(id="B02", title="Fim", clip_ids=["P004", "P005"], target_sec=None)]
+    blocks, joins = _join_parts([first, second], material)
+    assert [(b.id, b.title, b.clip_ids, b.target_sec) for b in blocks] == [
+        ("B01", "Chegada", ["P001"], 8.0), ("B02", "Rua", ["P002", "P003"], 14.0), ("B03", "Fim", ["P004", "P005"], None),
+    ]
+    assert joins == ['junção: "Rua" (fim da parte 1) e "Rua de novo" (começo da parte 2) são do mesmo lugar (rua): um bloco só']
+    assert [b.clip_ids for b in first] == [["P001"], ["P002"]]  # os blocos recebidos não mudam
+    other = make_story_material(tmp_path / "b")
+    for moment in other.clip_moments["P003"]:
+        moment.place = "praia"
+    blocks, joins = _join_parts([first, second], other)
+    assert len(blocks) == 4 and joins == []
+
+
+def test_failed_part_uses_the_grouped_fallback_only_there(vlog99, tmp_path):
+    material, summaries, request = vlog99
+    broken = AIResponseValidationError("resposta quebrada")
+    ai = MockEditorAI({"structure": [_first_clip_only, broken, broken]})
+    service, structure = _structure_only(material, summaries, request, tmp_path, ai)
+    first, second = structure.parts
+    assert (first.origin, second.origin) == ("ia", "fallback") and structure.origin == "ia"
+    assert "resposta fora do formato" in second.fallback_reason
+    fallback_clips = [c for b in structure.blocks for c in b.clip_ids if c in second.clip_ids]
+    speech = sum(material.speech_sec(c) for c in fallback_clips)
+    assert 0 < speech <= second.target_sec  # clipes inteiros, em ordem, até a meta da parte
+    assert fallback_clips == [c for c in second.clip_ids if material.has_speech(c)][:len(fallback_clips)]
+    blocks = [b for b in structure.blocks if b.clip_ids[0] in second.clip_ids]
+    assert len(blocks) < len(fallback_clips)  # vizinhos do mesmo lugar juntos, não um bloco por clipe
+    for block in blocks:
+        assert len({place_key(material.clip_place(c)) for c in block.clip_ids}) == 1
+    assert any(w.startswith("ESTRUTURA (PARTE 2/2) PELO FALLBACK") for w in structure.warnings)
+    run = EditorRun(request=request, provider="mock", model_chain=["mock:mock"], effective_model="mock",
+                    budget=Budget(8192, "t").info(), structure=structure)
+    report = build_editor_report("t", run, EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0),
+                                 material, "editor_ia", None, None)
+    assert "Estrutura em 2 partes (a lista inteira não cabe no contexto):" in report
+    assert "| 1 | P001–P049 (49) | ~" in report and "- parte 2 pelo fallback: resposta fora do formato" in report
+
+
+def test_structure_parts_are_cached_one_by_one(vlog99, tmp_path):
+    material, summaries, request = vlog99
+    broken = AIResponseValidationError("resposta quebrada")
+    ai = MockEditorAI({"structure": [_first_clip_only, broken, broken]})
+    _structure_only(material, summaries, request, tmp_path, ai)
+    # De novo, com o mesmo material: a parte 1 vem do cache; só a parte 2 (que caiu no fallback) é perguntada.
+    ai = MockEditorAI({"structure": [_first_clip_only]})
+    _, structure = _structure_only(material, summaries, request, tmp_path, ai)
+    assert [r.clip_ids[0] for r in ai.calls["structure"]] == ["P050"]
+    assert [p.origin for p in structure.parts] == ["cache", "ia"]
+    ai = MockEditorAI()
+    _, structure = _structure_only(material, summaries, request, tmp_path, ai)
+    assert not ai.calls["structure"] and structure.origin == "cache"
 
 
 def test_free_order_request_keeps_the_ai_order(tmp_path):

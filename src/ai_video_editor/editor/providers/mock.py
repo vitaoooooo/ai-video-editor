@@ -2,8 +2,8 @@
 
 - Resumo: frases e momentos contados, a descrição do 1º momento, o 1º trecho como destaque e os momentos
   com problema.
-- Estrutura: um bloco por clipe com fala, na ordem do catálogo; os sem fala ficam no acervo (sem nenhum
-  clipe com fala: um bloco só, com todos).
+- Estrutura: um bloco por clipe com fala (da parte perguntada), na ordem do catálogo; os sem fala ficam no
+  acervo (sem nenhum clipe com fala: um bloco só, com todos).
 - Acréscimo (falta de duração da estrutura): nenhum clipe.
 - 2a cortes: nada cortado (todas as frases livres ficam).
 - 2b inclusões: bloco sem fala = todas as imagens do bloco, em ordem; com fala, as imagens do bloco no fim
@@ -99,8 +99,9 @@ class MockEditorAI(EditorAI):
         if fixed is not None:
             return fixed
         material = request.material
-        speaking = [c for c in material.clip_ids if material.has_speech(c)]
-        groups = [[c] for c in speaking] if speaking else [material.clip_ids]
+        asked = material.clip_ids if request.clip_ids is None else request.clip_ids
+        speaking = [c for c in asked if material.has_speech(c)]
+        groups = [[c] for c in speaking] if speaking else [list(asked)]
         blocks = []
         for n, clip_ids in enumerate(groups, start=1):
             seconds = sum(s.end_sec - s.start_sec for c in clip_ids for s in material.clip_sentences.get(c, []))

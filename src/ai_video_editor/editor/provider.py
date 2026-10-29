@@ -40,6 +40,7 @@ class StructureRequest:
     material: EditorMaterial
     context: EditorContext
     summaries: dict[str, ClipSummary] = field(default_factory=dict)
+    clip_ids: Optional[list[str]] = None  # os clipes perguntados (uma parte da estrutura); None = todos
 
 
 @dataclass

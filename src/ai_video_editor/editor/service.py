@@ -89,6 +89,7 @@ from ai_video_editor.editor.material import (
     library_ranking,
     matched_words,
     request_duration,
+    place_key,
     same_place,
 )
 from ai_video_editor.editor.prompt import (
@@ -97,7 +98,6 @@ from ai_video_editor.editor.prompt import (
     INSERTS_PROMPT_VERSION,
     SHORTFALL_SUMMARY_WORDS,
     STRUCTURE_PROMPT_VERSION,
-    STRUCTURE_SUMMARY_WORDS,
     SUMMARY_PROMPT_VERSION,
     CONTEXT_MAX_CHARS,
     CONTEXT_SUMMARY_WORDS,
@@ -109,7 +109,8 @@ from ai_video_editor.editor.prompt import (
     CutsPromptInput,
     EditorContext,
     InsertsPromptInput,
-    ADDITIONS_MAX_CHARS,
+    PREVIOUS_TITLES_MAX_CHARS,
+    StructurePart,
     StructureShortfall,
     build_additions_prompt,
     build_coverage_prompt,
@@ -150,6 +151,7 @@ from ai_video_editor.editor.schema import (
     Skipped,
     StructureAdditionsAnswer,
     StructureAnswer,
+    StructurePartRun,
     StructureRun,
     SubpassRun,
     SummaryNote,
@@ -164,7 +166,8 @@ from ai_video_editor.editor.validate import (
     insert_positions,
     letters,
     neutral_inserts,
-    neutral_structure,
+    StructureCheck,
+    fallback_structure,
     sentences_sec,
     speaker_text,
     speech_places,
@@ -206,9 +209,17 @@ FITS_CLIP = "cabe na meta"
 FITS_BLOCK = "o bloco cabe na meta"
 # Aviso de quando todas as respostas da 2a cortaram tudo sem fora: true.
 ALL_CUT_KEPT = "IA cortou tudo sem dizer fora; mantido inteiro"
-# Estrutura com a fala dos clipes escolhidos abaixo desta fração da meta: UMA nova tentativa informa quanto
-# falta e o que não foi usado (a IA pode manter a resposta).
+# Estrutura com a fala dos clipes escolhidos abaixo desta fração da meta: UMA pergunta de acréscimo informa
+# quanto falta e lista os clipes com fala não usados (a IA pode não acrescentar nenhum).
 STRUCTURE_MIN_RATIO = 0.85
+# Estrutura em partes (`split_parts`), quando a lista inteira não cabe no contexto. A saída de cada parte já está
+# reservada no orçamento (`budget.STRUCTURE_OUTPUT_TOKENS`); além dela, cada parte usa só esta fração do espaço
+# para as linhas (folga para o erro da estimativa e para uma resposta mais longa com muitos clipes em "fora").
+STRUCTURE_PART_ROOM_RATIO = 0.9
+# Tamanho mínimo de uma parte (em clipes): evita uma última parte com 1 ou 2 clipes, sem contexto para decidir.
+STRUCTURE_PART_MIN_CLIPS = 8
+# Corte preferido numa mudança de lugar até esta fração do tamanho ideal da parte (para mais ou para menos).
+STRUCTURE_PART_PLACE_WINDOW = 0.25
 # Candidatos de cobertura listados por trecho na 2c.
 COVERAGE_CANDIDATES = 4
 # Cobertura só do mesmo momento da viagem: com os dois clipes datados, a imagem gravada a no máximo isto da fala
@@ -257,12 +268,15 @@ class CallCache:
 
 
 class CachedStructure(BaseModel):
-    """Estrutura no cache: a resposta aceita e, se já houve a pergunta de acréscimo (falta de duração), a resposta
-    dela (a falta e a lista oferecida são medidas de novo a cada execução)."""
+    """Estrutura (de uma parte) no cache: a resposta aceita."""
 
     answer: StructureAnswer
-    retried: bool = False
-    additions: Optional[StructureAdditionsAnswer] = None
+
+
+class CachedAdditions(BaseModel):
+    """Resposta da pergunta de acréscimo no cache (a chave é o pedido: a falta e a lista oferecida)."""
+
+    answer: StructureAdditionsAnswer
 
 
 def editor_cache(projects_root: Path) -> CallCache:
@@ -578,97 +592,59 @@ class EditorService:
 
     # --- E10: estrutura ---
 
-    def structure_lines(self, summaries: dict[str, ClipSummary]) -> list[str]:
-        """Uma linha por clipe, todos os clipes, em ordem de gravação (ID, papel, duração, fala, data e o resumo curto)."""
+    def structure_lines(self, summaries: dict[str, ClipSummary]) -> dict[str, str]:
+        """Clipe → linha (`EditorMaterial.structure_line`), todos os clipes, em ordem de gravação."""
         material = self.material
-        return [
-            material.structure_line(
-                c, summaries[c].answer.resumo if c in summaries and summaries[c].answer else None,
-                STRUCTURE_SUMMARY_WORDS,
-            )
+        return {
+            c: material.structure_line(c, summaries[c].answer.resumo if c in summaries and summaries[c].answer else None)
             for c in material.chronology()[0]
-        ]
+        }
 
     def _structure(self, summaries: dict[str, ClipSummary]) -> StructureRun:
         material, context = self.material, self.context
         lines = self.structure_lines(summaries)
+        target = self._requested_target()[0]
         result = StructureRun(origin="ia")
-
-        def prompt_for(errors: Optional[list[str]] = None) -> str:
-            return build_structure_prompt(context, lines, errors)
-
-        prompt = prompt_for()
-        result.estimated_tokens = tokens(prompt)
         self._progress("estrutura")
-        answer: Optional[StructureAnswer] = None
-        check = None
-        additions: Optional[StructureAdditionsAnswer] = None
-        if result.estimated_tokens > self.budget.structure_available:
-            result.attempts.append(
-                f"o pedido da estrutura (~{result.estimated_tokens} tokens, uma linha por clipe) não cabe no "
-                f"contexto ({self.budget.num_ctx})"
+        whole = build_structure_prompt(context, list(lines.values()), target_sec=target)
+        spans = [list(lines)] if tokens(whole) <= self.budget.structure_available else self._split_parts(lines, target)
+        speech_total = sum(material.speech_sec(c) for c in lines)
+        checks: list = []
+        answers: list[StructureAnswer] = []
+        titles: list[str] = []
+        for number, clip_ids in enumerate(spans, start=1):
+            part_speech = sum(material.speech_sec(c) for c in clip_ids)
+            part_target = round(target * part_speech / speech_total, 1) if target and speech_total > 0 else None
+            part = None if len(spans) == 1 else StructurePart(
+                number=number, total=len(spans), first_clip=clip_ids[0], last_clip=clip_ids[-1],
+                target_sec=part_target, previous_titles=list(titles),
             )
-        else:
-            # O alvo pedido entra na chave: a mesma estrutura com outro alvo mede outra falta de duração.
-            key = self.key("estrutura", STRUCTURE_PROMPT_VERSION, prompt, self._requested_target()[0])
-            entry = self.cache.load("estrutura", key, CachedStructure)
-            retried = False
-            if entry is not None:
-                check = validate_structure(entry.answer, material)
-                if check.blocks:
-                    answer, result.origin, retried, additions = entry.answer, "cache", entry.retried, entry.additions
-                    result.stats.cached += 1
-                    self._cached("estrutura", "estrutura", result.estimated_tokens)
-            errors: list[str] = []
-            attempt = 0
-            for attempt in range(1, 1 + (0 if answer is not None else MAX_ATTEMPTS)):
-                request = StructureRequest(prompt=prompt_for(errors), material=material, context=context, summaries=summaries)
-                raw, error = self._ask(self.ai.structure, request, result.stats, "estrutura", "estrutura", attempt)
-                if raw is not None:
-                    trial = validate_structure(raw, material)
-                    if trial.blocks:  # aproveitável: a última aproveitável vale se a nova tentativa não resolver
-                        answer, check = raw, trial
-                    if trial.refused is None:
-                        break
-                    error = f"{trial.refused}: " + "; ".join(trial.errors[:12])
-                errors.append(error)
-                result.attempts.append(error)
-                if self.gave_up:
-                    break
-            fresh = answer is not None and result.origin != "cache"
-            # Falta de duração: medida sempre (também com a estrutura do cache); a pergunta de acréscimo, uma vez só.
-            shortfall = self._shortfall(check, summaries) if answer is not None else None
-            if shortfall is not None:
-                result.speech_sec_first = round(shortfall.speech_sec, 3)
-                result.shortfall = (
-                    f"faltam {round(shortfall.missing_sec)} s: meta {round(shortfall.target_sec)} s, "
-                    f"fala dos clipes escolhidos {round(shortfall.speech_sec)} s"
-                )
-            if shortfall is not None and not retried and not self.gave_up:
-                self._notice(f"estrutura: {result.shortfall}; pergunta de acréscimo com os clipes com fala não usados")
-                request = AdditionsRequest(
-                    prompt=build_additions_prompt(context, shortfall), material=material, context=context,
-                    offered=shortfall.offered, missing_sec=shortfall.missing_sec,
-                )
-                raw, error = self._ask(self.ai.additions, request, result.stats, "estrutura", "acréscimo", attempt + 1)
-                if raw is not None:
-                    retried, fresh, additions = True, True, raw
-                else:
-                    result.attempts.append(f"acréscimo: {error}")
-            if shortfall is not None and additions is not None:
-                self._apply_additions(check, additions, shortfall, result)
-            if fresh:
-                self.cache.save("estrutura", key, CachedStructure(answer=answer, retried=retried, additions=additions))
-        self.calls_done += 1
-        if answer is None:
-            answer = neutral_structure(material)
-            check = validate_structure(answer, material)
-            result.origin = "fallback"
-            result.warnings.append(
-                "ESTRUTURA PELO FALLBACK NEUTRO (a IA falhou de vez): um bloco por clipe com fala, na ordem do "
-                f"catálogo. Motivo: {result.attempts[-1] if result.attempts else 'sem resposta'}"
+            record = StructurePartRun(
+                number=number, clip_ids=clip_ids, target_sec=part_target if part else target,
+                speech_sec=round(part_speech, 3),
             )
-            self._notice(result.warnings[-1])
+            check, answer = self._structure_part(lines, clip_ids, part, target, summaries, result, record)
+            result.parts.append(record)
+            checks.append(check)
+            answers.append(answer)
+            titles += [b.title or b.id for b in check.blocks]
+        origins = {p.origin for p in result.parts}
+        result.origin = origins.pop() if len(origins) == 1 else "ia"
+        result.estimated_tokens = sum(p.estimated_tokens for p in result.parts)
+        blocks, result.joins = _join_parts([c.blocks for c in checks], material)
+        result.warnings += result.joins
+        check = StructureCheck(
+            blocks=blocks, out=[o for c in checks for o in c.out], discarded=[d for c in checks for d in c.discarded],
+            not_chosen=[x for c in checks for x in c.not_chosen],
+            normalized=[x for c, p in zip(checks, result.parts) if p.origin != "fallback" for x in c.normalized],
+        )
+        totals = [a.duracao_total_alvo_sec for a in answers if a.duracao_total_alvo_sec]
+        answer = StructureAnswer(
+            duracao_total_alvo_sec=round(sum(totals), 1) if totals else None,
+            notas=" | ".join(a.notas for a in answers if a.notas),
+        )
+        if any(p.origin != "fallback" for p in result.parts):
+            self._additions(check, summaries, result)
         free = asks_free_order(context.request)
         if free is not None:
             result.blocks, result.order = check.blocks, f"a da IA (o pedido diz \"{free}\")"
@@ -681,8 +657,7 @@ class EditorService:
         }
         result.out = check.out
         result.discarded = check.discarded
-        if result.origin != "fallback":
-            result.normalized_ids = check.normalized
+        result.normalized_ids = check.normalized
         result.notes = answer.notas
         if check.not_chosen:
             self._notice(f"estrutura: fora do vídeo ({NOT_CHOSEN}): {', '.join(check.not_chosen)}")
@@ -701,6 +676,124 @@ class EditorService:
         self._resolve_target(result, answer)
         _rescale_blocks(result.blocks, result.target_total_sec, material)
         return result
+
+    def _split_parts(self, lines: dict[str, str], target: Optional[float]) -> list[list[str]]:
+        """Clipes (em ordem de gravação) em partes contíguas que cabem no contexto (`split_parts`): o espaço de
+        cada parte é o disponível da estrutura menos o pedido sem a lista (com o cabeçalho de parte e os títulos
+        anteriores no tamanho máximo)."""
+        ids = list(lines)
+        filler = StructurePart(
+            number=99, total=99, first_clip=ids[-1], last_clip=ids[-1], target_sec=target,
+            previous_titles=["x" * PREVIOUS_TITLES_MAX_CHARS],
+        )
+        fixed = tokens(build_structure_prompt(self.context, [], target_sec=target, part=filler))
+        room = self.budget.structure_available - fixed
+        costs = [tokens(lines[c] + "\n") for c in ids]
+        places = [place_key(self.material.clip_place(c)) for c in ids]
+        return [ids[a:b] for a, b in split_parts(costs, places, room)]
+
+    def _structure_part(
+        self, lines: dict[str, str], clip_ids: list[str], part: Optional[StructurePart], target: Optional[float],
+        summaries: dict[str, ClipSummary], result: StructureRun, record: StructurePartRun,
+    ):
+        """Uma pergunta de estrutura (a lista inteira ou uma parte): cache, tentativas e, se a IA falhar de vez,
+        o fallback só desta parte. Devolve (conferência, resposta)."""
+        material, context = self.material, self.context
+        label = "" if part is None else f" (parte {part.number}/{part.total})"
+        unit = "estrutura" if part is None else f"estrutura {part.number}/{part.total}"
+        part_target = target if part is None else part.target_sec
+
+        def prompt_for(errors: Optional[list[str]] = None) -> str:
+            return build_structure_prompt(context, [lines[c] for c in clip_ids], errors, target, part)
+
+        prompt = prompt_for()
+        record.estimated_tokens = tokens(prompt)
+        answer: Optional[StructureAnswer] = None
+        check = None
+        attempts: list[str] = []
+        if record.estimated_tokens > self.budget.structure_available:
+            attempts.append(
+                f"o pedido da estrutura{label} (~{record.estimated_tokens} tokens, uma linha por clipe) não cabe no "
+                f"contexto ({self.budget.num_ctx})"
+            )
+        else:
+            # O alvo e os clipes da parte entram na chave (e no pedido): outra divisão ou outro alvo pergunta de novo.
+            key = self.key("estrutura", STRUCTURE_PROMPT_VERSION, prompt, target, clip_ids, part_target)
+            entry = self.cache.load("estrutura", key, CachedStructure)
+            if entry is not None:
+                trial = validate_structure(entry.answer, material, clip_ids)
+                if trial.blocks:
+                    answer, check, record.origin = entry.answer, trial, "cache"
+                    result.stats.cached += 1
+                    self._cached("estrutura", unit, record.estimated_tokens)
+            errors: list[str] = []
+            for attempt in range(1, 1 + (0 if answer is not None else MAX_ATTEMPTS)):
+                request = StructureRequest(
+                    prompt=prompt_for(errors), material=material, context=context, summaries=summaries,
+                    clip_ids=clip_ids,
+                )
+                raw, error = self._ask(self.ai.structure, request, result.stats, "estrutura", unit, attempt)
+                if raw is not None:
+                    trial = validate_structure(raw, material, clip_ids)
+                    if trial.blocks:  # aproveitável: a última aproveitável vale se a nova tentativa não resolver
+                        answer, check, record.origin = raw, trial, "ia"
+                    if trial.refused is None:
+                        break
+                    error = f"{trial.refused}: " + "; ".join(trial.errors[:12])
+                errors.append(error)
+                attempts.append(error)
+                if self.gave_up:
+                    break
+            if answer is not None and record.origin == "ia":
+                self.cache.save("estrutura", key, CachedStructure(answer=answer))
+        result.attempts += [f"parte {part.number}: {a}" if part else a for a in attempts]
+        self.calls_done += 1
+        if answer is None:
+            answer = fallback_structure(material, clip_ids, part_target)
+            check = validate_structure(answer, material, clip_ids)
+            record.origin = "fallback"
+            record.fallback_reason = attempts[-1] if attempts else "sem resposta"
+            limit = f" ({_fmt_sec(part_target)})" if part_target else ""
+            result.warnings.append(
+                f"ESTRUTURA{label.upper()} PELO FALLBACK (a IA falhou de vez): clipes vizinhos do mesmo lugar num "
+                f"bloco, clipes inteiros em ordem até a meta{limit}. Motivo: {record.fallback_reason}"
+            )
+            self._notice(result.warnings[-1])
+        record.block_titles = [b.title or b.id for b in check.blocks]
+        return check, answer
+
+    def _additions(self, check, summaries: dict[str, ClipSummary], result: StructureRun) -> None:
+        """Falta de duração (medida sobre a estrutura inteira, já juntada): a pergunta de acréscimo, uma vez, com a
+        resposta no cache; os escolhidos entram na estrutura (`_apply_additions`)."""
+        shortfall = self._shortfall(check, summaries)
+        if shortfall is None:
+            return
+        result.speech_sec_first = round(shortfall.speech_sec, 3)
+        result.shortfall = (
+            f"faltam {round(shortfall.missing_sec)} s: meta {round(shortfall.target_sec)} s, "
+            f"fala dos clipes escolhidos {round(shortfall.speech_sec)} s"
+        )
+        prompt = build_additions_prompt(self.context, shortfall)
+        key = self.key("estrutura", STRUCTURE_PROMPT_VERSION, prompt, "acréscimo")
+        entry = self.cache.load("estrutura", key, CachedAdditions)
+        if entry is not None:
+            additions = entry.answer
+            result.stats.cached += 1
+            self._cached("estrutura", "acréscimo", tokens(prompt))
+        elif self.gave_up:
+            return
+        else:
+            self._notice(f"estrutura: {result.shortfall}; pergunta de acréscimo com os clipes com fala não usados")
+            request = AdditionsRequest(
+                prompt=prompt, material=self.material, context=self.context,
+                offered=shortfall.offered, missing_sec=shortfall.missing_sec,
+            )
+            additions, error = self._ask(self.ai.additions, request, result.stats, "estrutura", "acréscimo")
+            if additions is None:
+                result.attempts.append(f"acréscimo: {error}")
+                return
+            self.cache.save("estrutura", key, CachedAdditions(answer=additions))
+        self._apply_additions(check, additions, shortfall, result)
 
     def _requested_target(self) -> tuple[Optional[float], str, str]:
         """(alvo, origem, nota) do pedido: a duração do briefing/CLI; sem ela, a escrita no texto do pedido
@@ -751,17 +844,25 @@ class EditorService:
         def where(clip_id: str) -> str:
             return f" (em fora: {short_text(out_reason[clip_id], 6)})" if clip_id in out_reason else ""
 
-        offers, used = [], 0
-        for c in material.chronology([c for c in material.clip_ids if material.has_speech(c) and c not in in_blocks])[0]:
-            line = f"- {c} · {round(material.speech_sec(c))} s de fala{where(c)} — {summary(c)}"
-            if used + len(line) > ADDITIONS_MAX_CHARS:
-                break  # os que não cabem não são oferecidos
-            offers.append((c, line))
-            used += len(line) + 1
-        if not offers:
-            return None
+        unused = [c for c in material.clip_ids if material.has_speech(c) and c not in in_blocks]
         blocks = [f"- {b.title or b.id}: {', '.join(b.clip_ids)}" for b in check.blocks]
-        return StructureShortfall(target_sec=target, speech_sec=speech, offers=offers, block_lines=blocks)
+
+        def shortfall_of(ids: list[str]) -> StructureShortfall:
+            offers = [
+                (c, f"- {c} · {round(material.speech_sec(c))} s de fala{where(c)} — {summary(c)}")
+                for c in material.chronology(ids)[0]
+            ]
+            return StructureShortfall(
+                target_sec=target, speech_sec=speech, offers=offers, block_lines=blocks, hidden=len(unused) - len(ids),
+            )
+
+        # A lista cabe no contexto: os de mais fala entram primeiro (empate: ordem do catálogo), até não caber.
+        chosen: list[str] = []
+        for c in sorted(unused, key=lambda c: -material.speech_sec(c)):
+            if tokens(build_additions_prompt(self.context, shortfall_of(chosen + [c]))) > self.budget.structure_available:
+                break
+            chosen.append(c)
+        return shortfall_of(chosen) if chosen else None
 
     def _apply_additions(
         self, check, additions: StructureAdditionsAnswer, shortfall: StructureShortfall, result: StructureRun
@@ -1470,6 +1571,78 @@ def _add_to_neighbors(blocks: list[Block], added: list[str], material: EditorMat
             f'acréscimo: {c} entrou no bloco de {neighbor} ("{block.title or block.id}"), o vizinho na ordem de gravação'
         )
     return blocks, warnings
+
+
+def split_parts(costs: list[int], places: list[str], room: int) -> list[tuple[int, int]]:
+    """Divisão da lista da estrutura em partes contíguas `[a, b)` (medida, sem decisão: os blocos continuam da IA).
+
+    `costs`: tokens de cada linha; `places`: lugar normalizado de cada clipe; `room`: tokens para as linhas num
+    pedido. Cada parte usa até `STRUCTURE_PART_ROOM_RATIO` do espaço e tem pelo menos `STRUCTURE_PART_MIN_CLIPS`
+    clipes (menos só se não houver clipes para isso). O menor número de partes que cabe; cada corte perto do
+    tamanho igual para todas, preferindo uma mudança de lugar (os dois vizinhos com lugar, diferentes) até
+    `STRUCTURE_PART_PLACE_WINDOW` do tamanho ideal, para não partir uma cena no meio."""
+    count = len(costs)
+    capacity = int(room * STRUCTURE_PART_ROOM_RATIO)
+    if count == 0:
+        return []
+    if capacity <= 0 or max(costs) > capacity:
+        return [(0, count)]  # nem o pedido sem a lista (ou uma linha) cabe: dividir não resolve; o pedido é recusado
+    prefix = [0]
+    for cost in costs:
+        prefix.append(prefix[-1] + cost)
+
+    def attempt(parts: int) -> Optional[list[tuple[int, int]]]:
+        minimum = max(1, min(STRUCTURE_PART_MIN_CLIPS, count // parts))
+        spans, start = [], 0
+        for left in range(parts, 1, -1):  # `left` partes por fazer, contando esta
+            ideal = (prefix[count] - prefix[start]) / left
+            ends = [
+                e for e in range(start + minimum, count - minimum * (left - 1) + 1)
+                if prefix[e] - prefix[start] <= capacity and prefix[count] - prefix[e] <= capacity * (left - 1)
+            ]
+            if not ends:
+                return None
+            near = [e for e in ends if abs(prefix[e] - prefix[start] - ideal) <= STRUCTURE_PART_PLACE_WINDOW * ideal]
+            changes = [e for e in near if places[e - 1] and places[e] and places[e - 1] != places[e]]
+            end = min(changes or ends, key=lambda e: (abs(prefix[e] - prefix[start] - ideal), e))
+            spans.append((start, end))
+            start = end
+        if prefix[count] - prefix[start] > capacity:
+            return None
+        return spans + [(start, count)]
+
+    for parts in range(max(1, math.ceil(prefix[count] / capacity)), count + 1):
+        found = attempt(parts)
+        if found is not None:
+            return found
+    return [(0, count)]  # inalcançável com toda linha ≤ capacidade (uma por parte sempre cabe)
+
+
+def _join_parts(parts: list[list[Block]], material: EditorMaterial) -> tuple[list[Block], list[str]]:
+    """Blocos de todas as partes, em ordem, renumerados (B01...). O primeiro bloco de uma parte com o mesmo lugar
+    (normalizado) do último bloco da anterior (o último clipe de um × o primeiro do outro) vira um bloco só, com as
+    metas somadas; devolve os blocos e uma linha por junção."""
+    joined: list[Block] = []
+    joins: list[str] = []
+    for k, blocks in enumerate(parts):
+        for i, block in enumerate(blocks):
+            block = block.model_copy(update={"clip_ids": list(block.clip_ids)})
+            if i == 0 and k > 0 and joined:
+                previous = joined[-1]
+                place = material.clip_place(block.clip_ids[0])
+                if place_key(place) and place_key(material.clip_place(previous.clip_ids[-1])) == place_key(place):
+                    joins.append(
+                        f"junção: \"{previous.title or previous.id}\" (fim da parte {k}) e \"{block.title or block.id}\" "
+                        f"(começo da parte {k + 1}) são do mesmo lugar ({place}): um bloco só"
+                    )
+                    previous.clip_ids += block.clip_ids
+                    targets = [t for t in (previous.target_sec, block.target_sec) if t]
+                    previous.target_sec = round(sum(targets), 1) if targets else None
+                    continue
+            joined.append(block)
+    for n, block in enumerate(joined, start=1):
+        block.id = f"B{n:02d}"
+    return joined, joins
 
 
 def _chronological_blocks(blocks: list[Block], material: EditorMaterial) -> tuple[list[Block], list[str], str]:

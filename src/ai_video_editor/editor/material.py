@@ -127,7 +127,7 @@ def moment_visible_text(moment: Moment) -> str:
 
 def same_place(a: str, b: str) -> bool:
     """Mesmo lugar: iguais sem acento, caixa e espaços extras (vazio nunca é igual)."""
-    a, b = " ".join(plain(a).split()), " ".join(plain(b).split())
+    a, b = place_key(a), place_key(b)
     return bool(a) and a == b
 
 
@@ -200,6 +200,39 @@ def request_duration(request: str) -> Optional[tuple[float, str]]:
         if total > 0:
             return float(total), clock_found.group(0)
     return None
+
+
+# Linha da estrutura: o resumo até tantos caracteres e o lugar até tantos (`EditorMaterial.structure_line`).
+STRUCTURE_SUMMARY_CHARS = 90
+STRUCTURE_PLACE_CHARS = 24
+# Abertura repetida dos resumos ("O clipe mostra uma..."), tirada da linha da estrutura.
+_SUMMARY_OPENING = re.compile(
+    r"^(?:o|a|este|esse|esta|essa)\s+(?:clipe|v[ií]deo|cena|trecho)\s+"
+    r"(?:mostra|apresenta|trata de|retrata|exibe|registra|traz|come[cç]a com)\s+",
+    re.IGNORECASE,
+)
+
+
+def place_key(place: Optional[str]) -> str:
+    """Lugar normalizado (sem acento, caixa e espaços extras): a régua de "mesmo lugar" (`same_place`)."""
+    return " ".join(plain(place or "").split())
+
+
+def _cut_text(text: str, limit: int) -> str:
+    """`text` até `limit` caracteres, cortado no fim de uma palavra (com "…")."""
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,.;:")
+    return (cut or text[: limit - 1]) + "…"
+
+
+def short_summary(summary: Optional[str], limit: int = STRUCTURE_SUMMARY_CHARS) -> str:
+    """Resumo de um clipe para uma linha: sem a abertura repetida ("O clipe mostra ..."), até `limit` caracteres."""
+    text = " ".join((summary or "").split())
+    if not text:
+        return "(sem resumo)"
+    text = _SUMMARY_OPENING.sub("", text, count=1)
+    return _cut_text(text[:1].upper() + text[1:], limit)
 
 
 def _fmt_sec(seconds: float) -> str:
@@ -285,22 +318,36 @@ class EditorMaterial:
         """Soma das durações das frases do clipe."""
         return sum(s.end_sec - s.start_sec for s in self.clip_sentences.get(clip_id, []))
 
-    def structure_line(self, clip_id: str, summary: Optional[str], words: int) -> str:
-        """Clipe numa linha para a estrutura: ID, papel, duração, fala (com os segundos de frases), data e o
-        resumo nas primeiras `words` palavras (a lista inteira sempre cabe: nunca precisa encurtar depois)."""
+    def clip_place(self, clip_id: str) -> str:
+        """Lugar do clipe: o lugar (do roteiro) que ocupa mais tempo nos momentos dele, como escrito no 1º momento
+        com ele; "" sem lugar."""
+        weight: dict[str, float] = {}
+        written: dict[str, str] = {}
+        for moment in self.clip_moments.get(clip_id, []):
+            key = place_key(moment.place)
+            if key:
+                weight[key] = weight.get(key, 0.0) + max(moment.duration, 0.001)
+                written.setdefault(key, " ".join(moment.place.split()))
+        return written[max(weight, key=lambda k: weight[k])] if weight else ""
+
+    def structure_line(self, clip_id: str, summary: Optional[str]) -> str:
+        """Clipe numa linha para a estrutura (enxuta: a lista de um material grande precisa caber no contexto).
+        Medido no vlog real de 99 clipes: o resumo era 72% da lista e quase sempre abria com "O clipe mostra";
+        a duração de um clipe com fala e o "de frases" não ajudavam a decidir. Fica: ID, papel, segundos de fala
+        (ou "sem fala" e a duração), lugar (até `STRUCTURE_PLACE_CHARS`), data (se houver) e o resumo sem a
+        abertura repetida, até `STRUCTURE_SUMMARY_CHARS` caracteres."""
         clip = self.clips[clip_id]
-        parts = [clip.id, clip.role, clock(clip.duration_sec)]
+        parts = [clip.id, clip.role]
         if self.has_speech(clip_id):
-            parts.append(f"fala sim ({round(self.speech_sec(clip_id))} s de frases)")
+            parts.append(f"fala {round(self.speech_sec(clip_id))} s")
         else:
-            parts.append("fala não")
+            parts.append(f"sem fala {clock(clip.duration_sec)}")
+        place = self.clip_place(clip_id)
+        if place:
+            parts.append(_cut_text(place, STRUCTURE_PLACE_CHARS))
         if clip.recorded_at is not None:
-            parts.append(clip.recorded_at.strftime("%Y-%m-%d %H:%M"))
-        text = " ".join((summary or "(sem resumo)").split())
-        cut = text.split()
-        if len(cut) > words:
-            text = " ".join(cut[:words]) + "…"
-        return f"- {' · '.join(parts)} — {text}"
+            parts.append(clip.recorded_at.strftime("%d/%m %H:%M"))
+        return f"- {' · '.join(parts)} — {short_summary(summary)}"
 
     def clip_line(self, clip_id: str) -> str:
         """Linha curta do clipe: ID, papel, duração, fala, data, ordem do catálogo."""

@@ -58,6 +58,7 @@ from ai_video_editor.editor.material import (
     content_words,
     matched_words,
     moment_visible_text,
+    place_key,
     same_place,
 )
 from ai_video_editor.editor.schema import (
@@ -167,9 +168,20 @@ class StructureCheck:
         return None
 
 
-def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> StructureCheck:
+def validate_structure(
+    answer: StructureAnswer, material: EditorMaterial, clip_ids: Optional[list[str]] = None
+) -> StructureCheck:
+    """`clip_ids`: os clipes perguntados (uma parte da estrutura); sem ele, todos. Clipe de fora da parte é
+    descartado como o que não existe, e só os clipes com fala da parte contam como não escolhidos."""
     answer, normalized = normalize_structure(answer, material)
-    known = set(material.clip_ids)
+    asked = list(material.clip_ids) if clip_ids is None else list(clip_ids)
+    known = set(asked)
+
+    def missing(clip_id: str) -> str:
+        if clip_id in material.clips:
+            return f"clipe {clip_id} não é desta parte (clipes {asked[0]} a {asked[-1]})"
+        return f"clipe {clip_id or '(vazio)'} não existe ({clip_hint(clip_id, material)})"
+
     seen: set[str] = set()
     blocks: list[Block] = []
     out: list[OutClip] = []
@@ -178,7 +190,7 @@ def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> Str
         clips: list[str] = []
         for clip_id in raw.clipes:
             if clip_id not in known:
-                discarded.append(Discarded(kind="bloco", item=f"{raw.id or '?'}: {clip_id}", reason=f"clipe {clip_id} não existe ({clip_hint(clip_id, material)})"))
+                discarded.append(Discarded(kind="bloco", item=f"{raw.id or '?'}: {clip_id}", reason=missing(clip_id)))
             elif clip_id in seen:
                 discarded.append(Discarded(kind="bloco", item=f"{raw.id or '?'}: {clip_id}", reason=f"clipe {clip_id} já usado"))
             else:
@@ -193,7 +205,7 @@ def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> Str
         ))
     for raw in answer.fora:
         if raw.clipe not in known:
-            discarded.append(Discarded(kind="fora", item=_short(raw), reason=f"clipe {raw.clipe or '(vazio)'} não existe ({clip_hint(raw.clipe, material)})"))
+            discarded.append(Discarded(kind="fora", item=_short(raw), reason=missing(raw.clipe)))
         elif raw.clipe in seen:
             discarded.append(Discarded(kind="fora", item=_short(raw), reason=f"clipe {raw.clipe} já está num bloco ou em fora"))
         elif not raw.motivo:
@@ -201,7 +213,7 @@ def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> Str
         else:
             seen.add(raw.clipe)
             out.append(raw)
-    not_chosen = [c for c in material.clip_ids if material.has_speech(c) and c not in seen]
+    not_chosen = [c for c in asked if material.has_speech(c) and c not in seen]
     out += [OutClip(clipe=c, motivo=NOT_CHOSEN) for c in not_chosen]
     return StructureCheck(blocks=blocks, out=out, discarded=discarded, not_chosen=not_chosen, normalized=normalized)
 
@@ -857,11 +869,34 @@ def _literal_problem(word, candidate, moment, trecho, speech, letter, number, ma
     return None
 
 
-def neutral_structure(material: EditorMaterial) -> StructureAnswer:
-    """Fallback neutro da estrutura: um bloco por clipe com fala, na ordem do catálogo, sem "fora" (sem
-    nenhum clipe com fala, um bloco por clipe)."""
-    speaking = [c for c in material.clip_ids if material.has_speech(c)] or material.clip_ids
+def fallback_structure(
+    material: EditorMaterial, clip_ids: Optional[list[str]] = None, target_sec: Optional[float] = None
+) -> StructureAnswer:
+    """Fallback da estrutura (de uma parte, ou de tudo sem `clip_ids`), quando a IA falhou de vez: os clipes com
+    fala em ordem de gravação, inteiros, até a fala somar `target_sec` (o primeiro que passaria da meta encerra;
+    sem meta, todos; nunca nenhum: o primeiro entra mesmo maior que a meta), em blocos de clipes vizinhos do mesmo
+    lugar (`EditorMaterial.clip_place`). Sem nenhum clipe com fala, todos os clipes. Os que ficam de fora contam
+    como não escolhidos; os sem fala ficam no acervo."""
+    asked = material.chronology(clip_ids)[0]
+    speaking = [c for c in asked if material.has_speech(c)]
+    chosen: list[str] = []
+    total = 0.0
+    for clip_id in speaking:
+        seconds = material.speech_sec(clip_id)
+        if chosen and target_sec is not None and total + seconds > target_sec:
+            break
+        chosen.append(clip_id)
+        total += seconds
+    groups: list[list[str]] = []
+    for clip_id in chosen or asked:
+        place = place_key(material.clip_place(clip_id))
+        if groups and place and place == place_key(material.clip_place(groups[-1][-1])):
+            groups[-1].append(clip_id)
+        else:
+            groups.append([clip_id])
     return StructureAnswer(
-        blocos=[{"id": f"B{n:02d}", "clipes": [c]} for n, c in enumerate(speaking, start=1)],
-        notas="fallback neutro: a IA falhou na estrutura",
+        blocos=[
+            {"titulo": material.clip_place(g[0]) or f"Clipes {g[0]} a {g[-1]}", "clipes": g} for g in groups
+        ],
+        notas="fallback: a IA falhou na estrutura (clipes vizinhos do mesmo lugar juntos, fala até a meta)",
     )
