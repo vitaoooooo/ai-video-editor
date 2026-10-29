@@ -52,7 +52,7 @@ import copy
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ai_video_editor.editor.ids import clip_hint, normalize_cuts, normalize_structure, sentence_hint, sentence_tokens
+from ai_video_editor.editor.ids import IdResolver, clip_hint, normalize_cuts, normalize_structure, sentence_hint, sentence_tokens
 from ai_video_editor.editor.material import (
     EditorMaterial,
     content_words,
@@ -74,6 +74,7 @@ from ai_video_editor.editor.schema import (
     InsertsAnswer,
     OutClip,
     Skipped,
+    StructureAdditionsAnswer,
     StructureAnswer,
     Trecho,
 )
@@ -203,6 +204,30 @@ def validate_structure(answer: StructureAnswer, material: EditorMaterial) -> Str
     not_chosen = [c for c in material.clip_ids if material.has_speech(c) and c not in seen]
     out += [OutClip(clipe=c, motivo=NOT_CHOSEN) for c in not_chosen]
     return StructureCheck(blocks=blocks, out=out, discarded=discarded, not_chosen=not_chosen, normalized=normalized)
+
+
+@dataclass
+class AdditionsCheck:
+    """Conferência da pergunta de acréscimo: os clipes aceitos (na ordem da resposta) e os códigos ignorados."""
+
+    added: list[str] = field(default_factory=list)
+    ignored: list[str] = field(default_factory=list)
+    normalized: list[str] = field(default_factory=list)
+
+
+def validate_additions(answer: StructureAdditionsAnswer, offered: list[str], material: EditorMaterial) -> AdditionsCheck:
+    """Só clipes da lista oferecida entram (cada um uma vez); o resto é ignorado. Resposta vazia é válida."""
+    ids = IdResolver(material)
+    check = AdditionsCheck()
+    for raw in answer.acrescentar:
+        clip_id = ids.clip(raw)
+        if clip_id in offered:
+            if clip_id not in check.added:
+                check.added.append(clip_id)
+        elif raw not in check.ignored:
+            check.ignored.append(raw)
+    check.normalized = ids.fixed
+    return check
 
 
 # --- passada 2 ---

@@ -4,6 +4,7 @@
   com problema.
 - Estrutura: um bloco por clipe com fala, na ordem do catálogo; os sem fala ficam no acervo (sem nenhum
   clipe com fala: um bloco só, com todos).
+- Acréscimo (falta de duração da estrutura): nenhum clipe.
 - 2a cortes: nada cortado (todas as frases livres ficam).
 - 2b inclusões: bloco sem fala = todas as imagens do bloco, em ordem; com fala, as imagens do bloco no fim
   e um respiro de até 2 s (e do que sobra da sobra do bloco) na 1ª posição de respiro oferecida, com a 1ª
@@ -11,7 +12,7 @@
 - 2c coberturas: o 1º trecho perguntado com candidato "mostra o que é dito" ganha esse candidato (a 1ª
   palavra em comum, e em mostra/porque a descrição da imagem e a palavra); os outros, "nenhuma".
 
-`responses` = respostas fixas por passada (`"summary"`, `"structure"`, `"cuts"`, `"inserts"`, `"coverages"`),
+`responses` = respostas fixas por passada (`"summary"`, `"structure"`, `"additions"`, `"cuts"`, `"inserts"`, `"coverages"`),
 uma por chamada, na ordem; um item pode ser a resposta (modelo ou dict), uma exceção (lançada) ou uma
 função do pedido. Acabada a lista daquela passada, volta à resposta determinística.
 """
@@ -20,6 +21,7 @@ from typing import Any, Callable, Optional, Union
 
 from ai_video_editor.editor.material import common_words, moment_visible_text
 from ai_video_editor.editor.provider import (
+    AdditionsRequest,
     CoverageRequest,
     CutsRequest,
     EditorAI,
@@ -33,6 +35,7 @@ from ai_video_editor.editor.schema import (
     CoveragesAnswer,
     CutsAnswer,
     InsertsAnswer,
+    StructureAdditionsAnswer,
     StructureAnswer,
 )
 
@@ -43,7 +46,7 @@ MOCK_BREATH_SEC = 2.0
 class MockEditorAI(EditorAI):
     def __init__(self, responses: Optional[dict[str, list[MockEditorResponse]]] = None):
         self.responses = {k: list(v) for k, v in (responses or {}).items()}
-        self.calls: dict[str, list] = {"summary": [], "structure": [], "cuts": [], "inserts": [], "coverages": []}
+        self.calls: dict[str, list] = {"summary": [], "structure": [], "additions": [], "cuts": [], "inserts": [], "coverages": []}
 
     @property
     def provider_name(self) -> str:
@@ -108,6 +111,10 @@ class MockEditorAI(EditorAI):
             blocks.append({"id": f"B{n:02d}", "titulo": f"Parte {n}", "clipes": clip_ids, "duracao_alvo_sec": round(seconds, 1)})
         total = request.context.target_sec or round(sum(b["duracao_alvo_sec"] for b in blocks), 1)
         return StructureAnswer(blocos=blocks, fora=[], duracao_total_alvo_sec=total, notas="estrutura simulada")
+
+    def additions(self, request: AdditionsRequest) -> StructureAdditionsAnswer:
+        fixed = self._fixed("additions", request, StructureAdditionsAnswer)
+        return fixed if fixed is not None else StructureAdditionsAnswer(notas="acréscimo simulado: nenhum")
 
     def cuts(self, request: CutsRequest) -> CutsAnswer:
         fixed = self._fixed("cuts", request, CutsAnswer)

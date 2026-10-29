@@ -1,6 +1,7 @@
 """IA do Editor sobre a camada genérica `llm` (qualquer provedor registrado, com cadeia de modelos)."""
 
 from ai_video_editor.editor.provider import (
+    AdditionsRequest,
     CoverageRequest,
     CutsRequest,
     EditorAI,
@@ -8,7 +9,14 @@ from ai_video_editor.editor.provider import (
     StructureRequest,
     SummaryRequest,
 )
-from ai_video_editor.editor.schema import ClipSummaryAnswer, CoveragesAnswer, CutsAnswer, InsertsAnswer, StructureAnswer
+from ai_video_editor.editor.schema import (
+    ClipSummaryAnswer,
+    CoveragesAnswer,
+    CutsAnswer,
+    InsertsAnswer,
+    StructureAdditionsAnswer,
+    StructureAnswer,
+)
 from ai_video_editor.llm.chain import ModelChain
 from ai_video_editor.llm.stage import ChainBackedStage
 
@@ -24,6 +32,9 @@ class LLMEditorAI(ChainBackedStage, EditorAI):
 
     def structure(self, request: StructureRequest) -> StructureAnswer:
         return self._generate(request.prompt, StructureAnswer)
+
+    def additions(self, request: AdditionsRequest) -> StructureAdditionsAnswer:
+        return self._generate(request.prompt, StructureAdditionsAnswer)
 
     def cuts(self, request: CutsRequest) -> CutsAnswer:
         return self._generate(request.prompt, CutsAnswer)

@@ -160,17 +160,19 @@ def _share(speech: float, target: Optional[float]) -> str:
 
 
 def _structure_speech_lines(structure: StructureRun) -> list[str]:
-    """Fala dos clipes escolhidos × alvo (antes e depois da nova tentativa por falta de duração)."""
+    """Fala dos clipes escolhidos × alvo (antes e depois da pergunta de acréscimo por falta de duração)."""
     if structure.speech_sec is None:
         return []
     target = structure.target_total_sec
     if structure.speech_sec_first is None:
         return [f"Fala dos clipes escolhidos: {_share(structure.speech_sec, target)}"]
-    added = ", ".join(structure.added_clip_ids) or "nenhum (a IA manteve a resposta)"
+    added = ", ".join(
+        f"{c} → {structure.added_blocks.get(c, '?')}" for c in structure.added_clip_ids
+    ) or "nenhum (a IA não acrescentou clipes)"
     return [
-        f"Fala dos clipes escolhidos: {_share(structure.speech_sec_first, target)} → nova tentativa "
+        f"Fala dos clipes escolhidos: {_share(structure.speech_sec_first, target)} → acréscimo "
         f"({_cell(structure.shortfall)}) → {_share(structure.speech_sec, target)}",
-        f"Clipes incluídos pela nova tentativa: {added}",
+        f"Clipes acrescentados (→ bloco em que entraram): {added}",
     ]
 
 

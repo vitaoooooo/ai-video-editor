@@ -179,6 +179,31 @@ class StructureAnswer(BaseModel):
         return _text(value)
 
 
+class StructureAdditionsAnswer(BaseModel):
+    """Resposta da pergunta de acréscimo (falta de duração da estrutura): os clipes a acrescentar, só dentre os
+    oferecidos (vazio = nenhum). O código põe cada um no bloco do vizinho na ordem de gravação."""
+
+    acrescentar: list[str] = Field(default_factory=list, description="IDs de clipes oferecidos")
+    notas: str = ""
+
+    @field_validator("acrescentar", mode="before")
+    @classmethod
+    def _clips(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = value.replace(";", ",").split(",")
+        if not isinstance(value, list):
+            return value
+        found = (_id(v.get("clipe") if isinstance(v, dict) else v) for v in value)
+        return [i for i in found if i and i not in _NONE_TOKENS]
+
+    @field_validator("notas", mode="before")
+    @classmethod
+    def _strip(cls, value):
+        return _text(value)
+
+
 # --- E11: passada 2 em três perguntas por bloco (2a cortes, 2b inclusões e respiros, 2c coberturas) ---
 
 # Palavras que a IA pode mandar no lugar de uma letra para dizer "nenhuma".
@@ -462,7 +487,10 @@ class StructureRun(BaseModel):
         default=None, description="A mesma soma na 1ª resposta, quando houve nova tentativa por falta de duração"
     )
     shortfall: str = Field(default="", description="O aviso de falta de duração dado à IA na nova tentativa")
-    added_clip_ids: list[str] = Field(default_factory=list, description="Clipes incluídos em blocos pela nova tentativa")
+    added_clip_ids: list[str] = Field(default_factory=list, description="Clipes incluídos em blocos pela pergunta de acréscimo")
+    added_blocks: dict[str, str] = Field(
+        default_factory=dict, description="Clipe acrescentado → o bloco final em que entrou (\"B03 título\")"
+    )
     order: str = Field(default="", description="Ordem dos blocos: de gravação (como foi medida) ou a da IA (e por quê)")
 
 

@@ -22,16 +22,18 @@ Ordem de gravação (medida, `_chronological_blocks`): a estrutura é da IA (ond
 fica fora), mas o vídeo segue a ordem de gravação (`EditorMaterial.chronology`: a data de gravação quando o
 catálogo marca todas como confiáveis; senão a ordem do catálogo). Os clipes dos blocos são postos nessa ordem e
 cada bloco vira uma sequência contígua: um bloco da IA com clipes de outro bloco no meio é dividido nas partes
-contíguas (título com "(parte k/n)", meta repartida pela fala, aviso). Clipes acrescentados pela nova tentativa
-por falta de duração entram no bloco do vizinho na ordem de gravação (o anterior; sem ele, o seguinte). Se o
+contíguas (título com "(parte k/n)", meta repartida pela fala, aviso). Se o
 pedido pede outra ordem (`material.FREE_ORDER_PHRASES`: "por tema", "fora de ordem", "ordem livre"...), a ordem da
 IA fica.
 
 A estrutura não precisa usar todos os clipes: um clipe com fala que a IA não pôs em bloco nem em "fora"
 conta como fora ("não escolhido pela IA"), sem bloco extra. Falta de duração (medida, sem decisão): se a fala
 dos clipes nos blocos fica abaixo de `STRUCTURE_MIN_RATIO` da duração do pedido (a que a IA escolhe sozinha
-não conta: os dois números seriam dela) e há clipes fora dos blocos, UMA nova tentativa informa os números e lista os clipes com fala não
-usados e o acervo; a IA pode incluir clipes ou manter a resposta (a resposta igual é aceita).
+não conta: os dois números seriam dela) e há clipes com fala fora dos blocos, UMA pergunta de acréscimo informa
+os números e lista esses clipes (ID, fala, resumo curto); a resposta é a lista dos que entram (vazia vale; código
+fora da lista é ignorado com um aviso). A primeira estrutura nunca perde clipes: o código só acrescenta cada
+escolhido ao bloco do vizinho na ordem de gravação (o anterior; sem ele, o seguinte), com a meta do bloco
+somada da fala do clipe (`_add_to_neighbors`; vale também com ordem livre).
 
 2b (medida, sem decisão): sobra do bloco = alvo do bloco − fala mantida depois da 2a. Bloco com fala sem
 sobra (ou sem alvo) não tem pergunta 2b. Com sobra, o pedido informa a sobra, as posições medidas
@@ -107,7 +109,9 @@ from ai_video_editor.editor.prompt import (
     CutsPromptInput,
     EditorContext,
     InsertsPromptInput,
+    ADDITIONS_MAX_CHARS,
     StructureShortfall,
+    build_additions_prompt,
     build_coverage_prompt,
     build_cuts_prompt,
     build_inserts_prompt,
@@ -118,6 +122,7 @@ from ai_video_editor.editor.prompt import (
     short_text,
 )
 from ai_video_editor.editor.provider import (
+    AdditionsRequest,
     CoverageRequest,
     CutsRequest,
     EditorAI,
@@ -143,6 +148,7 @@ from ai_video_editor.editor.schema import (
     KeepRange,
     RequestRecord,
     Skipped,
+    StructureAdditionsAnswer,
     StructureAnswer,
     StructureRun,
     SubpassRun,
@@ -168,6 +174,7 @@ from ai_video_editor.editor.validate import (
     validate_coverages,
     validate_cuts,
     validate_inserts,
+    validate_additions,
     validate_structure,
 )
 from ai_video_editor.intelligence.exceptions import (
@@ -250,13 +257,12 @@ class CallCache:
 
 
 class CachedStructure(BaseModel):
-    """Estrutura no cache: a resposta aceita e se ela já passou pela nova tentativa por falta de duração."""
+    """Estrutura no cache: a resposta aceita e, se já houve a pergunta de acréscimo (falta de duração), a resposta
+    dela (a falta e a lista oferecida são medidas de novo a cada execução)."""
 
     answer: StructureAnswer
     retried: bool = False
-    speech_sec_first: Optional[float] = None
-    shortfall: str = ""
-    added_clip_ids: list[str] = []
+    additions: Optional[StructureAdditionsAnswer] = None
 
 
 def editor_cache(projects_root: Path) -> CallCache:
@@ -588,14 +594,15 @@ class EditorService:
         lines = self.structure_lines(summaries)
         result = StructureRun(origin="ia")
 
-        def prompt_for(errors: Optional[list[str]] = None, shortfall: Optional[StructureShortfall] = None) -> str:
-            return build_structure_prompt(context, lines, errors, shortfall)
+        def prompt_for(errors: Optional[list[str]] = None) -> str:
+            return build_structure_prompt(context, lines, errors)
 
         prompt = prompt_for()
         result.estimated_tokens = tokens(prompt)
         self._progress("estrutura")
         answer: Optional[StructureAnswer] = None
         check = None
+        additions: Optional[StructureAdditionsAnswer] = None
         if result.estimated_tokens > self.budget.structure_available:
             result.attempts.append(
                 f"o pedido da estrutura (~{result.estimated_tokens} tokens, uma linha por clipe) não cabe no "
@@ -609,9 +616,7 @@ class EditorService:
             if entry is not None:
                 check = validate_structure(entry.answer, material)
                 if check.blocks:
-                    answer, result.origin, retried = entry.answer, "cache", entry.retried
-                    result.speech_sec_first, result.shortfall = entry.speech_sec_first, entry.shortfall
-                    result.added_clip_ids = list(entry.added_clip_ids)
+                    answer, result.origin, retried, additions = entry.answer, "cache", entry.retried, entry.additions
                     result.stats.cached += 1
                     self._cached("estrutura", "estrutura", result.estimated_tokens)
             errors: list[str] = []
@@ -631,35 +636,29 @@ class EditorService:
                 if self.gave_up:
                     break
             fresh = answer is not None and result.origin != "cache"
-            # Falta de duração: medida sempre (também com a estrutura do cache), uma nova tentativa só.
-            shortfall = self._shortfall(check, summaries) if answer is not None and not retried else None
-            if shortfall is not None and not self.gave_up:
+            # Falta de duração: medida sempre (também com a estrutura do cache); a pergunta de acréscimo, uma vez só.
+            shortfall = self._shortfall(check, summaries) if answer is not None else None
+            if shortfall is not None:
                 result.speech_sec_first = round(shortfall.speech_sec, 3)
                 result.shortfall = (
                     f"faltam {round(shortfall.missing_sec)} s: meta {round(shortfall.target_sec)} s, "
                     f"fala dos clipes escolhidos {round(shortfall.speech_sec)} s"
                 )
-                self._notice(f"estrutura: {result.shortfall}; nova tentativa com os clipes não usados")
-                before = {c for b in check.blocks for c in b.clip_ids}
-                request = StructureRequest(
-                    prompt=prompt_for(None, shortfall), material=material, context=context, summaries=summaries,
+            if shortfall is not None and not retried and not self.gave_up:
+                self._notice(f"estrutura: {result.shortfall}; pergunta de acréscimo com os clipes com fala não usados")
+                request = AdditionsRequest(
+                    prompt=build_additions_prompt(context, shortfall), material=material, context=context,
+                    offered=shortfall.offered, missing_sec=shortfall.missing_sec,
                 )
-                raw, error = self._ask(self.ai.structure, request, result.stats, "estrutura", "estrutura", attempt + 1)
+                raw, error = self._ask(self.ai.additions, request, result.stats, "estrutura", "acréscimo", attempt + 1)
                 if raw is not None:
-                    retried, fresh = True, True
-                    trial = validate_structure(raw, material)
-                    if trial.blocks:  # a resposta igual também vale; sem bloco válido, fica a anterior
-                        answer, check, result.origin = raw, trial, "ia"
-                    else:
-                        result.attempts.append(f"{trial.refused}: " + "; ".join(trial.errors[:12]))
-                    result.added_clip_ids = [c for b in check.blocks for c in b.clip_ids if c not in before]
+                    retried, fresh, additions = True, True, raw
                 else:
-                    result.attempts.append(error)
+                    result.attempts.append(f"acréscimo: {error}")
+            if shortfall is not None and additions is not None:
+                self._apply_additions(check, additions, shortfall, result)
             if fresh:
-                self.cache.save("estrutura", key, CachedStructure(
-                    answer=answer, retried=retried, speech_sec_first=result.speech_sec_first,
-                    shortfall=result.shortfall, added_clip_ids=result.added_clip_ids,
-                ))
+                self.cache.save("estrutura", key, CachedStructure(answer=answer, retried=retried, additions=additions))
         self.calls_done += 1
         if answer is None:
             answer = neutral_structure(material)
@@ -674,9 +673,12 @@ class EditorService:
         if free is not None:
             result.blocks, result.order = check.blocks, f"a da IA (o pedido diz \"{free}\")"
         else:
-            result.blocks, order_warnings, how = _chronological_blocks(check.blocks, result.added_clip_ids, material)
+            result.blocks, order_warnings, how = _chronological_blocks(check.blocks, material)
             result.order = f"de gravação ({'data de gravação' if how == 'data' else 'ordem do catálogo'})"
             result.warnings += order_warnings
+        result.added_blocks = {
+            c: f"{b.id} {b.title}".strip() for b in result.blocks for c in b.clip_ids if c in result.added_clip_ids
+        }
         result.out = check.out
         result.discarded = check.discarded
         if result.origin != "fallback":
@@ -749,20 +751,37 @@ class EditorService:
         def where(clip_id: str) -> str:
             return f" (em fora: {short_text(out_reason[clip_id], 6)})" if clip_id in out_reason else ""
 
-        unused = [
-            f"- {c} · {round(material.speech_sec(c))} s de fala{where(c)} — {summary(c)}"
-            for c in material.clip_ids if material.has_speech(c) and c not in in_blocks
-        ]
-        library = [
-            f"- {c} · {clock(material.clips[c].duration_sec)}{where(c)} — {summary(c)}"
-            for c in material.clip_ids if not material.has_speech(c) and c not in in_blocks
-        ]
-        if not unused and not library:
+        offers, used = [], 0
+        for c in material.chronology([c for c in material.clip_ids if material.has_speech(c) and c not in in_blocks])[0]:
+            line = f"- {c} · {round(material.speech_sec(c))} s de fala{where(c)} — {summary(c)}"
+            if used + len(line) > ADDITIONS_MAX_CHARS:
+                break  # os que não cabem não são oferecidos
+            offers.append((c, line))
+            used += len(line) + 1
+        if not offers:
             return None
-        return StructureShortfall(
-            target_sec=target, speech_sec=speech, unused_lines=unused,
-            library_lines=library,
-        )
+        blocks = [f"- {b.title or b.id}: {', '.join(b.clip_ids)}" for b in check.blocks]
+        return StructureShortfall(target_sec=target, speech_sec=speech, offers=offers, block_lines=blocks)
+
+    def _apply_additions(
+        self, check, additions: StructureAdditionsAnswer, shortfall: StructureShortfall, result: StructureRun
+    ) -> None:
+        """Acrescenta à estrutura (`check`) os clipes escolhidos na pergunta de acréscimo, cada um no bloco do
+        vizinho na ordem de gravação; nenhum clipe da primeira estrutura sai."""
+        material = self.material
+        found = validate_additions(additions, shortfall.offered, material)
+        if found.ignored:
+            result.warnings.append(
+                f"acréscimo: {len(found.ignored)} código(s) fora da lista oferecida ignorado(s): "
+                f"{', '.join(found.ignored)} (oferecidos: {', '.join(shortfall.offered)})"
+            )
+        result.added_clip_ids = found.added
+        if not found.added:
+            return
+        check.blocks, warnings = _add_to_neighbors(check.blocks, found.added, material)
+        result.warnings += warnings
+        check.out = [o for o in check.out if o.clipe not in found.added]
+        check.not_chosen = [c for c in check.not_chosen if c not in found.added]
 
     # --- E11: passada 2 de um bloco ---
 
@@ -1429,13 +1448,34 @@ def _rescale_blocks(blocks: list[Block], total: Optional[float], material: Edito
         block.target_sec = round(total * weights[block.id] / weight_sum, 1)
 
 
-def _chronological_blocks(
-    blocks: list[Block], added: list[str], material: EditorMaterial
-) -> tuple[list[Block], list[str], str]:
+def _add_to_neighbors(blocks: list[Block], added: list[str], material: EditorMaterial) -> tuple[list[Block], list[str]]:
+    """Cópia dos blocos com cada clipe acrescentado no bloco do vizinho na ordem de gravação (o anterior entre os
+    clipes já nos blocos; sem ele, o seguinte), logo depois (ou antes) dele; a meta do bloco (se houver) soma a
+    fala do clipe. Devolve os blocos e um aviso por clipe."""
+    blocks = [b.model_copy(update={"clip_ids": list(b.clip_ids)}) for b in blocks]
+    order, _ = material.chronology([c for b in blocks for c in b.clip_ids] + list(added))
+    rank = {c: n for n, c in enumerate(order)}
+    owner = {c: b for b in blocks for c in b.clip_ids}
+    warnings: list[str] = []
+    for c in sorted(added, key=rank.__getitem__):
+        before = [x for x in owner if rank[x] < rank[c]]
+        neighbor = max(before, key=rank.__getitem__) if before else min(owner, key=rank.__getitem__)
+        block = owner[neighbor]
+        at = block.clip_ids.index(neighbor)
+        block.clip_ids.insert(at + 1 if before else at, c)
+        if block.target_sec:
+            block.target_sec = round(block.target_sec + material.speech_sec(c), 1)
+        owner[c] = block
+        warnings.append(
+            f'acréscimo: {c} entrou no bloco de {neighbor} ("{block.title or block.id}"), o vizinho na ordem de gravação'
+        )
+    return blocks, warnings
+
+
+def _chronological_blocks(blocks: list[Block], material: EditorMaterial) -> tuple[list[Block], list[str], str]:
     """Blocos em ordem de gravação, cada um uma sequência contígua de clipes (ver o topo do módulo). Devolve os
     blocos novos (B01... na ordem), os avisos e como a ordem foi medida ("data" ou "catálogo")."""
     order, how = material.chronology([c for b in blocks for c in b.clip_ids])
-    rank = {c: n for n, c in enumerate(order)}
     owner = {c: k for k, b in enumerate(blocks) for c in b.clip_ids}
     share: dict[str, Optional[float]] = {}
     for block in blocks:  # a meta de cada bloco repartida pelos clipes (pela fala; sem fala, pela duração)
@@ -1446,17 +1486,6 @@ def _chronological_blocks(
         for c in block.clip_ids:
             share[c] = block.target_sec * weights[c] / total if block.target_sec and total > 0 else None
     warnings: list[str] = []
-    late = [c for c in order if c in set(added)]
-    base = [c for c in order if c not in set(late)]
-    for c in late if base else []:
-        before = [x for x in base if rank[x] < rank[c]]
-        neighbor = before[-1] if before else next(x for x in base if rank[x] > rank[c])
-        if owner[c] != owner[neighbor]:
-            warnings.append(
-                f"ordem: {c} (incluído na nova tentativa por falta de duração) foi para o bloco de {neighbor} "
-                f"(\"{blocks[owner[neighbor]].title or blocks[owner[neighbor]].id}\"), o vizinho na ordem de gravação"
-            )
-        owner[c] = owner[neighbor]
     runs: list[tuple[int, list[str]]] = []
     for c in order:
         if runs and runs[-1][0] == owner[c]:

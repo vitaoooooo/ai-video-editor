@@ -34,7 +34,7 @@ from ai_video_editor.roteiro.report import clock
 
 # Sobem quando o pedido ou o schema da resposta da passada mudam (invalida só o cache daquela passada).
 SUMMARY_PROMPT_VERSION = "resumo-v1"
-STRUCTURE_PROMPT_VERSION = "estrutura-v9"
+STRUCTURE_PROMPT_VERSION = "estrutura-v10"
 CUTS_PROMPT_VERSION = "cortes-v6"
 INSERTS_PROMPT_VERSION = "insercoes-v2"
 COVERAGE_PROMPT_VERSION = "coberturas-v4"
@@ -46,8 +46,10 @@ RESPECT_REQUEST = "Faça o que o pedido pede; não acrescente nada que ele não 
 STRUCTURE_SUMMARY_WORDS = 25
 # Texto de um trecho nas listas da 2b e da 2c: até tantas palavras.
 TRECHO_WORDS = 30
-# Resumo de cada clipe não usado na nova tentativa da estrutura por falta de duração: até tantas palavras.
+# Resumo de cada clipe oferecido na pergunta de acréscimo (falta de duração da estrutura): até tantas palavras.
 SHORTFALL_SUMMARY_WORDS = 8
+# A lista de clipes oferecidos no acréscimo tem no máximo tantos caracteres (os que não cabem não são oferecidos).
+ADDITIONS_MAX_CHARS = 3000
 # Contexto de um pedaço/parte de clipe grande (só nesses casos: a decisão depende do que veio antes): o resumo
 # do pedaço anterior e as frases vizinhas, cortados nestes tamanhos. `CONTEXT_MAX_CHARS` é o que o orçamento
 # reserva para esse contexto ao dividir o clipe.
@@ -172,61 +174,56 @@ def _request_lines(context: EditorContext) -> list[str]:
 
 @dataclass
 class StructureShortfall:
-    """Falta de duração da estrutura (informação para a nova tentativa; a IA pode manter a resposta)."""
+    """Falta de duração da estrutura: os números e os clipes com fala não usados (a pergunta de acréscimo)."""
 
     target_sec: float
     speech_sec: float  # fala disponível dos clipes escolhidos (nos blocos)
-    unused_lines: list[str] = field(default_factory=list)  # clipes com fala fora dos blocos
-    library_lines: list[str] = field(default_factory=list)  # clipes sem fala fora dos blocos
+    offers: list[tuple[str, str]] = field(default_factory=list)  # (clipe, linha) oferecidos, em ordem de gravação
+    block_lines: list[str] = field(default_factory=list)  # a estrutura escolhida (não muda)
 
     @property
     def missing_sec(self) -> float:
         return max(0.0, self.target_sec - self.speech_sec)
 
-
-def _capped(lines: list[str], limit: int, what: str) -> list[str]:
-    """As linhas que cabem em `limit` caracteres (o resto vira "(mais N …)")."""
-    result, used = [], 0
-    for n, line in enumerate(lines):
-        if used + len(line) > limit:
-            result.append(f"- (mais {len(lines) - n} {what})")
-            break
-        result.append(line)
-        used += len(line) + 1
-    return result
+    @property
+    def offered(self) -> list[str]:
+        return [c for c, _ in self.offers]
 
 
-def _shortfall_lines(shortfall: StructureShortfall) -> list[str]:
+def build_additions_prompt(context: EditorContext, shortfall: StructureShortfall) -> str:
+    """Pergunta de acréscimo da estrutura (falta de duração): só os clipes com fala não usados; a resposta é a
+    lista dos que entram (vazia vale). A estrutura escolhida não muda: o programa põe cada clipe escolhido no
+    bloco do vizinho na ordem de gravação."""
+    missing = round(shortfall.missing_sec)
     lines = [
+        *_request_lines(context),
         "",
-        f"Sua resposta anterior foi lida. Duração: o pedido é de {round(shortfall.target_sec)} s; os clipes escolhidos "
-        f"têm {round(shortfall.speech_sec)} s de fala; faltam {round(shortfall.missing_sec)} s.",
+        "Você é o editor de um vídeo. A estrutura do vídeo já foi escolhida e fica como está:",
+        *shortfall.block_lines,
+        "",
+        f"Duração: o pedido é de {round(shortfall.target_sec)} s; os clipes escolhidos têm "
+        f"{round(shortfall.speech_sec)} s de fala; faltam {missing} s.",
+        "Estes clipes com fala não foram usados (código · segundos de fala — resumo curto):",
+        *(line for _, line in shortfall.offers),
+        "",
+        f"Faltam {missing} s; quais destes clipes acrescentar? Escolha só clipes da lista acima que servem ao "
+        "pedido; nenhum também vale (lista vazia). O programa põe cada clipe escolhido no bloco do clipe vizinho "
+        "na ordem de gravação.",
+        _codes_line(CLIP_CODES),
+        "Responda só com o JSON pedido, em português.",
+        "",
+        'Formato: {"acrescentar": ["código do clipe"], "notas": "..."}',
     ]
-    budget = RETRY_MAX_CHARS
-    if shortfall.unused_lines:
-        lines.append("Clipes com fala que não estão em nenhum bloco (código · segundos de fala — resumo):")
-        shown = _capped(shortfall.unused_lines, budget, "clipe(s) com fala")
-        lines += shown
-        budget -= sum(len(line) + 1 for line in shown)
-    if shortfall.library_lines:
-        lines.append("Acervo (clipes sem fala que não estão em nenhum bloco):")
-        lines += _capped(shortfall.library_lines, max(budget, 200), "clipe(s) do acervo")
-    lines.append(
-        "Você pode incluir alguns desses clipes nos blocos (na ordem certa) ou manter a estrutura: responder de "
-        "novo a mesma estrutura também vale. Responda com o JSON completo."
-    )
-    return lines
+    return "\n".join(lines)
 
 
 def build_structure_prompt(
     context: EditorContext,
     clip_lines: list[str],
     errors: Optional[list[str]] = None,
-    shortfall: Optional[StructureShortfall] = None,
 ) -> str:
     """`clip_lines`: uma linha por clipe (`EditorMaterial.structure_line`), sempre todos os clipes, em ordem de
-    gravação. `shortfall`: a nova tentativa por falta de duração (os números e o que não foi usado). Pedido que
-    pede outra ordem (`material.asks_free_order`): a regra de ordem deixa agrupar por tema."""
+    gravação. Pedido que pede outra ordem (`material.asks_free_order`): a regra de ordem deixa agrupar por tema."""
     if asks_free_order(context.request):
         order = [
             "- Um bloco = um trecho da história (ex.: chegada, hotel, trilha, praia, volta), não um tema abstrato; "
@@ -280,8 +277,6 @@ def build_structure_prompt(
         '"duracao_total_alvo_sec": <segundos>, "notas": "..."}',
     ]
     lines += _retry_lines(errors or [])
-    if shortfall is not None:
-        lines += _shortfall_lines(shortfall)
     return "\n".join(lines)
 
 

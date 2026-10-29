@@ -42,6 +42,7 @@ from ai_video_editor.editor.material import (
     matched_words,
 )
 from ai_video_editor.editor.prompt import (
+    ADDITIONS_MAX_CHARS,
     BlockHeader,
     CoveragePromptInput,
     CutsPromptInput,
@@ -80,7 +81,7 @@ from ai_video_editor.editor.schema import (
 from ai_video_editor.editor.service import (
     CallCache,
     EditorService,
-    _chronological_blocks,
+    _add_to_neighbors,
     cover_refusal,
     cover_words,
 )
@@ -748,7 +749,7 @@ def test_full_run_with_mock_builds_the_plan_from_2a_2b_2c(material, tmp_path):
     assert not second.coverages and second.coverage.requests == 0  # a fala do P002 não é para a câmera
     assert [(k.number, k.reason) for k in second.coverage.skipped] == [(1, "imagem não é fala para câmera")]
     counts = {k: len(v) for k, v in ai.calls.items()}
-    assert counts == {"summary": 4, "structure": 1, "cuts": 2, "inserts": 1, "coverages": 1}
+    assert counts == {"summary": 4, "structure": 1, "additions": 0, "cuts": 2, "inserts": 1, "coverages": 1}
     assert run.cuts_stats.calls == 2 and run.inserts_stats.calls == 1 and run.coverage_stats.calls == 1
     assert [r.kind for r in run.requests].count("cortes") == 2 and all(r.estimated_tokens > 0 for r in run.requests)
 
@@ -801,7 +802,7 @@ def test_cache_per_pass_changing_the_cuts_prompt_keeps_the_others(material, tmp_
     third = MockEditorAI()
     _service(material, tmp_path, third).run()
     # Mesmos cortes → mesmos trechos → 2b e 2c com os mesmos pedidos (do cache).
-    assert {k: len(v) for k, v in third.calls.items()} == {"summary": 0, "structure": 0, "cuts": 2, "inserts": 0, "coverages": 0}
+    assert {k: len(v) for k, v in third.calls.items()} == {"summary": 0, "structure": 0, "additions": 0, "cuts": 2, "inserts": 0, "coverages": 0}
 
     monkeypatch.setattr(editor_service, "SUMMARY_PROMPT_VERSION", "resumo-teste")
     fourth = MockEditorAI()
@@ -1315,31 +1316,35 @@ def _texts(tmp_path: Path, **texts: str) -> EditorMaterial:
     return EditorMaterial.from_roteiro(roteiro)
 
 
-def test_structure_below_85_percent_retries_listing_unused_clips_and_the_same_answer_is_accepted(material, tmp_path):
+def test_structure_below_85_percent_asks_only_for_additions_and_an_empty_answer_keeps_the_first(material, tmp_path):
     only_p002 = _structure((("P002",), 20))
-    ai = MockEditorAI({"structure": [only_p002, only_p002]})
+    ai = MockEditorAI({"structure": [only_p002]})  # o acréscimo simulado não acrescenta nada
     context = EditorContext(request="vlog, uns 20 segundos", target_sec=20)
     run = _service(material, tmp_path, ai, context=context).run()
-    first, retry = (r.prompt for r in ai.calls["structure"])
-    assert "faltam" not in first
-    assert "Duração: o pedido é de 20 s; os clipes escolhidos têm 4 s de fala; faltam 16 s." in retry
-    assert "- P001 · 9 s de fala — Clipe P001" in retry  # clipe com fala não usado: ID, fala, resumo curto
-    assert "Acervo (clipes sem fala" in retry and "- D001 · 0:08 — " in retry and "- B001 · 0:03 — " in retry
-    assert "responder de novo a mesma estrutura também vale" in retry and "foi recusada" not in retry
+    assert len(ai.calls["structure"]) == 1 and "faltam" not in ai.calls["structure"][0].prompt
+    [request] = ai.calls["additions"]
+    ask = request.prompt
+    assert request.offered == ["P001"]  # só clipes com fala: o acervo não é oferecido
+    assert "Duração: o pedido é de 20 s; os clipes escolhidos têm 4 s de fala; faltam 16 s." in ask
+    assert "- P001 · 9 s de fala — Clipe P001" in ask and "D001" not in ask and "B001" not in ask
+    assert "Faltam 16 s; quais destes clipes acrescentar?" in ask and "nenhum também vale (lista vazia)" in ask
+    assert '{"acrescentar": ["código do clipe"], "notas": "..."}' in ask and '"blocos"' not in ask
     structure = run.structure
-    assert [b.clip_ids for b in structure.blocks] == [["P002"]] and not structure.attempts  # igual: aceita
+    assert [b.clip_ids for b in structure.blocks] == [["P002"]] and not structure.attempts
     assert (structure.speech_sec_first, structure.speech_sec, structure.added_clip_ids) == (4.0, 4.0, [])
     plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
     report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
     # O pedido (20 s) passa da fala do material (13 s): o alvo vira 13 s, com aviso.
-    assert "Fala dos clipes escolhidos: 0:04 (4s) (31% do alvo) → nova tentativa (faltam 16 s" in report
-    assert "Clipes incluídos pela nova tentativa: nenhum (a IA manteve a resposta)" in report
+    assert "Fala dos clipes escolhidos: 0:04 (4s) (31% do alvo) → acréscimo (faltam 16 s" in report
+    assert "Clipes acrescentados (→ bloco em que entraram): nenhum (a IA não acrescentou clipes)" in report
 
-    ai = MockEditorAI({"structure": [only_p002, _structure((("P001", "P002"), 20))]})
+    ai = MockEditorAI({"structure": [only_p002], "additions": [{"acrescentar": ["P001"]}]})
     run = _service(material, tmp_path / "b", ai, context=context).run()
     assert run.structure.added_clip_ids == ["P001"] and run.structure.speech_sec == 13.0
+    assert [b.clip_ids for b in run.structure.blocks] == [["P001", "P002"]]
     report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
-    assert "→ 0:13 (13s) (100% do alvo)" in report and "Clipes incluídos pela nova tentativa: P001" in report
+    assert "→ 0:13 (13s) (100% do alvo)" in report
+    assert "Clipes acrescentados (→ bloco em que entraram): P001 → B01" in report
 
 
 def test_structure_at_85_percent_or_without_requested_duration_has_no_retry(material, tmp_path):
@@ -1553,21 +1558,24 @@ def test_whole_clip_competes_when_the_answers_are_out_of_the_target(material, tm
     assert "tentativas: 1: 2,0s · 2: 2,0s → usado o clipe inteiro (sem cortes)" in report
 
 
-def test_cached_structure_below_85_percent_gets_the_retry_once(material, tmp_path):
+def test_cached_structure_below_85_percent_gets_the_addition_question_once(material, tmp_path):
     only_p002 = _structure((("P002",), 20))
     context = EditorContext(request="vlog", target_sec=20)
-    ai = MockEditorAI({"structure": [only_p002, AIProviderError("caiu")]})  # a nova tentativa falha
+    ai = MockEditorAI({"structure": [only_p002], "additions": [AIProviderError("caiu")]})  # o acréscimo falha
     run = _service(material, tmp_path, ai, context=context).run()
-    assert len(ai.calls["structure"]) == 2 and run.structure.origin == "ia"
-    # Do cache, ainda sem a nova tentativa: ela é feita agora (e vai para o cache).
-    ai = MockEditorAI({"structure": [_structure((("P001", "P002"), 20))]})
+    assert len(ai.calls["additions"]) == 1 and run.structure.origin == "ia" and run.structure.added_clip_ids == []
+    assert any(a.startswith("acréscimo: erro da IA") for a in run.structure.attempts)
+    # Do cache, ainda sem o acréscimo: a pergunta é feita agora (e a resposta vai para o cache).
+    ai = MockEditorAI({"additions": [{"acrescentar": ["P001"]}]})
     run = _service(material, tmp_path, ai, context=context).run()
-    assert len(ai.calls["structure"]) == 1 and "faltam 16 s" in ai.calls["structure"][0].prompt
-    assert run.structure.origin == "ia" and run.structure.added_clip_ids == ["P001"]
+    assert not ai.calls["structure"] and len(ai.calls["additions"]) == 1
+    assert "faltam 16 s" in ai.calls["additions"][0].prompt
+    assert run.structure.origin == "cache" and run.structure.added_clip_ids == ["P001"]
     ai = MockEditorAI()
     run = _service(material, tmp_path, ai, context=context).run()
-    assert not ai.calls["structure"] and run.structure.origin == "cache"
+    assert not ai.calls["structure"] and not ai.calls["additions"] and run.structure.origin == "cache"
     assert (run.structure.speech_sec_first, run.structure.added_clip_ids) == (4.0, ["P001"])
+    assert [b.clip_ids for b in run.structure.blocks] == [["P001", "P002"]]
 
 
 def test_another_target_invalidates_the_cached_structure(material, tmp_path):
@@ -1693,13 +1701,15 @@ def test_coverage_accepts_an_explained_correspondence_with_visual_evidence(tmp_p
     assert check({"palavra": ""}).discarded[0].reason.startswith("sem a palavra em comum")
 
 
-def test_structure_shortfall_list_fits_the_retry_room_with_41_clips(tmp_path):
+def test_structure_addition_list_fits_its_room_with_41_clips(tmp_path):
     vlog = make_vlog_material(tmp_path)
-    ai = MockEditorAI({"structure": [_structure((("P001",), 480))] * 2})
+    ai = MockEditorAI({"structure": [_structure((("P001",), 480))]})
     _service(vlog, tmp_path, ai, num_ctx=8192, context=EditorContext(request="vlog", target_sec=480)).run()
-    retry = ai.calls["structure"][1].prompt
-    assert "- P002 · 10 s de fala" in retry and "(mais " in retry  # a lista para no espaço reservado
-    assert tokens(retry) <= Budget(8192, "t").structure_available + editor_budget.RETRY_TOKENS
+    [request] = ai.calls["additions"]
+    offered = [line for line in request.prompt.splitlines() if line.startswith("- ") and " s de fala" in line]
+    assert "- P002 · 10 s de fala" in request.prompt and "P001" not in request.offered
+    assert len(offered) == len(request.offered) and sum(len(line) + 1 for line in offered) <= ADDITIONS_MAX_CHARS
+    assert tokens(request.prompt) <= Budget(8192, "t").structure_available
 
 
 # --- ponta a ponta (FFmpeg) ---
@@ -1905,29 +1915,60 @@ def test_mixed_block_is_split_into_contiguous_parts_in_recording_order(tmp_path)
     assert "Ordem dos blocos: de gravação (ordem do catálogo)" in report
 
 
-def test_clips_added_by_the_shortfall_retry_join_the_block_of_the_chronological_neighbor(tmp_path):
+def test_added_clips_join_the_block_of_the_chronological_neighbor(tmp_path):
     material = make_story_material(tmp_path)
     blocks = [Block(id="B01", title="Chegada", clip_ids=["P002"], target_sec=8.0),
-              Block(id="B02", title="Trilha", clip_ids=["P004"], target_sec=8.0),
-              Block(id="B03", title="Conversas", clip_ids=["P001", "P003", "P005"], target_sec=24.0)]
-    result, warnings, how = _chronological_blocks(blocks, ["P001", "P003", "P005"], material)
-    # P001 não tem anterior: vai para o bloco do seguinte (P002); P003 → P002; P005 → P004. Nenhum bloco novo.
+              Block(id="B02", title="Trilha", clip_ids=["P004"], target_sec=8.0)]
+    result, warnings = _add_to_neighbors(blocks, ["P005", "P001", "P003"], material)
+    # P001 não tem anterior: vai para o bloco do seguinte (P002); P003 → P002; P005 → P004. Nenhum bloco novo;
+    # a meta do bloco soma a fala do clipe acrescentado (8 s cada).
     assert [(b.title, b.clip_ids, b.target_sec) for b in result] == [
         ("Chegada", ["P001", "P002", "P003"], 24.0), ("Trilha", ["P004", "P005"], 16.0),
     ]
-    assert how == "catálogo" and len(warnings) == 3
-    assert "P005 (incluído na nova tentativa por falta de duração) foi para o bloco de P004" in warnings[2]
+    assert [b.clip_ids for b in blocks] == [["P002"], ["P004"]]  # os blocos recebidos não mudam
+    assert len(warnings) == 3
+    assert warnings[2] == 'acréscimo: P005 entrou no bloco de P004 ("Trilha"), o vizinho na ordem de gravação'
 
 
-def test_shortfall_retry_clip_joins_the_neighbor_block_in_a_full_run(tmp_path, monkeypatch):
+_FIRST = {"blocos": [{"titulo": "Começo", "clipes": ["P001", "P002"], "duracao_alvo_sec": 16},
+                     {"titulo": "Fim", "clipes": ["P004"], "duracao_alvo_sec": 8}]}
+
+
+def test_addition_only_adds_to_the_first_structure(tmp_path):
     material = make_story_material(tmp_path)
-    first = {"blocos": [{"titulo": "Começo", "clipes": ["P001", "P002"], "duracao_alvo_sec": 16},
-                        {"titulo": "Fim", "clipes": ["P004", "P005"], "duracao_alvo_sec": 16}]}
-    retry = {"blocos": [*first["blocos"], {"titulo": "Conversas", "clipes": ["P003"], "duracao_alvo_sec": 8}]}
-    ai = MockEditorAI({"structure": [first, retry]})
+    ai = MockEditorAI({"structure": [_FIRST], "additions": [{"acrescentar": ["P003"]}]})
     run = _service(material, tmp_path, ai, context=EditorContext(request="vlog", target_sec=40)).run()
-    assert run.structure.added_clip_ids == ["P003"]
-    assert [(b.title, b.clip_ids) for b in run.structure.blocks] == [("Começo", ["P001", "P002", "P003"]), ("Fim", ["P004", "P005"])]
+    assert len(ai.calls["structure"]) == 1 and ai.calls["additions"][0].offered == ["P003", "P005"]
+    structure = run.structure
+    # 3 clipes + 1 acrescentado = 4, nenhum removido; o novo entra no bloco do vizinho (P002).
+    assert [(b.title, b.clip_ids) for b in structure.blocks] == [("Começo", ["P001", "P002", "P003"]), ("Fim", ["P004"])]
+    assert structure.added_clip_ids == ["P003"] and structure.added_blocks == {"P003": "B01 Começo"}
+    assert (structure.speech_sec_first, structure.speech_sec) == (24.0, 32.0)
+    assert [o.clipe for o in structure.out] == ["P005"]
+    plan = EditorPlan(project_name="t", fps=30, resolution=(1920, 1080), duration_sec=0.0)
+    report = build_editor_report("t", run, plan, material, "editor_ia", None, None)
+    assert "Clipes acrescentados (→ bloco em que entraram): P003 → B01 Começo" in report
+
+
+def test_addition_ignores_codes_outside_the_offer_with_one_warning(tmp_path):
+    material = make_story_material(tmp_path)
+    ai = MockEditorAI({"structure": [_FIRST], "additions": [{"acrescentar": ["P002", "X999", "p005", "P005"]}]})
+    run = _service(material, tmp_path, ai, context=EditorContext(request="vlog", target_sec=40)).run()
+    assert run.structure.added_clip_ids == ["P005"]
+    assert [b.clip_ids for b in run.structure.blocks] == [["P001", "P002"], ["P004", "P005"]]
+    assert [w for w in run.warnings if "fora da lista oferecida" in w] == [
+        "acréscimo: 2 código(s) fora da lista oferecida ignorado(s): P002, X999 (oferecidos: P003, P005)"
+    ]
+
+
+def test_empty_addition_keeps_the_first_structure(tmp_path):
+    material = make_story_material(tmp_path)
+    for empty in ({"acrescentar": []}, {"acrescentar": "nenhum"}, {}):
+        ai = MockEditorAI({"structure": [_FIRST], "additions": [empty]})
+        run = _service(material, tmp_path / str(len(str(empty))), ai, context=EditorContext(request="vlog", target_sec=40)).run()
+        assert [b.clip_ids for b in run.structure.blocks] == [["P001", "P002"], ["P004"]]
+        assert run.structure.added_clip_ids == [] and not run.structure.attempts
+        assert not [w for w in run.warnings if "acréscimo" in w]
 
 
 def test_free_order_request_keeps_the_ai_order(tmp_path):
